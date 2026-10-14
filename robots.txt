@@ -1,0 +1,11 @@
+# Shittim Chest — Blue Archive gacha calendar (unofficial fan project)
+#
+# Crawlable documents are the four HTML entries below. The app itself routes by
+# URL fragment, and fragments are never sent to the server, so `/#/calendar` and
+# `/#/about` are indistinguishable to a crawler. public/calendar.html,
+# public/simulator.html and public/about.html carry each route's metadata and
+# forward to the fragment route.
+User-agent: *
+Allow: /
+
+Sitemap: https://terriakidesu.github.io/shittim-chest/sitemap.xml
