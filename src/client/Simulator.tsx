@@ -456,7 +456,7 @@ function RecruitmentAtmosphere({ arriving, submitted }: { arriving: boolean; sub
 }
 
 function LandscapeGuard() {
-  return <div className="sim-orientation-guard" role="status"><GameIcon name="schale" /><div className="sim-rotate-device" aria-hidden="true"><IconRotate /></div><h2>Rotate your device</h2><p>Recruitment is designed for landscape.<br />Turn your phone sideways to continue.</p><small>Your recruitment is paused while in portrait.</small></div>;
+  return <div className="sim-orientation-guard" role="status"><GameIcon name="schale" /><div className="sim-rotate-device" aria-hidden="true"><IconRotate /></div><h2>Rotate your device</h2><p>Recruitment is designed for landscape.<br />Turn your phone sideways to continue.</p><FullscreenButton className="sim-sound-toggle sim-secondary" landscape /><small>Your recruitment is paused while in portrait.</small></div>;
 }
 
 function SparkSelection({ period, points, onExchange, onClose }: { period: RecruitmentPeriod; points: number; onExchange: (studentId: number) => void; onClose: () => void }) {
