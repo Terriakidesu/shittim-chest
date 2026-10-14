@@ -1,5 +1,5 @@
 /* Static campaign-screen composition. No runtime canvas or animated effects. */
-.lobby { position: relative; isolation: isolate; width: 100%; min-width: 0; min-height: 100svh; display: flex; flex-direction: column; overflow: clip; background: #40b8df url('/ba-lobby/classroom-day.webp') center center / cover no-repeat; color: #243e59; }
+.lobby { position: relative; isolation: isolate; width: 100%; min-width: 0; min-height: 100svh; display: flex; flex-direction: column; overflow: clip; background-color: #40b8df; background-position: center center; background-size: cover; background-repeat: no-repeat; color: #243e59; }
 .lobby::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; background: linear-gradient(90deg, transparent 45%, #2388c418 100%); }
 .lobby-topbar { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 24px; width: calc(100% - 7%); min-height: 67px; margin: 0 auto; padding: 7px 25px; border-radius: 0 0 12px 12px; background: #f9feffed; box-shadow: 0 3px 7px #123e642e; }
 .lobby-brand { display: flex; align-items: center; gap: 15px; text-decoration: none; color: #29445a; }
@@ -35,8 +35,6 @@
 .lobby-disclaimer { transform: skewX(10deg); color: #254b68; margin: 0; padding: 15px; font-size: 12px; line-height: 1.8; }
 .lobby-footer { position: relative; z-index: 3; display: flex; justify-content: space-between; gap: 15px; padding: 9px 4%; color: white; background: #123d647d; font-size: 10px; line-height: 1.5; }
 .lobby-footer a { color: white; text-underline-offset: 3px; }
-.lobby-day { background-image: url('/ba-lobby/classroom-day.webp'); }
-.lobby-night { background-image: url('/ba-lobby/classroom-night.webp'); }
 .lobby-characters .lobby-solo { left: 8%; height: 100%; }
 :root[data-theme="dark"] .lobby-secondary-panel { background: #6386b393; }
 :root[data-theme="dark"] .lobby-disclaimer { color: #fff; }

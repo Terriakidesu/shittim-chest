@@ -1,5 +1,5 @@
 import type { Banner, Status } from "../api";
-import { schoolColor } from "../api";
+import { asset, schoolColor } from "../api";
 import { dayKey } from "../dates";
 
 /**
@@ -9,8 +9,8 @@ import { dayKey } from "../dates";
  * and precise, and closes with 〜です. Neither borrows the other's tic.
  */
 
-const ARONA = "/api/img/mascot/arona";
-const PLANA = "/api/img/mascot/plana";
+const ARONA = asset("img/mascot/arona.png");
+const PLANA = asset("img/mascot/plana.png");
 
 export function Arona({ line }: { line: string }) {
   return (
@@ -149,7 +149,7 @@ export function BannerChip({
       aria-pressed={!!selected}
       title={`${banner.server === "JP" ? "JP" : "Global"} · ${label(banner)} — ${banner.type}`}
     >
-      {who && <img src={who.avatar} alt="" loading="lazy" />}
+      {who && <img src={asset(who.avatar)} alt="" loading="lazy" />}
       <span className="chip-name">{label(banner)}</span>
       <span className="chip-server">{banner.server === "JP" ? "JP" : "GL"}</span>
       {banner.prediction && <span className="chip-flag">~</span>}
@@ -178,7 +178,7 @@ export function PredictedChip({
       aria-pressed={!!selected}
       title={p?.method === "scheduled" ? "Scheduled on the wiki" : confidence != null ? `Expected on Global — ${Math.round(confidence * 100)}% historical accuracy within ±7 days` : "Expected on Global — insufficient calibration"}
     >
-      {who && <img src={who.avatar} alt="" loading="lazy" />}
+      {who && <img src={asset(who.avatar)} alt="" loading="lazy" />}
       <span className="chip-name">{label(banner)}</span>
       <span className="chip-conf">{p?.method === "scheduled" ? "Wiki" : "~"}</span>
     </button>

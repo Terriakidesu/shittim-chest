@@ -1,24 +1,51 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import { Home } from "./Home";
 import { Simulator } from "./Simulator";
 import { About } from "./About";
 import { SiteFooter } from "./components/SiteFooter";
+import { currentRoute, type Route } from "./route";
 import "./styles.css";
 import { initializeTheme } from "./theme";
 
 initializeTheme();
-const pathname = window.location.pathname.replace(/\/$/, "") || "/";
-if (pathname === "/about") document.title = "About & credits — Shittim Chest";
-if (pathname === "/calendar") document.title = "Calendar — Shittim Chest";
-if (pathname === "/simulator") document.title = "Recruitment simulator — Shittim Chest";
-const isHome = pathname === "/";
-if (isHome) document.title = "Shittim Chest — Lobby";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    {isHome ? <Home /> : pathname === "/about" ? <About /> : pathname === "/simulator" ? <Simulator /> : <App />}
-    {!isHome && <SiteFooter />}
-  </React.StrictMode>,
-);
+const TITLES: Record<Route, string> = {
+  "/": "Shittim Chest — Lobby",
+  "/calendar": "Calendar — Shittim Chest",
+  "/simulator": "Recruitment simulator — Shittim Chest",
+  "/about": "About & credits — Shittim Chest",
+};
+
+function Shell() {
+  const [route, setRoute] = useState<Route>(currentRoute);
+  useEffect(() => {
+    const onHash = () => {
+      setRoute(currentRoute());
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+  useEffect(() => {
+    document.title = TITLES[route];
+  }, [route]);
+  const isHome = route === "/";
+  return (
+    <React.StrictMode>
+      {isHome ? (
+        <Home />
+      ) : route === "/about" ? (
+        <About />
+      ) : route === "/simulator" ? (
+        <Simulator key={window.location.hash} />
+      ) : (
+        <App />
+      )}
+      {!isHome && <SiteFooter />}
+    </React.StrictMode>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")!).render(<Shell />);

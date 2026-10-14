@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ThemeSwitch } from "./components/ThemeSwitch";
 import {
   api,
+  asset,
   emblemUrl,
   schoolColor,
   type Banner,
   type ForecastResponse,
   type Status,
 } from "./api";
+import { link } from "./route";
 import {
   MONTH_NAMES,
   WEEKDAYS,
@@ -120,6 +122,8 @@ export function App() {
   }, [selected]);
 
   async function onRefresh() {
+    // No server to trigger — re-read the static snapshot (picks up a newly
+    // deployed export without a full page reload).
     setRefreshing(true);
     try {
       await api.refresh();
@@ -211,12 +215,23 @@ export function App() {
   const aronaLine = pickAronaLine(status, liveCount, forecast?.count ?? 0);
   const planaLine = pickPlanaLine(status, selected, (ms) => formatDay(ms, tz));
 
+  // The snapshot carries its export time; data age is derived from it rather
+  // than from a server's fetch clock. Stale snapshots stay visible as stale.
+  const dataAgeDays =
+    status?.exportedAtMs != null
+      ? (Date.now() - status.exportedAtMs) / 86_400_000
+      : (status?.dataAgeDays ?? null);
+  const isStale =
+    dataAgeDays != null && status != null
+      ? dataAgeDays >= status.refreshIntervalDays
+      : !!status?.stale;
+
   return (
     <div className={`app mobile-${mobileView}`}>
       <div className="topbar">
         <div>
           <div className="title">
-            <img className="mark" src="/shittim-chest.svg" alt="Shittim Chest emblem" width="44" height="52" />
+            <img className="mark" src={asset("shittim-chest.svg")} alt="Shittim Chest emblem" width="44" height="52" />
             <h1>
               Shittim Chest <span className="sub">Gacha Calendar</span>
             </h1>
@@ -224,8 +239,8 @@ export function App() {
           <p className="tagline">
             Live on the Japanese server, and when Global is expected to catch up.
           </p>
-          <a className="simulator-link" href="/simulator">Open recruitment simulator ↗</a>
-          <div className="calendar-theme"><ThemeSwitch /><a className="about-link" href="/about">About &amp; credits</a></div>
+          <a className="simulator-link" href={link.simulator}>Open recruitment simulator ↗</a>
+          <div className="calendar-theme"><ThemeSwitch /><a className="about-link" href={link.about}>About &amp; credits</a></div>
         </div>
         <div className="pills">
           <div className="pill accent" title="Median lag at the frontier">
@@ -249,17 +264,17 @@ export function App() {
         </div>
       </div>
 
-      <div className={`syncbar ${status?.stale ? "is-stale" : ""}`} role="status">
+      <div className={`syncbar ${isStale ? "is-stale" : ""}`} role="status">
         <span className="dot" />
-        {status?.dataAgeDays == null
+        {dataAgeDays == null
           ? "Connecting…"
-          : `Synced ${status.dataAgeDays < 1 ? "today" : `${Math.round(status.dataAgeDays)}d ago`} · refreshes every ${status.refreshIntervalDays}d`}
+          : `Updated ${dataAgeDays < 1 ? "today" : `${Math.round(dataAgeDays)}d ago`} · forecasts refresh weekly`}
         <button className="btn" onClick={onRefresh} disabled={refreshing}>
-          <span>{refreshing ? "Syncing…" : "Sync now"}</span>
+          <span>{refreshing ? "Reloading…" : "Reload"}</span>
         </button>
       </div>
 
-      {error && <div className="alert" role="alert">Could not reach the API: {error}</div>}
+      {error && <div className="alert" role="alert">Could not load the forecast data: {error}</div>}
 
       <section className="controls">
         <div className="tabs" role="group" aria-label="Server filter">
@@ -437,7 +452,7 @@ export function App() {
                       className={`row ${selected?.id === b.id ? "is-selected" : ""}`}
                       onClick={() => setSelected(b)}
                     >
-                      {who && <img src={who.avatar} alt="" loading="lazy" />}
+                      {who && <img src={asset(who.avatar)} alt="" loading="lazy" />}
                       <span className="meta">
                         <span className="name">
                           {b.characters.map((c) => c.name).join(", ") || b.code}
@@ -504,7 +519,7 @@ export function App() {
       <section className="guide">
         <Arona line={aronaLine} />
         <div className="guide-credits">
-          <span className="schale-signature"><img src="/schale.svg?v=2" alt="S.C.H.A.L.E. emblem" width="26" height="30" /> S.C.H.A.L.E. / SHITTIM CHEST</span>
+          <span className="schale-signature"><img src={asset("schale.svg?v=2")} alt="S.C.H.A.L.E. emblem" width="26" height="30" /> S.C.H.A.L.E. / SHITTIM CHEST</span>
           Banner history from the{" "}
           <a href="https://bluearchive.wiki/wiki/Banner_List" target="_blank" rel="noreferrer">
             Blue Archive Wiki
@@ -637,12 +652,12 @@ function DetailBody({ banner, tz }: { banner: Banner; tz: string }) {
 
   return (
     <>
-      {banner.imageUrl && <img className="detail-art" src={banner.imageUrl} alt="" />}
+      {banner.imageUrl && <img className="detail-art" src={asset(banner.imageUrl)} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />}
 
       {/* Identity, tags and school on one line — the art already shows the
           character, so a second avatar block is wasted height. */}
       <div className="detail-id">
-        {who && <img src={who.avatar} alt="" className="detail-face" />}
+        {who && <img src={asset(who.avatar)} alt="" className="detail-face" />}
         <div className="detail-idtext">
           <div className="detail-name">{whoName}</div>
           <div className="detail-tags">
@@ -701,7 +716,7 @@ function DetailBody({ banner, tz }: { banner: Banner; tz: string }) {
 
       {p && <p className="disclaimer">{p.explanation} {p.method !== "scheduled" && "Estimate only, not an announcement."}</p>}
       {!p && banner.forecastStatus === "unresolved" && <p className="disclaimer">No reliable Global correspondence or date estimate is available.</p>}
-      <a className="sim-detail-link" href={`/simulator?server=${banner.server}&period=${encodeURIComponent(`${banner.server}:${banner.startMs}`)}&banner=${banner.id}`}>Open this period in the recruitment simulator ↗</a>
+      <a className="sim-detail-link" href={`#/simulator?server=${banner.server}&period=${encodeURIComponent(`${banner.server}:${banner.startMs}`)}&banner=${banner.id}`}>Open this period in the recruitment simulator ↗</a>
     </>
   );
 }

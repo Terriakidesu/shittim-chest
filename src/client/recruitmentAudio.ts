@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { asset } from "./api";
 
 // Extracted from the game's dedicated audio-sfx_ui-sfx_gacha bundles.
 export const RECRUITMENT_SOUNDS = [
@@ -64,7 +65,7 @@ export function useRecruitmentAudio(blocked: boolean) {
     engine.current = audio;
     const controller = new AbortController();
     for (const cue of RECRUITMENT_SOUNDS) {
-      void fetch(`/ba-sounds/${cue}.mp3`, { signal: controller.signal })
+      void fetch(asset(`ba-sounds/${cue}.mp3`), { signal: controller.signal })
         .then(async (response) => {
           if (!response.ok) return;
           const buffer = await context.decodeAudioData(await response.arrayBuffer());

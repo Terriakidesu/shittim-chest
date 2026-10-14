@@ -1,12 +1,30 @@
+/**
+ * Static data layer for the serverless client.
+ *
+ * The full-stack app fetched these shapes from `/api/*` on a Bun server.
+ * Here the same shapes are read from JSON snapshots written by
+ * `scripts/export.ts` into `public/data/`, and every artwork URL is a
+ * relative local path under `public/img/`. No network host besides the
+ * static file host is ever contacted (external links in credits excluded).
+ */
+
+import { SCHOOL_EMBLEMS } from "../model/config";
+
 export type Server = "JP" | "GL";
 export type CharacterAvailability = "permanent" | "limited" | "event";
+
+/** Prefix a site-relative path with the Vite base (repo subpath aware). */
+export const asset = (path: string) => {
+  const base = import.meta.env.BASE_URL || "./";
+  return `${base}${path}`;
+};
 
 export interface Character {
   id: number;
   name: string;
   school: string;
   starGrade: number;
-  /** Local cached portrait path. */
+  /** Local bundled headshot path (relative). */
   avatar: string;
   availability?: CharacterAvailability;
 }
@@ -37,6 +55,7 @@ export interface Banner {
   startMs: number;
   endMs: number;
   characters: Character[];
+  /** Local bundled banner-art path (relative), or null. */
   imageUrl: string | null;
   confirmedGlStartMs: number | null;
   prediction: Prediction | null;
@@ -50,6 +69,7 @@ export interface CharacterRecord {
   school: string;
   club: string;
   starGrade: number;
+  /** Local bundled portrait path (relative). */
   avatar: string;
   availability?: CharacterAvailability;
   releasedOn?: { jp: boolean; gl: boolean; kr: boolean };
@@ -57,10 +77,13 @@ export interface CharacterRecord {
 
 export interface Status {
   ok: boolean;
+  staticSite: boolean;
   stale: boolean;
   dueForRefresh: boolean;
   refreshIntervalDays: number;
   dataAgeDays: number | null;
+  /** When the snapshot was exported; the client derives data age from this. */
+  exportedAtMs: number;
   sources: {
     key: string;
     label: string;
@@ -99,45 +122,69 @@ export interface ForecastResponse {
   unresolvedBanners: Banner[];
 }
 
+interface Snapshot {
+  status: Status;
+  banners: Banner[];
+  forecast: ForecastResponse;
+  characters: CharacterRecord[];
+}
+
+let cached: Promise<Snapshot> | null = null;
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(path);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  const res = await fetch(asset(path));
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${path}`);
   return (await res.json()) as T;
 }
 
+function loadAll(): Promise<Snapshot> {
+  if (!cached) {
+    cached = (async () => {
+      const [status, banners, forecast, characters] = await Promise.all([
+        get<Status>("data/status.json"),
+        get<{ banners: Banner[]; count: number }>("data/banners.json"),
+        get<ForecastResponse>("data/forecast.json"),
+        get<{ characters: CharacterRecord[] }>("data/characters.json"),
+      ]);
+      return { status, banners: banners.banners, forecast, characters: characters.characters };
+    })();
+    cached.catch(() => {
+      cached = null;
+    });
+  }
+  return cached;
+}
+
 export const api = {
-  status: () => get<Status>("/api/status"),
-  banners: (from: number, to: number) =>
-    get<{ banners: Banner[]; count: number }>(
-      `/api/banners?from=${from}&to=${to}`,
-    ),
-  forecast: () => get<ForecastResponse>("/api/forecast"),
-  characters: () => get<{ characters: CharacterRecord[] }>("/api/characters"),
+  status: async () => (await loadAll()).status,
+  banners: async (from: number, to: number) => {
+    const all = (await loadAll()).banners;
+    // Same window semantics as the server endpoint: anything still running
+    // overlaps the window even if it started long ago.
+    const banners = all.filter((b) => b.endMs >= from && b.startMs <= to);
+    return { from, to, count: banners.length, banners };
+  },
+  forecast: async () => (await loadAll()).forecast,
+  characters: async () => ({ characters: (await loadAll()).characters }),
+  /** No server to trigger — drop the memory cache and re-read the files. */
   refresh: async () => {
-    const res = await fetch("/api/refresh", { method: "POST" });
-    return (await res.json()) as { ok: boolean; error?: string };
+    cached = null;
+    await loadAll();
+    return { ok: true as const };
   },
 };
 
-/** SchaleDB upstream, used only as a fallback if the local cache misses. */
-export const upstreamAvatar = (id: number) =>
-  `https://schaledb.com/images/student/icon/${id}.webp`;
-
 /**
- * Official school emblems, served from the local cache. ETC and Sakugawa have
+ * Official school emblems, served from the local bundle. ETC and Sakugawa have
  * no emblem published on the wiki, so those return null and the caller falls
- * back to the school's colour.
+ * back to the school's colour. Filenames mirror the export mirror layout.
  */
-export const SCHOOLS_WITH_EMBLEM = new Set([
-  "Gehenna", "Trinity", "Millennium", "Abydos", "Shanhaijing", "Hyakkiyako",
-  "RedWinter", "Arius", "SRT", "Valkyrie", "WildHunt", "Highlander",
-  "Tokiwadai", "Odyssey",
-]);
+export const SCHOOLS_WITH_EMBLEM = new Set(Object.keys(SCHOOL_EMBLEMS));
 
-export const emblemUrl = (school: string) =>
-  SCHOOLS_WITH_EMBLEM.has(school)
-    ? `/api/img/emblem/${school.toLowerCase()}`
-    : null;
+export const emblemUrl = (school: string) => {
+  const file = SCHOOL_EMBLEMS[school];
+  return file ? asset(`img/emblem/${file.toLowerCase()}`) : null;
+};
 
 /**
  * In-game school colours. These are close visual matches rather than exact
