@@ -17,6 +17,7 @@ ships the static subset that can be hosted on GitHub Pages.
 | `scripts/export.ts` | Cron entry point: fetches the wiki + SchaleDB, assembles the forecast, writes `public/data/*.json`, mirrors artwork into `public/img/`. |
 | `scripts/deploy-branch.sh` | Builds and publishes `dist/` to the `gh-pages` branch (no Actions needed). |
 | `scripts/weekly-refresh.sh` | Local weekly cron: export → commit to `main` → republish `gh-pages`. |
+| [`shittim-chest-cron`](https://github.com/Terriakides/shittim-chest-cron) | Org-hosted variant of the same refresh, for when this repo's own Actions runners are unavailable. |
 | `public/data/` | Generated forecast snapshots, committed by the weekly cron workflow. |
 | `public/img/` | Locally bundled artwork (avatars, portraits, banners, mascots, emblems). The client never loads images from upstream hosts. |
 | `public/ba-icons/`, `public/ba-lobby/`, `public/ba-sounds/` | Game-derived static assets with provenance notes (`SOURCES.md`, `manifest.json`). |
@@ -63,10 +64,13 @@ Primary method is **branch-based** and needs no GitHub Actions:
    branch `gh-pages`, folder `/ (root)`. All URLs are relative, so a
    `user.github.io/repo` subpath works as-is (`.nojekyll` is shipped).
 
-The `pages.yml` / `forecast.yml` Actions workflows are kept as an
-alternative: if Actions is available on the account, the `pages` workflow
-deploys `dist/` on every push to `main`. Without Actions, use the local
-weekly refresh instead (next section).
+Automation currently runs outside this repo: the
+[`shittim-chest-cron`](https://github.com/Terriakides/shittim-chest-cron)
+repo hosts the same weekly refresh on organization runners (this account's
+own Actions runners are unavailable). It checks this repo out with a stored
+token and runs `scripts/weekly-refresh.sh`, so no workflow files are needed
+here. Without any Actions access, use the local weekly refresh instead
+(next section).
 
 Routes live in the URL hash (`#/calendar`, `#/simulator`, `#/about`), so no
 server rewrite rules are needed. `public/404.html` forwards legacy
