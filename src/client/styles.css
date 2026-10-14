@@ -438,8 +438,17 @@ a { color: var(--cyan); }
 .sim-progress-head b small { color: var(--muted); font-size: 13px; font-weight: 650; }
 .sim-bar { height: 12px; margin: 15px 1px 9px; position: relative; overflow: visible; background: var(--line); }
 .sim-bar > span { display: block; height: 100%; min-width: 0; background: var(--cyan); transition: width .25s ease; }
-.spark-bar > span { background: linear-gradient(90deg, var(--cyan), var(--gold)); }
-.charge-bar > span { background: linear-gradient(90deg, var(--cyan), var(--pink)); }
+/* Keep progress fills vivid by interpolating through hue rather than the
+   muddy straight-line sRGB/RGB midpoint. The first declaration is a vivid
+   fallback; modern browsers use hue-preserving interpolation below. */
+.spark-bar > span {
+  background: linear-gradient(90deg, var(--cyan), #25c99b 35%, #a8df50 70%, var(--gold));
+  background: linear-gradient(90deg in hsl shorter hue, var(--cyan), var(--gold));
+}
+.charge-bar > span {
+  background: linear-gradient(90deg, var(--cyan), #354fc4 35%, #9b3d9c 70%, var(--pink));
+  background: linear-gradient(90deg in hsl shorter hue, var(--cyan), var(--pink));
+}
 .sim-bar i { position: absolute; top: 19px; color: var(--muted); font-size: 10px; font-style: normal; font-weight: 800; line-height: 1.2; text-align: center; }
 .sim-bar i::before { content: ""; display: block; width: 1px; height: 8px; margin: -13px auto 3px; background: var(--muted); }
 .sim-bar i small { font-size: 9px; font-weight: 600; white-space: nowrap; }
