@@ -42,6 +42,7 @@ export function About() {
         <div><dt><a href="https://schaledb.com/">SchaleDB</a></dt><dd>Student names and IDs, schools, rarity and availability metadata, character portraits, and headshots. Thanks to the SchaleDB maintainers and contributors for this community resource.</dd></div>
       </dl>
       <p>Blue Archive Wiki identifies its text license as <a href="https://creativecommons.org/licenses/by-sa/4.0/">Creative Commons Attribution-ShareAlike 4.0 International</a>. Applicable wiki text retains that license; game artwork and other non-text assets have separate rights and source-file notices. See the linked source pages and their revision histories for contributors and original material.</p>
+      <p>The project’s own source code — the calendar, simulator, and export tooling — is MIT licensed. The bundled game artwork, icons, lobby art, and audio are not covered by that license and remain the property of their respective rights holders; see the repository’s <code>LICENSE</code> file for the full scope.</p>
     </section>
 
     <section id="asset-credits" className="about-section">

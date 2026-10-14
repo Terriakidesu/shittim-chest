@@ -93,3 +93,13 @@ Credits acknowledge sources; they do not grant redistribution permission.
 Review the applicable source notices and rights before republishing. This is
 an unofficial fan project, not affiliated with NEXON Games, NEXON, Yostar, or
 the Blue Archive teams. Forecasts are estimates, not announcements.
+
+## License
+
+The source code in `src/` and `scripts/` is MIT licensed — see
+[`LICENSE`](LICENSE). That grant covers code only: the bundled game assets
+under `public/img/`, `public/ba-icons/`, `public/ba-lobby/`, and
+`public/ba-sounds/`, plus the generated `public/data/*.json`, are third-party
+material under their own upstream terms and are **not** covered by the MIT
+license. See the scope table in `LICENSE` and the per-file `SOURCES.md` notes
+before republishing anything from this repository.

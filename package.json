@@ -2,6 +2,7 @@
   "name": "shittim-chest",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Standalone serverless client for the Blue Archive gacha calendar. Static build for GitHub Pages; forecast data is refreshed by a weekly cron workflow.",
   "scripts": {
