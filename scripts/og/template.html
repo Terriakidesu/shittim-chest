@@ -1,0 +1,138 @@
+<!doctype html>
+<!--
+  Open Graph / Twitter card image template (1200x630).
+
+  Renders one social preview per route. Parameters come from the query string
+  so a single file covers every route:
+
+    ?kicker=...&title=...&subtitle=...&bg=calendar|gacha|about|classroom-day
+    &mascot=arona|plana|none&accent=cyan|gold|pink
+
+  The background reuses the route's own lobby art from public/ba-lobby/, dimmed
+  under a scrim, so each card is visually distinct without new artwork.
+
+  Regenerating (needs a headless browser; Playwright is deliberately not a repo
+  dependency because these are prepared offline, like the other bundled art):
+
+    1. serve the repo root:  python3 -m http.server 4999
+    2. open  http://127.0.0.1:4999/scripts/og/template.html?kicker=Calendar&title=...
+    3. screenshot the viewport at exactly 1200x630
+    4. write the PNG to public/og/<route>.png
+
+  Keep the output at 1200x630: that is the size Facebook, X and Slack crop to.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html, body { margin: 0; padding: 0; }
+      body {
+        width: 1200px; height: 630px; overflow: hidden;
+        background: #0b1f34;
+        color: #eaf6ff;
+        font-family: "Segoe UI", system-ui, -apple-system, "Noto Sans JP", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        position: relative;
+      }
+      /* Route-specific lobby art, dimmed into texture behind the scrim. */
+      .art {
+        position: absolute; inset: 0;
+        background-size: cover; background-position: center;
+        opacity: .55;
+      }
+      /* Faint diagonal geometry, echoing the site's background treatment. */
+      .geo {
+        position: absolute; inset: 0;
+        background:
+          linear-gradient(60deg, transparent 74%, #ffffff12 74% 88%, transparent 88%),
+          linear-gradient(120deg, transparent 70%, #19bce81a 70% 84%, transparent 84%);
+      }
+      /* Left-to-right scrim so the text column always has full contrast. */
+      .scrim {
+        position: absolute; inset: 0;
+        background:
+          linear-gradient(100deg, #0b1f34 0%, #0b1f34f2 30%, #0b1f34cc 52%, #0b1f3455 100%),
+          linear-gradient(0deg, #0b1f34d9 0%, #0b1f3400 40%);
+      }
+      .frame {
+        position: absolute; inset: 34px; border-radius: 22px;
+        border: 1px solid #ffffff1f;
+      }
+      .mark {
+        position: absolute; top: 62px; left: 76px;
+        display: flex; align-items: center; gap: 16px;
+      }
+      .mark svg { width: 38px; height: 53px; display: block; }
+      .mark span {
+        font-size: 23px; font-weight: 700; letter-spacing: .16em;
+        text-transform: uppercase; color: #bfe6fb;
+      }
+      .body { position: absolute; left: 76px; top: 190px; width: 660px; }
+      .kicker {
+        display: inline-block; font-size: 19px; font-weight: 700;
+        letter-spacing: .18em; text-transform: uppercase;
+        color: var(--accent); margin-bottom: 20px;
+      }
+      h1 {
+        margin: 0; font-size: 70px; line-height: 1.05;
+        font-weight: 800; letter-spacing: -.02em;
+        text-wrap: balance;
+      }
+      p.sub {
+        margin: 20px 0 0; font-size: 27px; line-height: 1.36;
+        color: #a9cbe6; text-wrap: pretty;
+      }
+      .foot {
+        position: absolute; left: 76px; bottom: 64px;
+        font-size: 21px; color: #7ba6c6;
+      }
+      .foot b { color: #cfe8fa; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div class="art" id="art"></div>
+    <div class="geo"></div>
+    <div class="scrim"></div>
+    <div class="frame"></div>
+
+    <div class="mark">
+      <svg viewBox="0 0 100 140" fill="none" aria-hidden="true">
+        <g fill="#00bcd4" transform="translate(5 0)">
+          <path d="M16 8H75L90 29H2ZM60 31H90L75 52ZM30 31 59 73 43 94 16 52ZM60 75 90 116 75 138H17L3 117 17 95 32 116H62L45 96Z" />
+        </g>
+        <g fill="#eaf6ff">
+          <path d="M16 8H75L90 29H2Z" />
+          <path d="M60 31H90L75 52Z" />
+          <path d="M30 31 59 73 43 94 16 52Z" />
+        </g>
+      </svg>
+      <span>Shittim Chest</span>
+    </div>
+
+    <div class="body">
+      <div class="kicker" id="kicker"></div>
+      <h1 id="title"></h1>
+      <p class="sub" id="sub"></p>
+    </div>
+
+    <div class="foot">Blue Archive gacha calendar · <b>unofficial fan project</b></div>
+
+    <script>
+      const ACCENTS = { cyan: "#19bce8", gold: "#ffda45", pink: "#ff7fb0" };
+      const q = new URLSearchParams(location.search);
+      const text = (id, fallback) => (q.get(id) ?? fallback).slice(0, 200);
+      document.getElementById("kicker").textContent = text("kicker", "Blue Archive");
+      document.getElementById("title").textContent = text("title", "Shittim Chest");
+      document.getElementById("sub").textContent = text("subtitle", "");
+      document.documentElement.style.setProperty(
+        "--accent",
+        ACCENTS[q.get("accent")] ?? ACCENTS.cyan,
+      );
+      const bg = q.get("bg");
+      if (bg) {
+        document.getElementById("art").style.backgroundImage =
+          `url(../../public/ba-lobby/${bg}.webp)`;
+      }
+    </script>
+  </body>
+</html>
