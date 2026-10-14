@@ -1,0 +1,20 @@
+<!-- Vector interpretation of the S.C.H.A.L.E. halo/compass reference.
+     Drawn as geometry; no reference image is embedded. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 140" fill="none">
+  <style>
+    .emblem { color: #007eac; }
+    @media (prefers-color-scheme: dark) { .emblem { color: #51d0ff; } }
+  </style>
+  <g class="emblem" stroke="currentColor">
+    <ellipse cx="60" cy="20" rx="37" ry="6.5" stroke-width="1.8" />
+    <circle cx="60" cy="76" r="36" stroke-width="1" />
+    <circle cx="60" cy="76" r="31" stroke-width=".6" />
+    <circle cx="60" cy="76" r="28" stroke-width="3" />
+    <path d="M60 5V132M3 76H117" stroke-width="1.8" />
+    <g fill="currentColor" stroke="none">
+      <path d="M60 1 59 10H61ZM60 138 59 130H61ZM0 76 8 75V77ZM120 76 112 75V77Z" />
+      <path d="m42 55 5 7-7-4zm36 0-5 7 7-4zM42 97l5-7-7 4zm36 0-5-7 7 4z" />
+      <path d="m60 69 7 7-7 7-7-7zm0 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6" fill-rule="evenodd" />
+    </g>
+  </g>
+</svg>

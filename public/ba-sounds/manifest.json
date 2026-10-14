@@ -1,0 +1,112 @@
+[
+  {
+    "name": "UI_Gacha_Normal_02b",
+    "file": "UI_Gacha_Normal_02b.mp3",
+    "sha256": "1eec50fca22d633b22ed3fcfc9b0e958676d569227c2d42726445398f34b657a",
+    "decodedWavSha256": "78f350d824f48516431987366e1dffb9916b7be309e64d8eeeba9296d95ca2a5",
+    "duration": 3.762040853500366,
+    "sourceBundles": {
+      "JP": "audio-sfx_ui-sfx_gacha-_mxload-audio-2025-07-02_assets_all_893479692.bundle",
+      "GL": "audio-sfx_ui-sfx_gacha-_mxload-2024-11-18_assets_all_2687945115.bundle"
+    }
+  },
+  {
+    "name": "UI_Gacha_Normal_04",
+    "file": "UI_Gacha_Normal_04.mp3",
+    "sha256": "ae70b92b9b6b9b83e304863613a4ac71daa2dce31258f5cb39b7bcd5cf13b7b6",
+    "decodedWavSha256": "484d6969383b5e82174d09c160c518b97d5b0c73871e1e1f300dd90972d3e794",
+    "duration": 4.097414970397949,
+    "sourceBundles": {
+      "JP": "audio-sfx_ui-sfx_gacha-_mxload-audio-2025-07-02_assets_all_893479692.bundle",
+      "GL": "audio-sfx_ui-sfx_gacha-_mxload-2024-11-18_assets_all_2687945115.bundle"
+    }
+  },
+  {
+    "name": "UI_Gacha_Result_R",
+    "file": "UI_Gacha_Result_R.mp3",
+    "sha256": "d0d2811240d5e5065cca26f46751ccdb0a402034291d43993042e2878eaed517",
+    "decodedWavSha256": "9adf3f555edf360c749604858c6d603af4c7485ef4911169d15088570272ec9d",
+    "duration": 2.4713377952575684,
+    "sourceBundles": {
+      "JP": "audio-sfx_ui-sfx_gacha-_mxload-audio-2025-07-02_assets_all_893479692.bundle",
+      "GL": "audio-sfx_ui-sfx_gacha-_mxload-2024-11-18_assets_all_2687945115.bundle"
+    }
+  },
+  {
+    "name": "UI_Gacha_Result_SR",
+    "file": "UI_Gacha_Result_SR.mp3",
+    "sha256": "20c6a128e493c0a8911dd95b8b7e46cd5d5470e780e35f56b2edd64582bae482",
+    "decodedWavSha256": "03bf9bf4ba06c9b1c3f93763a5d1c42e3d14f0312f7639f0d1318f37fd6f2b37",
+    "duration": 3.517369508743286,
+    "sourceBundles": {
+      "JP": "audio-sfx_ui-sfx_gacha-_mxload-audio-2025-07-02_assets_all_893479692.bundle",
+      "GL": "audio-sfx_ui-sfx_gacha-_mxload-2024-11-18_assets_all_2687945115.bundle"
+    }
+  },
+  {
+    "name": "UI_Gacha_Result_SSR",
+    "file": "UI_Gacha_Result_SSR.mp3",
+    "sha256": "8e2de87a1a60d196c2d4255ce93dbabd1d1116f6e7d5dab4a719cff0d5da9270",
+    "decodedWavSha256": "07191309354d89d339e481c57e8c299dd35d91a389221d72f1017576b0b9861f",
+    "duration": 2.7714285850524902,
+    "sourceBundles": {
+      "JP": "audio-sfx_ui-sfx_gacha-_mxload-audio-2025-07-02_assets_all_893479692.bundle",
+      "GL": "audio-sfx_ui-sfx_gacha-_mxload-2024-11-18_assets_all_2687945115.bundle"
+    }
+  },
+  {
+    "name": "UI_Gacha_Sqr_R",
+    "file": "UI_Gacha_Sqr_R.mp3",
+    "sha256": "098b21172626623f4509146c984bb56a55ab5516851776444aca5deff76ce7e8",
+    "decodedWavSha256": "bda239c404bcba023458b749e4fce845b953cb303cf1d7202d0ab20fa11c8c1a",
+    "duration": 2.3833560943603516,
+    "sourceBundles": {
+      "JP": "audio-sfx_ui-sfx_gacha-_mxload-audio-2025-07-02_assets_all_893479692.bundle",
+      "GL": "audio-sfx_ui-sfx_gacha-_mxload-2024-11-18_assets_all_2687945115.bundle"
+    }
+  },
+  {
+    "name": "UI_Gacha_Sqr_SR",
+    "file": "UI_Gacha_Sqr_SR.mp3",
+    "sha256": "03bf3e114eeb40a024bcca65ee7a2a756ca790eee13fbe695b459107f794abdc",
+    "decodedWavSha256": "355cd6ca5f3c0b3589105e022ce92382ee60e64e49f0811107b6754b8d0e4bd8",
+    "duration": 3.434013605117798,
+    "sourceBundles": {
+      "JP": "audio-sfx_ui-sfx_gacha-_mxload-audio-2025-07-02_assets_all_893479692.bundle",
+      "GL": "audio-sfx_ui-sfx_gacha-_mxload-2024-11-18_assets_all_2687945115.bundle"
+    }
+  },
+  {
+    "name": "UI_Gacha_Sqr_SSR",
+    "file": "UI_Gacha_Sqr_SSR.mp3",
+    "sha256": "bbefc10f7ae21a0d2551e83f6911c41537db2e9b8d30d4f12e5c549c299a9651",
+    "decodedWavSha256": "cfd43cd16ba78cea60e5cccabf075c65d165dea8847bc9725cbbefd2afccb221",
+    "duration": 5.546031951904297,
+    "sourceBundles": {
+      "JP": "audio-sfx_ui-sfx_gacha-_mxload-audio-2025-07-02_assets_all_893479692.bundle",
+      "GL": "audio-sfx_ui-sfx_gacha-_mxload-2024-11-18_assets_all_2687945115.bundle"
+    }
+  },
+  {
+    "name": "UI_Gacha_Result1_01",
+    "file": "UI_Gacha_Result1_01.mp3",
+    "sha256": "0929e53f52fd4fa24c5b4b42836d0aac5eddf33d613a49e62a5c73692268aeb6",
+    "decodedWavSha256": "99a3c898e70324a871db2df9351bf852f179cd899b2ffb082d32b722929fbe2c",
+    "duration": 0.177006796002388,
+    "sourceBundles": {
+      "JP": "audio-sfx_ui-sfx_gacha-_mxload-audio-2025-07-02_assets_all_893479692.bundle",
+      "GL": "audio-sfx_ui-sfx_gacha-_mxload-2024-11-18_assets_all_2687945115.bundle"
+    }
+  },
+  {
+    "name": "UI_Gacha_Result10_01",
+    "file": "UI_Gacha_Result10_01.mp3",
+    "sha256": "0929e53f52fd4fa24c5b4b42836d0aac5eddf33d613a49e62a5c73692268aeb6",
+    "decodedWavSha256": "99a3c898e70324a871db2df9351bf852f179cd899b2ffb082d32b722929fbe2c",
+    "duration": 0.177006796002388,
+    "sourceBundles": {
+      "JP": "audio-sfx_ui-sfx_gacha-_mxload-audio-2025-07-02_assets_all_893479692.bundle",
+      "GL": "audio-sfx_ui-sfx_gacha-_mxload-2024-11-18_assets_all_2687945115.bundle"
+    }
+  }
+]

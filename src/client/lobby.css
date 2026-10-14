@@ -1,0 +1,66 @@
+/* Static campaign-screen composition. No runtime canvas or animated effects. */
+.lobby { position: relative; isolation: isolate; width: 100%; min-width: 0; min-height: 100svh; display: flex; flex-direction: column; overflow: clip; background: #40b8df url('/ba-lobby/classroom-day.webp') center center / cover no-repeat; color: #243e59; }
+.lobby::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; background: linear-gradient(90deg, transparent 45%, #2388c418 100%); }
+.lobby-topbar { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 24px; width: calc(100% - 7%); min-height: 67px; margin: 0 auto; padding: 7px 25px; border-radius: 0 0 12px 12px; background: #f9feffed; box-shadow: 0 3px 7px #123e642e; }
+.lobby-brand { display: flex; align-items: center; gap: 15px; text-decoration: none; color: #29445a; }
+.lobby-brand img { width: 30px; height: 39px; object-fit: contain; filter: brightness(0); opacity: .75; }
+.lobby-brand h1 { font-size: clamp(22px, 2.5vw, 36px); letter-spacing: -.045em; font-weight: 750; white-space: nowrap; }
+.lobby-toolbar { display: flex; align-items: center; gap: 24px; }
+.lobby-project-label { color: #5b788d; font-size: 10px; letter-spacing: .08em; font-weight: 700; }
+.lobby-toolbar .theme-switch { color: #44647d; }
+.lobby-toolbar .theme-switch select { height: 36px; min-height: 36px; color: #29445a; border-color: #b7d8e6; background: #fff; }
+.lobby-info { display: grid; place-items: center; width: 33px; height: 33px; border: 2px solid #53759b; color: #53759b; border-radius: 50%; font-size: 21px; font-weight: 750; text-decoration: none; }
+.lobby-scene { position: relative; display: flex; align-items: flex-start; flex: 1; min-height: 650px; }
+.lobby-characters { position: absolute; left: 1%; bottom: -34%; width: 48%; height: 118%; pointer-events: none; }
+.lobby-characters img { position: absolute; bottom: 0; width: auto; height: 100%; object-fit: contain; max-width: none; }
+.lobby-arona { left: -5%; z-index: 2; }
+.lobby-characters .lobby-plana { left: 43%; height: 96%; z-index: 1; }
+.lobby-destinations { position: relative; z-index: 2; width: 45%; margin: clamp(42px, 7vh, 80px) 4.5% 30px auto; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 24px 18px; }
+.lobby-tile { position: relative; display: block; height: clamp(180px, 24vh, 265px); border-radius: 10px; background: #fff; transform: skewX(-10deg); box-shadow: 0 4px 5px #174f7b33; overflow: hidden; text-decoration: none; color: #293f5a; transition: filter .15s ease, translate .15s ease; }
+.lobby-tile:hover { filter: brightness(1.06); translate: 0 -3px; }
+.lobby-tile:focus-visible { outline: 4px solid #ffdc53; outline-offset: 5px; }
+.lobby-tile-inner { position: absolute; inset: 0 -10%; transform: skewX(10deg); overflow: hidden; }
+.lobby-tile-inner > img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.lobby-tile-calendar .lobby-tile-inner > img { object-position: center 30%; }
+.lobby-tile-gacha .lobby-tile-inner > img { object-position: 53% center; }
+.lobby-tile-caption { position: absolute; inset: auto 0 0; min-height: 48%; display: flex; flex-direction: column; justify-content: flex-end; gap: 4px; padding: 25px 22% 17px 13%; background: linear-gradient(transparent, #ffffffef 37%, #fff 100%); }
+.lobby-tile-caption strong { font-size: clamp(26px, 2.7vw, 42px); line-height: 1.05; letter-spacing: -.055em; font-weight: 800; }
+.lobby-tile-caption > span { color: #4c5d6f; font-size: clamp(11px, 1vw, 16px); line-height: 1.4; }
+.lobby-tile-arrow { position: absolute; right: 13%; bottom: 20px; display: grid; place-items: center; width: 38px; height: 38px; padding-left: 3px; border-radius: 50%; color: #6d8aa4; background: white; font-size: 17px; box-shadow: 0 1px 5px #7098ad1f; }
+.lobby-secondary-panel { grid-column: 1 / -1; display: grid; grid-template-columns: 1.12fr 1fr; align-items: center; gap: 15px; padding: 13px 18px 19px; background: #e0edf899; border: 1px solid #e8f6ff77; border-radius: 19px; transform: skewX(-10deg); }
+.lobby-panel-decoration { grid-column: 1/-1; display: flex; align-items: center; gap: 10px; color: #ffffffb8; font-size: 12px; letter-spacing: .13em; }
+.lobby-panel-decoration > span { height: 2px; flex: 1; background: #ffffff75; }
+.lobby-secondary-panel .lobby-tile { transform: none; height: clamp(180px,25vh,265px); }
+.lobby-secondary-panel .lobby-tile-inner { transform: skewX(10deg); }
+.lobby-disclaimer { transform: skewX(10deg); color: #254b68; margin: 0; padding: 15px; font-size: 12px; line-height: 1.8; }
+.lobby-footer { position: relative; z-index: 3; display: flex; justify-content: space-between; gap: 15px; padding: 9px 4%; color: white; background: #123d647d; font-size: 10px; line-height: 1.5; }
+.lobby-footer a { color: white; text-underline-offset: 3px; }
+.lobby-day { background-image: url('/ba-lobby/classroom-day.webp'); }
+.lobby-night { background-image: url('/ba-lobby/classroom-night.webp'); }
+.lobby-characters .lobby-solo { left: 8%; height: 100%; }
+:root[data-theme="dark"] .lobby-secondary-panel { background: #6386b393; }
+:root[data-theme="dark"] .lobby-disclaimer { color: #fff; }
+@media (min-aspect-ratio: 2/1) { .lobby-scene { min-height: 540px; } .lobby-characters { height: 130%; bottom: -42%; } }
+@media (max-width: 1000px) and (min-width: 701px) { .lobby-destinations { width: 48%; margin-right: 4%; gap: 17px 12px; } .lobby-project-label { display: none; } .lobby-characters { left: -7%; width: 48%; height: 105%; bottom: -24%; } .lobby-secondary-panel { gap: 6px; padding: 12px; } .lobby-disclaimer { font-size: 10px; padding: 8px; } }
+@media (max-width: 700px) {
+  .lobby { background-position: 30% top; background-size: auto 100svh; background-attachment: scroll; }
+  .lobby-topbar { width: calc(100% - 20px); min-height: 58px; padding: 7px 12px; gap: 10px; }
+  .lobby-brand { gap: 6px; } .lobby-brand img { width: 22px; height: 30px; } .lobby-brand h1 { font-size: 21px; }
+  .lobby-toolbar { gap: 8px; } .lobby-project-label, .lobby-info { display: none; }
+  .lobby-toolbar .theme-switch { font-size: 0; gap: 0; } .lobby-toolbar .theme-switch select { width: 88px; font-size: 12px; }
+  .lobby-scene { flex-direction: column; min-height: 0; }
+  .lobby-characters { position: relative; left: 0; bottom: auto; width: 100%; height: 360px; overflow: hidden; }
+  .lobby-characters img { height: 630px; bottom: -260px; }
+  .lobby-arona { left: -10%; } .lobby-characters .lobby-plana { left: 26%; height: 610px; }
+  .lobby-characters .lobby-solo { left: 12%; height: 630px; }
+  .lobby-destinations { width: calc(100% - 70px); margin: 6px auto 25px; gap: 17px 12px; }
+  .lobby-tile { height: 177px; border-radius: 7px; }
+  .lobby-tile-caption { padding: 25px 18% 13px 12%; min-height: 50%; }
+  .lobby-tile-caption strong { font-size: 26px; } .lobby-tile-caption > span { font-size: 10px; }
+  .lobby-tile-arrow { width: 25px; height: 25px; bottom: 14px; right: 11%; font-size: 11px; }
+  .lobby-secondary-panel { padding: 10px 12px 13px; gap: 9px; border-radius: 12px; }
+  .lobby-secondary-panel .lobby-tile { height: 155px; }
+  .lobby-disclaimer { padding: 5px 2px; font-size: 10px; }
+  .lobby-footer { font-size: 9px; gap: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .lobby-tile { transition: none; } .lobby-tile:hover { translate: none; } }
