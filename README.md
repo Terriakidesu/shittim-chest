@@ -15,6 +15,8 @@ ships the static subset that can be hosted on GitHub Pages.
 | `src/client/` | React app (calendar, simulator, lobby, about). Adapted from the full-stack `web/src`; all `/api/*` calls and absolute asset paths replaced with relative static paths. |
 | `src/model/` | Vendored forecast model (`config` + `domain` + `sources`, no server/DB code). Rebuilds predictions from upstream data. |
 | `scripts/export.ts` | Cron entry point: fetches the wiki + SchaleDB, assembles the forecast, writes `public/data/*.json`, mirrors artwork into `public/img/`. |
+| `scripts/deploy-branch.sh` | Builds and publishes `dist/` to the `gh-pages` branch (no Actions needed). |
+| `scripts/weekly-refresh.sh` | Local weekly cron: export → commit to `main` → republish `gh-pages`. |
 | `public/data/` | Generated forecast snapshots, committed by the weekly cron workflow. |
 | `public/img/` | Locally bundled artwork (avatars, portraits, banners, mascots, emblems). The client never loads images from upstream hosts. |
 | `public/ba-icons/`, `public/ba-lobby/`, `public/ba-sounds/` | Game-derived static assets with provenance notes (`SOURCES.md`, `manifest.json`). |
@@ -36,23 +38,35 @@ bun run typecheck  # strict type check
 
 ## How updates work
 
-Forecast data is not computed in the browser. Every Monday the `forecast`
-workflow runs `bun run export` in CI, commits the refreshed
-`public/data/*.json` (plus any new artwork) and pushes; the `pages` workflow
-then redeploys. The calendar shows the snapshot date from `status.json`, so
-stale data is visible rather than silent.
+Forecast data is not computed in the browser. It refreshes weekly by one of
+two routes (same script, different scheduler):
+
+- **With GitHub Actions:** the `forecast` workflow runs `bun run export` in
+  CI every Monday, commits the refreshed `public/data/*.json` (plus any new
+  artwork) and pushes; the `pages` workflow then redeploys.
+- **Without GitHub Actions:** run `bash scripts/weekly-refresh.sh` from a
+  local cron (`17 3 * * 1 cd /path/to/shittim-chest && bash
+  scripts/weekly-refresh.sh`). It exports, commits to `main`, and
+  republishes the `gh-pages` branch via `scripts/deploy-branch.sh`.
+
+The calendar shows the snapshot date from `status.json`, so stale data is
+visible rather than silent.
 
 ## Deploying to GitHub Pages
 
+Primary method is **branch-based** and needs no GitHub Actions:
+
 1. Push this repository to GitHub (default branch `main`).
-2. Open **Settings → Pages** and set **Source** to **GitHub Actions**.
-3. Push to `main` (or run the `pages` workflow manually). The site deploys
-   from `dist/`; no branch publishing or Jekyll is involved (`.nojekyll`
-   is shipped, and all URLs are relative so a `user.github.io/repo`
-   subpath works as-is).
-4. The `forecast` workflow needs no secrets: it uses the default
-   `GITHUB_TOKEN` with `contents: write` to commit the weekly snapshot,
-   which in turn triggers a redeploy.
+2. Publish the built site: `bash scripts/deploy-branch.sh`. It runs
+   `bun run build` and pushes `dist/` to the `gh-pages` branch.
+3. Open **Settings → Pages** and set **Source** to **Deploy from a branch**,
+   branch `gh-pages`, folder `/ (root)`. All URLs are relative, so a
+   `user.github.io/repo` subpath works as-is (`.nojekyll` is shipped).
+
+The `pages.yml` / `forecast.yml` Actions workflows are kept as an
+alternative: if Actions is available on the account, the `pages` workflow
+deploys `dist/` on every push to `main`. Without Actions, use the local
+weekly refresh instead (next section).
 
 Routes live in the URL hash (`#/calendar`, `#/simulator`, `#/about`), so no
 server rewrite rules are needed. `public/404.html` forwards legacy
