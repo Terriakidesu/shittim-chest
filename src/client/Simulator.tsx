@@ -32,13 +32,20 @@ import {
 
 type Mode = "historical" | SimulatorSystem;
 type Phase = "idle" | "arriving" | "signing" | "dispatching" | "envelopes" | "results";
+type FakeoutPreview = "blue" | "gold";
 const SIMULATOR_STORAGE_VERSION = 4;
+const FAKEOUT_CHANCE = 0.1;
 const REVEAL_HOLD_MS: Record<1 | 2 | 3, number> = { 1: 1800, 2: 2200, 3: 3000 };
 const DUPLICATE_HOLD_MS: Record<1 | 2 | 3, number> = { 1: 820, 2: 1240, 3: 1900 };
 const PORTRAIT_TOUCH_QUERY = "(orientation: portrait) and (hover: none) and (pointer: coarse)";
 
 function revealHoldMs(result: PullResult | undefined) {
   return (result?.duplicate ? DUPLICATE_HOLD_MS : REVEAL_HOLD_MS)[result?.rarity ?? 1];
+}
+
+function rollFakeoutPreview(results: PullResult[]): FakeoutPreview | null {
+  if (!results.some((result) => result.rarity === 3) || Math.random() >= FAKEOUT_CHANCE) return null;
+  return Math.random() < 0.5 ? "blue" : "gold";
 }
 
 export function Simulator() {
@@ -54,6 +61,7 @@ export function Simulator() {
   const [rewards, setRewards] = useState<{ at: number; label: string; ticket?: number }[]>([]);
   const [revealIndex, setRevealIndex] = useState(0);
   const [preRevealState, setPreRevealState] = useState<SimulatorState | null>(null);
+  const [fakeoutPreview, setFakeoutPreview] = useState<FakeoutPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sparkOpen, setSparkOpen] = useState(false);
@@ -219,6 +227,7 @@ export function Simulator() {
     if (revealIndex >= results.length) {
       // Keep the last card on stage until its flip/glow has fully finished.
       const timer = window.setTimeout(() => {
+        setFakeoutPreview(null);
         setPreRevealState(null);
         setPhase("results");
       }, reducedMotion ? 0 : revealHoldMs(results[results.length - 1]) + 200);
@@ -241,6 +250,7 @@ export function Simulator() {
     setResults([]);
     setRewards([]);
     setRevealIndex(0);
+    setFakeoutPreview(null);
     setPreRevealState(null);
   }
 
@@ -254,6 +264,7 @@ export function Simulator() {
     setResults([]);
     setRewards([]);
     setRevealIndex(0);
+    setFakeoutPreview(null);
     setPreRevealState(null);
   }
 
@@ -265,6 +276,7 @@ export function Simulator() {
     setResults([]);
     setRewards([]);
     setRevealIndex(0);
+    setFakeoutPreview(null);
     setPreRevealState(null);
     setError(null);
   }
@@ -292,6 +304,7 @@ export function Simulator() {
     try {
       const outcome = resolvePulls(state, { period, banner: selectedBanner, pool, recruitmentPool: recruitmentPool ?? undefined }, count, source);
       setPreRevealState(state);
+      setFakeoutPreview(rollFakeoutPreview(outcome.results));
       setState(outcome.state);
       setResults(outcome.results);
       setRecruitmentSource(source);
@@ -325,6 +338,7 @@ export function Simulator() {
     setResults([]);
     setRewards([]);
     setRevealIndex(0);
+    setFakeoutPreview(null);
     setPreRevealState(null);
     setError(null);
   }
@@ -333,6 +347,7 @@ export function Simulator() {
     if (phase === "arriving" || phase === "signing" || phase === "dispatching" || phase === "envelopes") {
       stopSound(65);
       setRevealIndex(results.length);
+      setFakeoutPreview(null);
       setPreRevealState(null);
       setPhase("results");
     }
@@ -340,6 +355,7 @@ export function Simulator() {
 
   function confirmResults() {
     setResults([]);
+    setFakeoutPreview(null);
     setPhase("idle");
     setRevealIndex(0);
   }
@@ -358,6 +374,12 @@ export function Simulator() {
   // replayed long after their real expiry date. Keep the expiry timestamp in
   // the state for display/auditing, but allow the simulated ticket to be used.
   const ticketExpired = false;
+  const resultRarity = Math.max(1, ...results.map((result) => result.rarity));
+  const fakeoutVisible = !!fakeoutPreview && (phase === "arriving" || phase === "signing");
+  const stageRarity = fakeoutVisible ? fakeoutPreview === "gold" ? 2 : 1 : resultRarity;
+  const fakeoutStageClass = fakeoutPreview && (phase === "arriving" || phase === "signing" || phase === "dispatching")
+    ? `fakeout-preview-${fakeoutPreview}${phase === "dispatching" ? " fakeout-revealed" : ""}`
+    : "";
 
   return (
     <div className="sim-app" onPointerDownCapture={unlockSound} onKeyDownCapture={unlockSound}>
@@ -425,7 +447,7 @@ export function Simulator() {
 
             {effectiveSystem === "charge" && <RewardTrack count={state.recruitmentCount} rewards={rewards} />}
 
-            {phase !== "idle" && <dialog ref={cinematicRef} className={`sim-stage panel-like phase-${phase} preview-rarity-${Math.max(1, ...results.map((result) => result.rarity))}`} aria-label="Recruitment" onCancel={(event) => { event.preventDefault(); if (portraitBlocked) return; if (busy) skipAnimation(); else confirmResults(); }}>
+            {phase !== "idle" && <dialog ref={cinematicRef} className={`sim-stage panel-like phase-${phase} preview-rarity-${stageRarity} ${fakeoutStageClass}`} aria-label="Recruitment" onCancel={(event) => { event.preventDefault(); if (portraitBlocked) return; if (busy) skipAnimation(); else confirmResults(); }}>
               <LandscapeGuard />
               {phase !== "results" && <RecruitmentAtmosphere arriving={phase === "arriving"} submitted={phase === "dispatching"} />}
               <div className="sim-cinematic-title"><GameIcon name="schale" /><span>{phase === "results" ? "Recruitment Results" : "Recruitment"}</span></div>
@@ -434,7 +456,7 @@ export function Simulator() {
                 <button className="sim-sound-toggle sim-secondary" aria-pressed={!muted} onClick={toggleSound}>{muted ? "Sound: Off" : "Sound: On"}</button>
                 <FullscreenButton className="sim-sound-toggle sim-secondary" landscape />
               </div>
-              {(phase === "arriving" || phase === "signing" || phase === "dispatching") && <RecruitmentContract results={results} arrivalPeakMs={arrivalPeakMs} arriving={phase === "arriving"} submitted={phase === "dispatching"} paused={portraitBlocked} onOpen={() => setPhase("dispatching")} />}
+              {(phase === "arriving" || phase === "signing" || phase === "dispatching") && <RecruitmentContract results={results} fakeout={fakeoutPreview} arrivalPeakMs={arrivalPeakMs} arriving={phase === "arriving"} submitted={phase === "dispatching"} paused={portraitBlocked} onOpen={() => setPhase("dispatching")} />}
               {phase === "dispatching" && <div className="sim-dispatch" role="status"><div className="dispatch-orbit" aria-hidden="true" /><div className="dispatch-envelope"><div className="dispatch-application" aria-hidden="true"><GameIcon name="schale" /></div>{recruitmentSource === "ticket" && <GameIcon name="recruitment-10" className="dispatch-ticket" />}</div><strong>Recruitment authorized</strong><small>Delivering student applications…</small></div>}
               {phase === "envelopes" && <RevealGrid results={results} revealIndex={revealIndex} onNext={advanceReveal} />}
               {phase === "results" && <Results results={results} counterLabel={state.system === "spark" ? "Recruitment Points" : "Recruitment Charge"} counterValue={state.system === "spark" ? state.points : charge} ticket={state.system === "charge" && results.length === 10 && state.tickets > 0} onConfirm={confirmResults} onRecruitAgain={() => recruit(results.length === 1 ? 1 : 10)} />}
@@ -464,7 +486,7 @@ function RecruitmentAtmosphere({ arriving, submitted }: { arriving: boolean; sub
     <div className="recruitment-trails">{Array.from({ length: 12 }, (_, index) => <b key={index} style={{ left: `${index * 9 - 8}%`, top: `${(index * 23) % 95}%`, animationDelay: `${-index * .37}s`, animationDuration: `${2.4 + index % 3 * .6}s` }} />)}</div>
     <div className="recruitment-geometry">{Array.from({ length: 7 }, (_, index) => <span key={index} style={{ left: `${8 + index * 14}%`, top: `${12 + index % 3 * 30}%`, animationDelay: `${-index * .6}s` }} />)}</div>
     <div className="recruitment-sparkle-field">{Array.from({ length: 30 }, (_, index) => <i key={index} style={{ left: `${4 + index * 37 % 92}%`, top: `${6 + index * 29 % 88}%`, width: `${6 + index % 4 * 3}px`, animationDelay: `${-index * .23}s`, animationDuration: `${1.7 + index % 5 * .31}s` }} />)}</div>
-    <div className="recruitment-horizon" /><div className="recruitment-scene-flash" />
+    <div className="recruitment-horizon" /><div className="recruitment-scene-flash" /><div className="recruitment-fakeout-burst" />
   </div>;
 }
 
@@ -545,7 +567,7 @@ function BannerPoolDialog({ banner, period, pool, onClose }: { banner: Banner; p
   </dialog>;
 }
 
-function RecruitmentContract({ results, arrivalPeakMs, arriving, submitted, paused, onOpen }: { results: PullResult[]; arrivalPeakMs: number; arriving: boolean; submitted: boolean; paused: boolean; onOpen: () => void }) {
+function RecruitmentContract({ results, fakeout, arrivalPeakMs, arriving, submitted, paused, onOpen }: { results: PullResult[]; fakeout: FakeoutPreview | null; arrivalPeakMs: number; arriving: boolean; submitted: boolean; paused: boolean; onOpen: () => void }) {
   const [strokes, setStrokes] = useState<string[]>([]);
   const [pendingOpen, setPendingOpen] = useState(false);
   const signingDelay = useRef(650);
@@ -563,9 +585,10 @@ function RecruitmentContract({ results, arrivalPeakMs, arriving, submitted, paus
   const signButton = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (!arriving && !submitted) signButton.current?.focus(); }, [arriving, submitted]);
   const maxRarity = Math.max(...results.map((result) => result.rarity));
-  return <div className={`sim-contract ${arriving ? "is-arriving" : ""} ${submitted ? "is-submitted" : ""}`} style={{ "--request-arrival-duration": `${arrivalPeakMs}ms` } as CSSProperties} aria-busy={arriving}><div className={`contract-aura max-rarity-${maxRarity}`} aria-hidden="true">{maxRarity >= 2 && Array.from({ length: maxRarity === 3 ? 8 : 4 }, (_, index) => <i key={index} style={{ animationDelay: `${index * 180}ms` }} />)}</div>
+  const displayRarity = fakeout && !submitted ? fakeout === "gold" ? 2 : 1 : maxRarity;
+  return <div className={`sim-contract ${arriving ? "is-arriving" : ""} ${submitted ? "is-submitted" : ""}`} style={{ "--request-arrival-duration": `${arrivalPeakMs}ms` } as CSSProperties} aria-busy={arriving}><div className={`contract-aura max-rarity-${displayRarity}`} aria-hidden="true">{displayRarity >= 2 && Array.from({ length: displayRarity === 3 ? 8 : 4 }, (_, index) => <i key={index} style={{ animationDelay: `${index * 180}ms` }} />)}</div>
     <div className="contract-impact" aria-hidden="true"><span className="contract-impact-diamond" />{Array.from({ length: 8 }, (_, index) => <b key={index} style={{ "--impact-angle": `${index * 45 + 22.5}deg` } as CSSProperties} />)}</div>
-    <div className={`contract-paper max-rarity-${maxRarity}`}>
+    <div className={`contract-paper max-rarity-${displayRarity}`}>
     <div className="contract-watermark" aria-hidden="true"><GameIcon name="schale" /></div>
     <div className="contract-authorization-seal" aria-hidden="true">S.C.H.A.L.E.<b>AUTHORIZED</b><span>RECRUITMENT REQUEST</span></div>
     <div className="contract-document-head"><GameIcon name="schale" /><span>S.C.H.A.L.E.<small>Federal Investigation Club</small></span><span className="contract-stamp">CONFIDENTIAL</span></div>
@@ -573,7 +596,7 @@ function RecruitmentContract({ results, arrivalPeakMs, arriving, submitted, paus
     <div className="contract-document-lines" aria-hidden="true"><i /><i /><i /></div>
     <div className="contract-request"><span>Requested students</span><b>{results.length.toString().padStart(2, "0")}</b></div>
     <small>Sensei, please authorize this recruitment.</small>
-    <div className="contract-signature"><span>Signature <b>{arriving ? "Receiving…" : <><Stars n={maxRarity} /> · Highest rarity</>}</b></span><svg className="signature-pad" viewBox="0 0 320 100" aria-label="Signature drawing area; release to open after a short delay, or use Sign and open" onPointerDown={(event) => { if (arriving || submitted || paused || !event.isPrimary) return; setPendingOpen(false); event.currentTarget.setPointerCapture(event.pointerId); const rect = event.currentTarget.getBoundingClientRect(); setStrokes((previous) => [...previous, `M ${(event.clientX - rect.left) * 320 / rect.width} ${(event.clientY - rect.top) * 100 / rect.height}`]); }} onPointerMove={(event) => { if (arriving || submitted || paused || !event.currentTarget.hasPointerCapture(event.pointerId)) return; const rect = event.currentTarget.getBoundingClientRect(); const point = ` L ${(event.clientX - rect.left) * 320 / rect.width} ${(event.clientY - rect.top) * 100 / rect.height}`; setStrokes((previous) => previous.map((stroke, index) => index === previous.length - 1 ? stroke + point : stroke)); }} onPointerUp={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; event.currentTarget.releasePointerCapture(event.pointerId); if (arriving || submitted || paused) return; signingDelay.current = 650; setPendingOpen(true); }} onPointerCancel={() => setPendingOpen(false)}>
+    <div className="contract-signature"><span>Signature <b>{arriving ? "Receiving…" : <><Stars n={displayRarity} /> · Highest rarity</>}</b></span><svg className="signature-pad" viewBox="0 0 320 100" aria-label="Signature drawing area; release to open after a short delay, or use Sign and open" onPointerDown={(event) => { if (arriving || submitted || paused || !event.isPrimary) return; setPendingOpen(false); event.currentTarget.setPointerCapture(event.pointerId); const rect = event.currentTarget.getBoundingClientRect(); setStrokes((previous) => [...previous, `M ${(event.clientX - rect.left) * 320 / rect.width} ${(event.clientY - rect.top) * 100 / rect.height}`]); }} onPointerMove={(event) => { if (arriving || submitted || paused || !event.currentTarget.hasPointerCapture(event.pointerId)) return; const rect = event.currentTarget.getBoundingClientRect(); const point = ` L ${(event.clientX - rect.left) * 320 / rect.width} ${(event.clientY - rect.top) * 100 / rect.height}`; setStrokes((previous) => previous.map((stroke, index) => index === previous.length - 1 ? stroke + point : stroke)); }} onPointerUp={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; event.currentTarget.releasePointerCapture(event.pointerId); if (arriving || submitted || paused) return; signingDelay.current = 650; setPendingOpen(true); }} onPointerCancel={() => setPendingOpen(false)}>
       {!strokes.length && <text x="160" y="58" textAnchor="middle">Sign here</text>}{strokes.map((stroke, index) => <path key={index} d={stroke} />)}
     </svg><button disabled={arriving || submitted || paused} className="sim-reset" onClick={() => { setPendingOpen(false); setStrokes([]); }}>Clear signature</button><small className="signature-hint" aria-live="polite">{pendingOpen ? "Authorizing…" : "Sign, then release to authorize"}</small></div>
     <button ref={signButton} disabled={arriving || submitted} className="sim-primary" onClick={onOpen}>{arriving ? "Receiving request…" : submitted ? "Authorized" : "Sign & open"}</button>
