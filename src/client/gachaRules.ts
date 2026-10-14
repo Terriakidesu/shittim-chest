@@ -167,11 +167,20 @@ export function historicalSystem(period: RecruitmentPeriod, banner: Banner) {
   return systemForBanner(period.server, period.startMs, banner);
 }
 
-/** Group banners by the date they appeared together in the game. */
-export function buildRecruitmentPeriods(banners: Banner[], server: Server): RecruitmentPeriod[] {
+/**
+ * Group banners by the date they appeared together in the game.
+ *
+ * `nowMs` gates out banners that have not started yet. The snapshot includes
+ * announced future banners, so without this the period picker offers a banner
+ * the reader cannot have been in yet. The calendar deliberately keeps showing
+ * them — that is the point of a forecast — so this belongs to the simulator
+ * alone. Injected rather than read from the clock so tests stay deterministic.
+ */
+export function buildRecruitmentPeriods(banners: Banner[], server: Server, nowMs = Date.now()): RecruitmentPeriod[] {
   const groups = new Map<number, Banner[]>();
   for (const banner of banners) {
     if (banner.server !== server || banner.evergreen) continue;
+    if (banner.startMs > nowMs) continue;
     const list = groups.get(banner.startMs) ?? [];
     list.push(banner);
     groups.set(banner.startMs, list);

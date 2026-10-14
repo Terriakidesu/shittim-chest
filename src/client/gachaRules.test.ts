@@ -44,6 +44,46 @@ function banner(id: number, startMs: number, over: Partial<Banner> = {}): Banner
   };
 }
 
+describe("recruitment period selection", () => {
+  // Mirrors the reported case: a snapshot that already lists an announced
+  // future banner. Oct 15 2026, with a rerun announced for Oct 21.
+  const NOW = Date.UTC(2026, 9, 15);
+  const FUTURE = Date.UTC(2026, 9, 21);
+  const RUNNING = Date.UTC(2026, 9, 7);
+
+  test("hides banners that have not started yet", () => {
+    const running = banner(1, RUNNING);
+    const announced = banner(2, FUTURE);
+    const periods = buildRecruitmentPeriods([running, announced], "JP", NOW);
+    expect(periods.map((period) => period.startMs)).toEqual([RUNNING]);
+  });
+
+  test("keeps a banner that is running right now", () => {
+    expect(buildRecruitmentPeriods([banner(1, RUNNING)], "JP", NOW)).toHaveLength(1);
+  });
+
+  test("hides a future banner on either server, not just JP", () => {
+    const futureGl = banner(3, FUTURE, { server: "GL" });
+    const pastGl = banner(4, RUNNING, { server: "GL" });
+    expect(buildRecruitmentPeriods([futureGl, pastGl], "GL", NOW).map((period) => period.startMs)).toEqual([RUNNING]);
+  });
+
+  test("still excludes a student whose only banner has not started", () => {
+    // Only the picker is filtered. buildStudentPool still receives the full
+    // banner list, so a later debut still supplies a first-seen date and
+    // cannot leak backwards into an earlier period.
+    const period = buildRecruitmentPeriods([banner(6, RUNNING)], "JP", NOW)[0];
+    const debutingLater = student(1, 3, { releasedOn: { jp: false, gl: false, kr: false } });
+    const pool = buildStudentPool(
+      [debutingLater],
+      [banner(5, FUTURE, { characters: [debutingLater] }), banner(6, RUNNING)],
+      period,
+      6,
+    );
+    expect(pool.some((entry) => entry.id === debutingLater.id)).toBe(false);
+  });
+});
+
 describe("historical recruitment pools", () => {
   test("excludes unreleased server students and future dated debuts", () => {
     const launch = student(1, 3, { releasedOn: { jp: true, gl: true, kr: true } });
