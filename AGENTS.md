@@ -1,16 +1,23 @@
 # AGENTS.md
 
-Static, serverless Blue Archive gacha calendar. Bun + Vite + React. Deployed to GitHub Pages via a `gh-pages` branch — no CI, no server, no database.
+Static, serverless Blue Archive gacha calendar. Bun + Vite + React. Published to GitHub Pages from the `gh-pages` branch. No repo-defined CI, no server, no database — the only automated build is GitHub's own Pages deployment for that branch.
 
 ## Hard constraints
 
-**Never introduce absolute paths or cross-origin URLs in `src/client/`.** The site is served from a repo subpath (`https://<user>.github.io/<repo>/`) and may move to a root domain. Vite `base` is `"./"` and every runtime fetch/asset goes through `asset()` in `src/client/api.ts`. `grep -n 'src="/\|href="/\|fetch("/' src/client` currently returns nothing — keep it that way.
+**Never introduce absolute paths or cross-origin URLs in `src/client/`.** The site is served from a repo subpath (`https://<user>.github.io/<repo>/`) and may move to a root domain. Vite `base` is `"./"` and every runtime fetch/asset goes through `asset()` in `src/client/api.ts`. The invariant holds today:
+
+```bash
+grep -rn 'src="/\|href="/\|fetch("/' src/client   # no matches
+```
+
+Note the `-r`: without it grep errors with "Is a directory" and looks like a
+pass.
 
 **Never add a network call to the client.** It reads only `public/data/*.json` and `public/img/`, which the export commits. No `/api/*` exists.
 
 **Routes are path-based** (`/calendar`, `/simulator`, `/about`), and each route is a real document at the repo root — `index.html`, `calendar.html`, `simulator.html`, `about.html` — listed as Vite build inputs. **Keep them flat siblings of `index.html`; never move one into a subdirectory.** A trailing slash or a subdirectory makes every relative asset URL (`./assets/...`, `./data/...`) resolve one level too deep, and the failure is silent: the HTML loads, the JS 404s, the page renders blank. `src/client/route.ts` matches on the trailing path segment so both `/calendar` and `/calendar.html` resolve; GitHub Pages serves the former from the latter.
 
-**Route metadata is duplicated on purpose, in two places that must stay in sync.** `og:image` has to be an absolute URL and static HTML cannot compute it, so the origin is hardcoded in five files: `index.html`, the three route documents, and `sitemap.xml`. A domain change means editing all five. `src/client/seo.ts` (`ROUTE_META`) holds the same copy and applies it at runtime, resolving against `location.href` so it follows the domain by itself. Nothing checks that the two agree.
+**Route metadata is duplicated on purpose, in two places that must stay in sync.** `og:image` has to be an absolute URL and static HTML cannot compute it, so the origin is hardcoded in five files: `index.html`, the three route documents, and `sitemap.xml`. A domain change means editing all five. `src/client/seo.ts` (`ROUTE_META`) holds the same copy and applies it at runtime, resolving against `location.href` so it follows the domain by itself. Nothing checks that the two agree. The cards in `public/og/` are **not** build output — they are prepared offline from `scripts/og/template.html`, so changing a card means re-rendering it, not rebuilding.
 
 **`redirectLegacyHash()` in `route.ts` must stay wired into `main.tsx`.** Old `/#/simulator` links resolve to a perfectly valid `/`, so `public/404.html` never runs for them — without the JS redirect they silently land on the lobby.
 
@@ -26,10 +33,15 @@ Static, serverless Blue Archive gacha calendar. Bun + Vite + React. Deployed to 
 
 ## Data sources and joins
 
-Three upstream sources, assembled in `buildSnapshot()` (`scripts/export.ts`):
+Three upstream sources across two hosts, assembled in `buildSnapshot()`
+(`scripts/export.ts`):
 
-- **Blue Archive Wiki** — banner history (yearly `Banners_of_YYYY` wikitext subpages) and, via `WikiClubSource`, localized club names.
-- **SchaleDB** (`{jp,en,kr}/students.min.json`) — the student roster, IDs, schools, artwork.
+- **Blue Archive Wiki, banner history** — `BlueArchiveWikiSource` reads the
+  yearly `Banners_of_YYYY` wikitext subpages.
+- **Blue Archive Wiki, club names** — `WikiClubSource` reads the `Club` field
+  of each `{{Character}}` infobox.
+- **SchaleDB** (`{jp,en,kr}/students.min.json`) — `SchaleDbSource` supplies
+  the student roster, IDs, schools and artwork.
 
 Everything joins on the **shared numeric student `Id`**. Two traps:
 
@@ -50,24 +62,33 @@ Focused runs: `bun test src/model` (dir or file path both work). Tests are coloc
 
 **There is no linter, formatter, or test framework beyond `bun:test`** — nothing is installed for them. Don't try to run or add `lint`/`format`; match surrounding style by hand. Order is `typecheck` then `test`.
 
-## Deploy gotcha
+## Deploy
 
-`bash scripts/deploy-branch.sh` builds and force-pushes `dist/` to `gh-pages`. **Its success does not mean the site is updated** — GitHub Pages deploys asynchronously and took ~90s to pick up a push in practice. Verify by comparing the asset hash in the live `index.html` against the branch:
+`bash scripts/deploy-branch.sh` builds and force-pushes `dist/` to `gh-pages`. **Its exit code does not mean the site is updated.** Pages builds asynchronously, and the wait has ranged from ~90s to 5m+ across deploys. Watch the actual run rather than guessing:
 
 ```bash
-curl -s https://raw.githubusercontent.com/Terriakidesu/shittim-chest/gh-pages/data/characters.json
+gh api repos/Terriakidesu/shittim-chest/pages --jq '.status'   # "building" -> "built"
+gh run list --repo Terriakidesu/shittim-chest --limit 3
 ```
+
+Then confirm the live document references the build you just pushed:
+
+```bash
+git show origin/gh-pages:index.html | grep -oE 'assets/[A-Za-z0-9_.-]*\.js'
+curl -s "https://terriakidesu.github.io/shittim-chest/index.html" | grep -oE 'assets/[A-Za-z0-9_.-]*\.js'
+```
+
+Do not grep for a hardcoded asset filename. The entry chunk is named after the
+build input key in `vite.config.ts` (`main-*.js`), and hardcoding it already
+caused a check to poll for a file that cannot exist, reporting "not deployed"
+for five minutes while Pages was building normally.
 
 `scripts/weekly-refresh.sh` = export → commit `public/data` + `public/img` → deploy. It only stages data paths, so source changes must already be committed.
 
 ## Client notes
 
-- `Simulator.tsx` (761 lines) and `gachaRules.ts` (600) are the bulk of the app; `gachaRules.ts` is a pure, separately tested recruitment model.
+- `Simulator.tsx` (~760 lines) and `gachaRules.ts` (~600) are the bulk of the app; `gachaRules.ts` is a pure, separately tested recruitment model.
 - Simulator state (owned students, counters) persists in `localStorage` under `shittim-simulator:v<VERSION>:<system>:<periodKey>` — a **versioned** key, so a state-shape change needs a bump plus a migration path (`loadSaved` / `migrateRarityCounts`), or returning players silently lose their collection.
 - The simulator is mounted once per page load now that routes are real documents, so there is no `key={hash}` remount hack and no `hashchange` listener. The app never calls `history.pushState`, so the query string is read-only.
 - `gachaRules.ts` synthesizes minimal `CharacterRecord`s with `club: ""` for banner-only characters; the intro card renders nothing for an empty club, which is the intended no-club case.
 - To reproduce GitHub Pages' URL resolution locally (extensionless URLs, `404.html` fallback — neither of which `vite preview` does), run `python3 scripts/pageslike-server.py dist 4328`. It caught a `//` protocol-relative redirect bug in `404.html` that no other check surfaced.
-
-## README drift
-
-`README.md` still documents `.github/workflows/pages.yml` and `forecast.yml`. **Those files were deleted** (commit `e3de43a`) — this repo's own Actions runners are unavailable, so the weekly refresh runs from the separate `Terriakidesu/shittim-chest-cron` repo, or locally via `weekly-refresh.sh`. Trust the scripts over the README here.
