@@ -539,7 +539,7 @@ a { color: var(--cyan); }
 .sim-contract:not(.is-submitted) .contract-paper { animation: sim-request-arrive calc(var(--request-arrival-duration) * .78) cubic-bezier(.3, -.08, .18, 1) both; transform-origin: 50% 50%; backface-visibility: hidden; will-change: transform, opacity; }
 /* The fake-out phase remounts the rarity effects at the envelope's resting
    position. Keep the paper still until those existing 3★ effects finish. */
-.sim-contract.is-revealing .contract-paper { animation: none; transform: none; opacity: 1; will-change: auto; }
+.sim-contract.is-revealing .contract-paper { animation-play-state: paused; will-change: auto; }
 @keyframes sim-request-arrive {
   /* A single curve supplies the tiny pullback, acceleration, and long brake.
      No separately eased waypoints: velocity remains continuous throughout. */
@@ -574,8 +574,8 @@ a { color: var(--cyan); }
 .contract-signature > span b { color: var(--authorization-color); font-weight: 800; }
 .contract-signature .signature-hint { float: right; color: var(--muted); font-size: 9px; margin-top: 5px; }
 .sim-contract.is-arriving .contract-signature::before { animation-play-state: paused; opacity: 0; clip-path: inset(48% 48%); }
-.contract-signature, .contract-paper { transition: border-color .12s ease-out; }
-.contract-signature > span b { transition: color .12s ease-out; }
+.contract-signature, .contract-paper { transition: border-color .28s ease-out, box-shadow .4s ease-out; }
+.contract-signature > span b { transition: color .28s ease-out; }
 .contract-signature > span { color: var(--muted); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
 .contract-signature svg.signature-pad { display: block; width: 100%; touch-action: none; cursor: crosshair; }
 .contract-signature path { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }

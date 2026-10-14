@@ -36,7 +36,7 @@ type FakeoutPreview = "blue" | "gold";
 const SIMULATOR_STORAGE_VERSION = 4;
 const FAKEOUT_CHANCE = 0.1;
 const FAKEOUT_REVEAL_DELAY_MS = 160;
-const FAKEOUT_REVEAL_MS = 850;
+const FAKEOUT_REVEAL_MS = 950;
 const REVEAL_HOLD_MS: Record<1 | 2 | 3, number> = { 1: 1800, 2: 2200, 3: 3000 };
 const DUPLICATE_HOLD_MS: Record<1 | 2 | 3, number> = { 1: 820, 2: 1240, 3: 1900 };
 const PORTRAIT_TOUCH_QUERY = "(orientation: portrait) and (hover: none) and (pointer: coarse)";
@@ -465,7 +465,7 @@ export function Simulator() {
                 <button className="sim-sound-toggle sim-secondary" aria-pressed={!muted} onClick={toggleSound}>{muted ? "Sound: Off" : "Sound: On"}</button>
                 <FullscreenButton className="sim-sound-toggle sim-secondary" landscape />
               </div>
-              {(phase === "arriving" || phase === "signing" || phase === "fakeout" || phase === "dispatching") && <RecruitmentContract key={phase === "fakeout" ? "fakeout-reveal" : "contract"} results={results} fakeout={fakeoutPreview} arrivalPeakMs={arrivalPeakMs} arriving={phase === "arriving"} revealing={phase === "fakeout"} submitted={phase === "dispatching"} paused={portraitBlocked} onOpen={() => setPhase(fakeoutPreview ? "fakeout" : "dispatching")} />}
+              {(phase === "arriving" || phase === "signing" || phase === "fakeout" || phase === "dispatching") && <RecruitmentContract results={results} fakeout={fakeoutPreview} arrivalPeakMs={arrivalPeakMs} arriving={phase === "arriving"} revealing={phase === "fakeout"} submitted={phase === "dispatching"} paused={portraitBlocked} onOpen={() => setPhase(fakeoutPreview ? "fakeout" : "dispatching")} />}
               {phase === "dispatching" && <div className="sim-dispatch" role="status"><div className="dispatch-orbit" aria-hidden="true" /><div className="dispatch-envelope"><div className="dispatch-application" aria-hidden="true"><GameIcon name="schale" /></div>{recruitmentSource === "ticket" && <GameIcon name="recruitment-10" className="dispatch-ticket" />}</div><strong>Recruitment authorized</strong><small>Delivering student applications…</small></div>}
               {phase === "envelopes" && <RevealGrid results={results} revealIndex={revealIndex} onNext={advanceReveal} />}
               {phase === "results" && <Results results={results} counterLabel={state.system === "spark" ? "Recruitment Points" : "Recruitment Charge"} counterValue={state.system === "spark" ? state.points : charge} ticket={state.system === "charge" && results.length === 10 && state.tickets > 0} onConfirm={confirmResults} onRecruitAgain={() => recruit(results.length === 1 ? 1 : 10)} />}
