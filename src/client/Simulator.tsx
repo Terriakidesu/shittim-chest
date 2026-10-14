@@ -534,7 +534,7 @@ function BannerPoolDialog({ banner, period, pool, onClose }: { banner: Banner; p
             if (!entries.length) return null;
             return <div className={`sim-pool-rarity rarity-${rarity}`} key={rarity}>
               <h4><Stars n={rarity} /><span>{rarity}<IconStar /> students</span><small>{entries.length}</small></h4>
-              <ul>{entries.map((entry) => <li key={entry.student.id}><img src={asset(entry.student.avatar)} alt="" loading="lazy" /><span>{entry.student.name}</span><b>{formatPoolRate(entry.rate)}%</b></li>)}</ul>
+              <ul>{entries.map((entry) => <li key={entry.student.id}><img src={asset(`img/avatar/${entry.student.id}.webp`)} alt="" loading="lazy" /><span>{entry.student.name}</span><b>{formatPoolRate(entry.rate)}%</b></li>)}</ul>
             </div>;
           })}
         </section>;
