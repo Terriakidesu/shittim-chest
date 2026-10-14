@@ -5,18 +5,12 @@ import { Home } from "./Home";
 import { Simulator } from "./Simulator";
 import { About } from "./About";
 import { SiteFooter } from "./components/SiteFooter";
-import { routeFromHash, type Route } from "./route";
+import { routeFromHash } from "./route";
+import { applySeo } from "./seo";
 import "./styles.css";
 import { initializeTheme } from "./theme";
 
 initializeTheme();
-
-const TITLES: Record<Route, string> = {
-  "/": "Shittim Chest — Lobby",
-  "/calendar": "Calendar — Shittim Chest",
-  "/simulator": "Recruitment simulator — Shittim Chest",
-  "/about": "About & credits — Shittim Chest",
-};
 
 function Shell() {
   // Track the raw hash (not just the route) so query-only changes — e.g. one
@@ -37,7 +31,7 @@ function Shell() {
   }, []);
   const route = routeFromHash(hash);
   useEffect(() => {
-    document.title = TITLES[route];
+    applySeo(route);
   }, [route]);
   const isHome = route === "/";
   return (

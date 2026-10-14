@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Only the static HTML entries are listed. Hash routes (#/calendar, #/about)
+  are not distinct documents to a crawler, so listing them would advertise URLs
+  that carry no route-specific metadata. Each shim forwards to its hash route.
+
+  Keep the origin in step with index.html and the public/*.html shims.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://terriakidesu.github.io/shittim-chest/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://terriakidesu.github.io/shittim-chest/calendar.html</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://terriakidesu.github.io/shittim-chest/simulator.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://terriakidesu.github.io/shittim-chest/about.html</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+</urlset>

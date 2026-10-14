@@ -78,6 +78,37 @@ server rewrite rules are needed. `public/404.html` forwards legacy
 path-based links (`/calendar`, `/simulator?...`, `/about`) to their hash
 equivalents.
 
+## SEO and social previews
+
+Because a URL fragment never reaches the server, `/#/calendar` and `/#/about`
+are the *same document* to any crawler, and social scrapers parse raw HTML
+without running JavaScript. So each route also has a real static document
+carrying its own metadata:
+
+| Route | Share/crawl URL | Social image |
+| --- | --- | --- |
+| Lobby | `/` | `public/og/home.png` |
+| Calendar | `/calendar.html` | `public/og/calendar.png` |
+| Simulator | `/simulator.html` | `public/og/simulator.png` |
+| About | `/about.html` | `public/og/about.png` |
+
+The `public/*.html` shims hold the crawler-visible title, description,
+canonical, Open Graph and Twitter tags, then forward to the matching hash
+route. `src/client/seo.ts` holds the same copy in `ROUTE_META` and applies it
+on in-app navigation. **Edit both together** — nothing checks that they agree.
+`public/robots.txt` and `public/sitemap.xml` list only the static entries.
+
+Two things to know before touching this area:
+
+- **`og:image` must be absolute and a static shim cannot compute it**, so
+  `index.html`, the three shims and `sitemap.xml` hardcode
+  `https://terriakidesu.github.io/shittim-chest/`. A domain change means
+  updating all five. The runtime copy in `seo.ts` resolves against
+  `location.href` instead, so it follows the domain by itself.
+- **The cards in `public/og/` are prepared offline, not built.** They render
+  from `scripts/og/template.html`, which documents the exact steps; each card's
+  background reuses that route's lobby art from `public/ba-lobby/`.
+
 ## Provenance & rights
 
 Banner history: Blue Archive Wiki. Character metadata, portraits and

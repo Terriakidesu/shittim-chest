@@ -3,15 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Shittim Chest — Gacha Calendar</title>
+    <title>Shittim Chest — Blue Archive Gacha Calendar</title>
     <meta
       name="description"
       content="Blue Archive gacha banner calendar: what is live now on JP and Global, and when Global is expected to catch up."
     />
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="./shittim-chest.svg"
+    <!--
+      This file is served verbatim, so these literals are what crawlers read.
+      Keep them in step with ROUTE_META["/"] in src/client/seo.ts, which takes
+      over once the app boots. og:image has to be absolute, hence the hardcoded
+      origin: update it here and in the public/*.html shims if the domain moves.
+    -->
+    <link rel="canonical" href="https://terriakidesu.github.io/shittim-chest/" />
+    <link rel="icon" type="image/svg+xml" href="./shittim-chest.svg" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Shittim Chest" />
+    <meta property="og:title" content="Shittim Chest — Blue Archive Gacha Calendar" />
+    <meta
+      property="og:description"
+      content="Blue Archive gacha banner calendar: what is live now on JP and Global, and when Global is expected to catch up."
+    />
+    <meta property="og:url" content="https://terriakidesu.github.io/shittim-chest/" />
+    <meta property="og:image" content="https://terriakidesu.github.io/shittim-chest/og/home.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="Shittim Chest — the Blue Archive gacha calendar"
+    />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Shittim Chest — Blue Archive Gacha Calendar" />
+    <meta
+      name="twitter:description"
+      content="Blue Archive gacha banner calendar: what is live now on JP and Global, and when Global is expected to catch up."
+    />
+    <meta name="twitter:image" content="https://terriakidesu.github.io/shittim-chest/og/home.png" />
+    <meta
+      name="twitter:image:alt"
+      content="Shittim Chest — the Blue Archive gacha calendar"
     />
   </head>
   <body>
