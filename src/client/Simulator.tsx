@@ -11,7 +11,7 @@ import {
   activeCharge,
   bannerPoolKind,
   buildRecruitmentPeriods,
-  buildStudentPool,
+  buildRecruitmentPool,
   exchangeSpark,
   historicalSystem,
   makeInitialState,
@@ -23,6 +23,8 @@ import {
   switchPeriod,
   TEN_PULL_COST,
   type PullResult,
+  type PoolGroup,
+  type RecruitmentPool,
   type RecruitmentPeriod,
   type SimulatorState,
   type SimulatorSystem,
@@ -55,6 +57,7 @@ export function Simulator() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sparkOpen, setSparkOpen] = useState(false);
+  const [poolOpen, setPoolOpen] = useState(false);
   const cinematicRef = useRef<HTMLDialogElement>(null);
   const cinematicOpen = phase !== "idle";
   const [portraitBlocked, setPortraitBlocked] = useState(() => window.matchMedia(PORTRAIT_TOUCH_QUERY).matches);
@@ -136,7 +139,8 @@ export function Simulator() {
   const requestedBannerId = Number(hashQuery().get("banner"));
   const defaultBanner = period?.banners.find((banner) => banner.id === requestedBannerId) ?? period?.banners[0];
   const selectedBanner = period?.banners.find((banner) => banner.id === state?.bannerId) ?? defaultBanner;
-  const pool = useMemo(() => period ? buildStudentPool(characters, banners, period, selectedBanner?.id) : [], [characters, banners, period, selectedBanner?.id]);
+  const recruitmentPool = useMemo(() => period ? buildRecruitmentPool(characters, banners, period, selectedBanner?.id) : null, [characters, banners, period, selectedBanner?.id]);
+  const pool = recruitmentPool?.students ?? [];
 
   useEffect(() => {
     const media = window.matchMedia(PORTRAIT_TOUCH_QUERY);
@@ -286,7 +290,7 @@ export function Simulator() {
     // last. Ticket pulls earn no Pyroxene-track rewards by design.
     const source = requested === "pyroxene" && count === 10 && state.system === "charge" && state.tickets > 0 ? "ticket" : requested;
     try {
-      const outcome = resolvePulls(state, { period, banner: selectedBanner, pool }, count, source);
+      const outcome = resolvePulls(state, { period, banner: selectedBanner, pool, recruitmentPool: recruitmentPool ?? undefined }, count, source);
       setPreRevealState(state);
       setState(outcome.state);
       setResults(outcome.results);
@@ -307,7 +311,7 @@ export function Simulator() {
     if (!state || !period || !selectedBanner || state.points < 200) return;
     const banner = period.banners.find((candidate) => candidate.characters.some((student) => student.id === studentId));
     if (!banner) return;
-    setState(exchangeSpark(state, { period, banner, pool }, studentId));
+    setState(exchangeSpark(state, { period, banner, pool, recruitmentPool: recruitmentPool ?? undefined }, studentId));
     setSparkOpen(false);
     setResults([]);
     setRewards([]);
@@ -387,7 +391,7 @@ export function Simulator() {
 
           <main className="sim-main">
             {phase === "idle" && <section className="sim-hero">
-              <div className="sim-hero-art">{selectedBanner.characters[0] ? <img className="sim-featured-portrait" src={asset(`img/portrait/${selectedBanner.characters[0].id}.webp`)} alt={selectedBanner.characters[0].name} onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <div className="sim-art-placeholder"><span>SHITTIM CHEST</span></div>}{selectedBanner.imageUrl && <img className="sim-featured-banner" src={asset(selectedBanner.imageUrl)} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />}</div>
+              <div className="sim-hero-art">{selectedBanner.characters[0] ? <img key={selectedBanner.characters[0].id} className="sim-featured-portrait" src={asset(`img/portrait/${selectedBanner.characters[0].id}.webp`)} alt={selectedBanner.characters[0].name} onLoad={(event) => { const image = event.currentTarget; image.classList.toggle("sim-featured-portrait-wide", image.naturalWidth > image.naturalHeight); }} onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <div className="sim-art-placeholder"><span>SHITTIM CHEST</span></div>}{selectedBanner.imageUrl && <img className="sim-featured-banner" src={asset(selectedBanner.imageUrl)} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />}</div>
               <div className="sim-hero-copy">
                 <div className="sim-period-banners" role="group" aria-label="Concurrent recruitment banners">
                   {period.banners.map((banner) => <button key={banner.id} aria-pressed={selectedBanner.id === banner.id} aria-label={`${banner.characters.map((student) => student.name).join(" / ") || banner.code} · ${banner.rerun ? "Rerun" : "Pick-up"}${banner.limited ? " · Limited" : ""}`} title={`${banner.characters.map((student) => student.name).join(" / ") || banner.code} · ${banner.rerun ? "Rerun" : "Pick-up"}${banner.limited ? " · Limited" : ""}`} className={`sim-banner-tab ${selectedBanner.id === banner.id ? "on" : ""}`} onClick={() => chooseBanner(banner.id)}>
@@ -404,7 +408,7 @@ export function Simulator() {
                 <div className="sim-buttons sim-game-pulls"><button className="sim-secondary" onClick={() => recruit(1)}><GameIcon name="pyroxene" className="sim-pull-icon" /><span><small><GameIcon name="pyroxene" /> {PULL_COST} Pyroxene</small>Recruit ×1</span></button><button className="sim-primary" onClick={() => recruit(10)}>{autoTicket ? <GameIcon name="recruitment-10" className="sim-pull-icon" /> : <GameIcon name="pyroxene" className="sim-pull-icon" />}<span><small>{autoTicket ? <>Ticket · {state.tickets} available</> : <><GameIcon name="pyroxene" /> {TEN_PULL_COST.toLocaleString()} Pyroxene</>}</small>Recruit ×10</span></button>{effectiveSystem === "charge" && <button className="sim-ticket" disabled={state.tickets < 1 || ticketExpired} onClick={() => recruit(10, "ticket")}><GameIcon name="recruitment-10" />Use free ×10 <small>{state.tickets} tickets{state.ticketExpiresAt ? ` · expires ${formatDate(state.ticketExpiresAt)}` : ""}</small></button>}</div>
                 <Progress state={state} banner={selectedBanner} charge={charge} />
                 {effectiveSystem === "spark" && <button className="sim-secondary sim-select-student" onClick={() => setSparkOpen(true)}>Select Student</button>}
-                <details className="sim-rate-info"><summary>Rate Info</summary><p>1<IconStar /> {selectedBanner.type.includes("Fes") ? "75.5" : "78.5"}% · 2<IconStar /> 18.5% · 3<IconStar /> {selectedBanner.type.includes("Fes") ? "6" : "3"}%</p><p>Featured 3<IconStar /> rate: 0.7% total. The tenth student in a ten-pull is 2<IconStar /> or higher. Historical pools are approximate.</p></details>
+                <div className="sim-pool-actions"><button className="sim-secondary sim-pool-button" onClick={() => setPoolOpen(true)}>View banner pool</button><details className="sim-rate-info"><summary>Rate Info</summary><p>1<IconStar /> {formatPoolRate(recruitmentPool?.rarityRates["1"] ?? 78.5)}% · 2<IconStar /> {formatPoolRate(recruitmentPool?.rarityRates["2"] ?? 18.5)}% · 3<IconStar /> {formatPoolRate(recruitmentPool?.rarityRates["3"] ?? 3)}%</p><p>{recruitmentPool?.isFes ? "Fes: 0.7% pickup, 0.9% shared among other Fes students, and 4.4% regular 3★ when those categories are populated." : "Each pickup 3★ student has a 0.7% rate; a pickup 2★ student has a 3% rate; the remaining rarity rate is shared by the regular pool."} The tenth student in a ten-pull is 2<IconStar /> or higher.</p></details></div>
               </div>
             </section>}
 
@@ -437,11 +441,12 @@ export function Simulator() {
             </dialog>}
 
             {sparkOpen && <SparkSelection period={period} points={state.points} onExchange={exchange} onClose={() => setSparkOpen(false)} />}
+            {poolOpen && selectedBanner && recruitmentPool && <BannerPoolDialog banner={selectedBanner} period={period} pool={recruitmentPool} onClose={() => setPoolOpen(false)} />}
 
             <Collection state={preRevealState ?? state} students={ownedStudents(preRevealState ?? state, characters, pool)} />
 
 
-            <section className="sim-footnote"><span>Pool is an approximate historical reconstruction from the calendar data.</span><span>Event/welfare students are never recruitable; limited-only students appear only when featured.</span><span>Rates: 1<IconStar /> {selectedBanner.type.includes("Fes") ? "75.5" : "78.5"}% · 2<IconStar /> 18.5% · 3<IconStar /> {selectedBanner.type.includes("Fes") ? "6" : "3"}%.</span><span>Free tickets advance Charge, but do not recursively advance the recruitment-count reward track.</span></section>
+            <section className="sim-footnote"><span>Pool is an approximate historical reconstruction from the calendar data.</span><span>Future and event-only students are excluded; limited-only students appear only when the selected banner allows them.</span><span>Rates: 1<IconStar /> {formatPoolRate(recruitmentPool?.rarityRates["1"] ?? 78.5)}% · 2<IconStar /> {formatPoolRate(recruitmentPool?.rarityRates["2"] ?? 18.5)}% · 3<IconStar /> {formatPoolRate(recruitmentPool?.rarityRates["3"] ?? 3)}%.</span><span>Free tickets advance Charge, but do not recursively advance the recruitment-count reward track.</span></section>
           </main>
         </div>
       )}
@@ -482,6 +487,61 @@ function SparkSelection({ period, points, onExchange, onClose }: { period: Recru
     <p>Use 200 Recruitment Points to recruit a student featured in this period.</p><div className="sim-spark-balance"><GameIcon name="recruitment-points" /><strong>{points.toLocaleString()} Recruitment Points</strong></div>
     <div className="sim-spark-roster">{students.map((student) => <article key={student.id}><img src={asset(`img/avatar/${student.id}.webp`)} alt="" /><strong>{student.name}</strong><span><Stars n={student.starGrade} /></span><button className="sim-primary" disabled={points < 200} onClick={() => onExchange(student.id)}>Recruit · 200 points</button></article>)}</div>
     {points < 200 && <small>You need {200 - points} more Recruitment Points.</small>}<button className="sim-secondary" onClick={onClose}>Cancel</button>
+  </dialog>;
+}
+
+function BannerPoolDialog({ banner, period, pool, onClose }: { banner: Banner; period: RecruitmentPeriod; pool: RecruitmentPool; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.requestAnimationFrame(() => {
+        if (!document.querySelector("dialog:modal")) document.querySelector<HTMLButtonElement>(".sim-pool-button")?.focus();
+      });
+    };
+  }, []);
+
+  const groups: { key: PoolGroup; label: string; description: string }[] = [
+    { key: "pickup", label: "Pickup Unit", description: "Rate-up students on this banner" },
+    { key: "fes", label: "Other Fes Units", description: "Anniversary students in the shared off-rate pool" },
+    { key: "regular", label: "Regular Pool", description: "Available non-pickup students" },
+  ];
+  const title = banner.characters.map((student) => student.name).join(" / ") || banner.code || "Recruitment banner";
+  const entriesTotal = pool.entries.reduce((sum, entry) => sum + entry.rate, 0);
+
+  return <dialog ref={dialogRef} className="sim-pool-dialog" aria-labelledby="pool-dialog-title" onCancel={(event) => { event.preventDefault(); onClose(); }}>
+    <header>
+      <div><span className="sim-kicker">{period.server === "JP" ? "Japan" : "Global"} · {formatDate(period.startMs)}</span><h2 id="pool-dialog-title">Current banner pool</h2><p>{title}</p></div>
+      <button className="sim-secondary" aria-label="Close banner pool" onClick={onClose}><IconClose /></button>
+    </header>
+    <div className="sim-pool-summary" aria-label="Rarity rates">
+      {(["1", "2", "3"] as const).map((rarity) => <div key={rarity} className={`sim-pool-summary-rarity rarity-${rarity}`}><strong>{rarity}<IconStar /></strong><b>{formatPoolRate(pool.rarityRates[rarity])}%</b><small>total</small></div>)}
+    </div>
+    <p className="sim-pool-note">Each percentage below is the chance for one student on a single pull. The listed rates total {formatPoolRate(entriesTotal)}%; the tenth pull condition only removes 1<IconStar /> outcomes from that slot.</p>
+    <div className="sim-pool-groups">
+      {groups.map((group) => {
+        const groupEntries = pool.entries.filter((entry) => entry.group === group.key);
+        if (!groupEntries.length) return null;
+        const groupTotal = groupEntries.reduce((sum, entry) => sum + entry.rate, 0);
+        return <section className={`sim-pool-group sim-pool-group-${group.key}`} key={group.key}>
+          <header><div><h3>{group.label}</h3><p>{group.description}</p></div><strong>{formatPoolRate(groupTotal)}% total</strong></header>
+          {([3, 2, 1] as const).map((rarity) => {
+            const entries = groupEntries.filter((entry) => entry.rarity === rarity);
+            if (!entries.length) return null;
+            return <div className={`sim-pool-rarity rarity-${rarity}`} key={rarity}>
+              <h4><Stars n={rarity} /><span>{rarity}<IconStar /> students</span><small>{entries.length}</small></h4>
+              <ul>{entries.map((entry) => <li key={entry.student.id}><img src={asset(entry.student.avatar)} alt="" loading="lazy" /><span>{entry.student.name}</span><b>{formatPoolRate(entry.rate)}%</b></li>)}</ul>
+            </div>;
+          })}
+        </section>;
+      })}
+    </div>
+    <p className="sim-pool-source">Fes rates follow the <a href="https://bluearchive.wiki/wiki/Recruitment_(Gacha)" target="_blank" rel="noreferrer">Blue Archive Wiki recruitment rules</a>: 6% total 3★, 0.7% pickup, 0.9% shared among other Fes students, and 4.4% regular 3★ when those groups are present.</p>
+    <button className="sim-secondary sim-pool-close" onClick={onClose}>Close</button>
   </dialog>;
 }
 
@@ -653,6 +713,11 @@ function periodLabel(period: RecruitmentPeriod) {
 
 function formatDate(ms: number) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(ms);
+}
+
+function formatPoolRate(rate: number) {
+  const digits = rate >= 1 ? 1 : rate >= 0.1 ? 2 : 3;
+  return rate.toFixed(digits).replace(/\.0+$|(?<=\.[0-9])0+$/, "");
 }
 
 function systemLabel(system: SimulatorSystem) {

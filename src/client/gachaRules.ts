@@ -81,10 +81,30 @@ export interface PullResult {
   forced: "none" | "two-star" | "soft-pity" | "hard-pity";
 }
 
+export type PoolGroup = "pickup" | "fes" | "regular";
+export type RecruitmentRarity = 1 | 2 | 3;
+
+export interface RecruitmentPoolEntry {
+  student: CharacterRecord;
+  group: PoolGroup;
+  rarity: RecruitmentRarity;
+  /** Per-student probability as a percentage, e.g. 0.7 means 0.7%. */
+  rate: number;
+}
+
+export interface RecruitmentPool {
+  students: CharacterRecord[];
+  entries: RecruitmentPoolEntry[];
+  isFes: boolean;
+  rarityRates: Record<"1" | "2" | "3", number>;
+}
+
 export interface SimulationContext {
   period: RecruitmentPeriod;
   banner: Banner;
   pool: CharacterRecord[];
+  /** Built once by the UI and shared by the pool dialog and pull resolver. */
+  recruitmentPool?: RecruitmentPool;
 }
 
 export interface SimulationOutcome {
@@ -111,8 +131,23 @@ function isArchive(banner: Banner) {
   return banner.type.startsWith("SelectPickup");
 }
 
+function isSelectableBanner(banner: Banner) {
+  // Large roster rows are selectable archive/encore lists rather than
+  // simultaneous 0.7% rate-ups. The wiki currently labels Encore rows as
+  // Unknown in the source snapshot.
+  return isArchive(banner) || banner.characters.length > 3;
+}
+
+function isFesBanner(banner: Banner) {
+  return banner.type === "FesGacha" || banner.type === "SelectPickupFesGacha";
+}
+
+function isFesArchive(banner: Banner) {
+  return banner.type === "SelectPickupFesGacha";
+}
+
 export function bannerPoolKind(banner: Banner): "regular" | "limited" {
-  return banner.limited || banner.type.includes("Limited") || banner.type.includes("Fes") || banner.type.includes("SelectPickupFes") ? "limited" : "regular";
+  return banner.limited || banner.type.includes("Limited") || isFesBanner(banner) ? "limited" : "regular";
 }
 
 function systemForBanner(server: Server, startMs: number, banner: Banner): { system: SimulatorSystem; reason: string } {
@@ -162,72 +197,193 @@ export function buildRecruitmentPeriods(banners: Banner[], server: Server): Recr
     .sort((a, b) => b.startMs - a.startMs);
 }
 
+function firstSeenByStudent(banners: Banner[], server: Server) {
+  const firstSeen = new Map<number, number>();
+  for (const banner of banners) {
+    if (banner.server !== server) continue;
+    for (const student of banner.characters) {
+      const id = recruitmentStudentId(student.id);
+      const current = firstSeen.get(id);
+      if (current == null || banner.startMs < current) firstSeen.set(id, banner.startMs);
+    }
+  }
+  return firstSeen;
+}
+
+function archivedAtByStudent(banners: Banner[], server: Server, fesOnly = false) {
+  const archivedAt = new Map<number, number>();
+  for (const banner of banners) {
+    if (banner.server !== server || !isArchive(banner) || (fesOnly && !isFesArchive(banner))) continue;
+    for (const student of banner.characters) {
+      const id = recruitmentStudentId(student.id);
+      const current = archivedAt.get(id);
+      if (current == null || banner.startMs < current) archivedAt.set(id, banner.startMs);
+    }
+  }
+  return archivedAt;
+}
+
+function availableAt(student: CharacterRecord, period: RecruitmentPeriod, firstSeen: Map<number, number>) {
+  const flag = student.releasedOn?.[period.server === "JP" ? "jp" : "gl"];
+  const first = firstSeen.get(recruitmentStudentId(student.id));
+  // SchaleDB's release flag can lag the wiki banner snapshot for a newly
+  // announced banner. A dated banner row is stronger evidence that the unit
+  // is recruitable; an unreleased unit with no banner evidence stays excluded.
+  if (flag === false && (first == null || first > period.startMs)) return false;
+  // Missing first-seen dates are the launch roster (or a synthetic test record);
+  // dated banner evidence still prevents a later student leaking backwards.
+  return first == null || first <= period.startMs;
+}
+
+/** Anniversary students that remained in the live Fes pool at this date. */
+function fesStudentsAt(banners: Banner[], period: RecruitmentPeriod) {
+  const archivedAt = archivedAtByStudent(banners, period.server, true);
+  const ids = new Set<number>();
+  for (const banner of banners) {
+    if (banner.server !== period.server || banner.type !== "FesGacha" || banner.startMs > period.startMs) continue;
+    for (const student of banner.characters) {
+      const id = recruitmentStudentId(student.id);
+      if ((archivedAt.get(id) ?? Number.POSITIVE_INFINITY) > period.startMs) ids.add(id);
+    }
+  }
+  return ids;
+}
+
 /**
- * The source does not publish a complete historical rate table. Use students
- * that were available by the selected period and mark the UI as approximate.
- * SchaleDB's event classification excludes welfare/event-only students even
- * when they have no usable banner row, while old permanent launch students
- * without a recorded rate-up remain eligible.
+ * Reconstruct the students available at a historical banner date.
+ *
+ * The source character dump is current, so `releasedOn` is essential for
+ * students that have not appeared in a banner row yet (especially future GL
+ * students). Banner first-seen dates provide the finer historical cutoff for
+ * students that have already debuted.
  */
 export function buildStudentPool(all: CharacterRecord[], banners: Banner[], period: RecruitmentPeriod, selectedBannerId?: number): CharacterRecord[] {
-  const firstSeen = new Map<number, number>();
-  const archivedAt = new Map<number, number>();
+  const firstSeen = firstSeenByStudent(banners, period.server);
+  const archivedAt = archivedAtByStudent(banners, period.server);
   const limitedSeen = new Set<number>();
   const standardSeen = new Set<number>();
   for (const banner of banners) {
     if (banner.server !== period.server) continue;
     for (const student of banner.characters) {
       const id = recruitmentStudentId(student.id);
-      const current = firstSeen.get(id);
-      if (current == null || banner.startMs < current) firstSeen.set(id, banner.startMs);
-      if (isArchive(banner)) {
-        const archived = archivedAt.get(id);
-        if (archived == null || banner.startMs < archived) archivedAt.set(id, banner.startMs);
-      }
       if (isLimitedBanner(banner)) limitedSeen.add(id);
       if (isStandardPoolBanner(banner)) standardSeen.add(id);
     }
   }
-  // A student that has only ever appeared on Limited/Festival banners is not
-  // part of the ordinary off-rate pool. The source has reliable banner types
-  // but does not publish a separate limited flag for every student, so infer
-  // this from the historical appearances and keep the result explicitly
-  // approximate in the UI.
-  const limitedOnly = new Set([
-    ...[...limitedSeen].filter((id) => !standardSeen.has(id)),
-    ...all.filter((student) => student.availability === "limited").map((student) => student.id),
-  ]);
+
   const selected = period.banners.find((banner) => banner.id === selectedBannerId) ?? period.banners[0];
   const selectedIsArchive = selected ? isArchive(selected) : false;
+  const selectedIsFes = !!selected && isFesBanner(selected) && !isFesArchive(selected);
+  const fesIds = selectedIsFes ? fesStudentsAt(banners, period) : new Set<number>();
+  // A student that has only appeared on Limited/Festival banners is not part
+  // of the ordinary off-rate pool. Fes anniversary students are the deliberate
+  // exception while a Fes banner is active.
+  const limitedOnly = new Set([
+    ...[...limitedSeen].filter((id) => !standardSeen.has(id)),
+    ...all.filter((student) => student.availability === "limited").map((student) => recruitmentStudentId(student.id)),
+  ]);
   const pool = all.filter((student) => {
-    if (student.id !== recruitmentStudentId(student.id)) return false;
+    const id = recruitmentStudentId(student.id);
+    if (student.id !== id) return false;
     if (student.starGrade < 1 || student.starGrade > 3) return false;
     if (student.availability === "event") return false;
-    if (!selectedIsArchive && (archivedAt.get(student.id) ?? Number.POSITIVE_INFINITY) <= period.startMs) return false;
-    if (limitedOnly.has(student.id)) return false;
-    const first = firstSeen.get(student.id);
-    return first == null || first <= period.startMs;
+    if (!availableAt(student, period, firstSeen)) return false;
+    if (!selectedIsArchive && (archivedAt.get(id) ?? Number.POSITIVE_INFINITY) <= period.startMs) return false;
+    if (limitedOnly.has(id) && !(selectedIsFes && fesIds.has(id))) return false;
+    return true;
   });
+
   const allById = new Map(all.map((student) => [student.id, student]));
-  const featured: CharacterRecord[] = (selected?.characters ?? []).map((student) => allById.get(recruitmentStudentId(student.id)) ?? ({
-    ...student,
-    id: recruitmentStudentId(student.id),
-    pathName: "",
-    club: "",
-  })).filter((student) => student.availability !== "event");
+  const featured: CharacterRecord[] = (selected?.characters ?? [])
+    .map((student) => allById.get(recruitmentStudentId(student.id)) ?? ({
+      ...student,
+      id: recruitmentStudentId(student.id),
+      pathName: "",
+      club: "",
+    }))
+    .filter((student) => student.availability !== "event" && availableAt(student, period, firstSeen));
   const byId = new Map(pool.map((student) => [student.id, student]));
   for (const student of featured) if (!byId.has(student.id)) byId.set(student.id, student);
   return [...byId.values()];
 }
 
 function isLimitedBanner(banner: Banner) {
-  return banner.limited || banner.type === "LimitedGacha" || banner.type === "FesGacha" || banner.type === "SelectPickupFesGacha";
+  return banner.limited || banner.type === "LimitedGacha" || isFesBanner(banner);
 }
 
 function isStandardPoolBanner(banner: Banner) {
   // Select-pickup/archive rows can contain old limited students too, so they
   // are not evidence that a student belongs to the ordinary off-rate pool.
   return banner.type === "PickupGacha";
+}
+
+function distinctStudents(students: CharacterRecord[]) {
+  return [...new Map(students.map((student) => [recruitmentStudentId(student.id), { ...student, id: recruitmentStudentId(student.id) }])).values()];
+}
+
+function addPoolEntries(entries: RecruitmentPoolEntry[], group: PoolGroup, students: CharacterRecord[], totalRate: number) {
+  if (!students.length || totalRate <= 0) return;
+  const rate = totalRate / students.length;
+  for (const student of students) {
+    entries.push({ student, group, rarity: student.starGrade as RecruitmentRarity, rate });
+  }
+}
+
+/** Build the canonical per-student table used by both the dialog and pulls. */
+export function buildRecruitmentPool(all: CharacterRecord[], banners: Banner[], period: RecruitmentPeriod, selectedBannerId?: number): RecruitmentPool {
+  const students = buildStudentPool(all, banners, period, selectedBannerId);
+  const selected = period.banners.find((banner) => banner.id === selectedBannerId) ?? period.banners[0];
+  const isFes = !!selected && isFesBanner(selected) && !isFesArchive(selected);
+  const selectedIds = new Set((selected?.characters ?? []).map((student) => recruitmentStudentId(student.id)));
+  const fesIds = isFes ? fesStudentsAt(banners, period) : new Set<number>();
+  const pickup = students.filter((student) => selectedIds.has(student.id));
+  const fes = students.filter((student) => fesIds.has(student.id) && !selectedIds.has(student.id) && student.starGrade === 3);
+  const regular = students.filter((student) => !selectedIds.has(student.id) && !fesIds.has(student.id));
+  const regularByRarity = (rarity: RecruitmentRarity) => regular.filter((student) => student.starGrade === rarity);
+  const oneRate = isFes ? 75.5 : 78.5;
+  const twoRate = 18.5;
+  const threeRate = isFes ? 6 : 3;
+  const selectable = !!selected && isSelectableBanner(selected);
+  const pickup3 = pickup.filter((student) => student.starGrade === 3);
+  const pickup2 = pickup.filter((student) => student.starGrade === 2);
+  let pickupRate = selectable ? (pickup3.length ? 0.7 : 0) : pickup3.length * 0.7;
+  let pickupTwoRate = selectable ? (pickup2.length ? 0.7 : 0) : Math.min(twoRate, pickup2.length * 3);
+  let fesRate = isFes && fes.length ? 0.9 : 0;
+  let regularThreeRate = threeRate - pickupRate - fesRate;
+  let regularTwoRate = twoRate - pickupTwoRate;
+
+  // The first Fes can have no previous anniversary student. Preserve the full
+  // six-percent 3★ total by folding the unused 0.9% into the regular pool.
+  if (isFes && !fes.length) {
+    regularThreeRate = threeRate - pickupRate;
+    fesRate = 0;
+  }
+  // Keep synthetic/minimal pools drawable without inventing a student: move a
+  // missing category's share into the closest available 3★ category.
+  if (!regularByRarity(3).length && regularThreeRate > 0) {
+    if (fes.length) fesRate += regularThreeRate;
+    else if (pickup3.length) pickupRate += regularThreeRate;
+    regularThreeRate = 0;
+  }
+  if (!regularByRarity(2).length && regularTwoRate > 0) {
+    if (pickup2.length) pickupTwoRate += regularTwoRate;
+    regularTwoRate = 0;
+  }
+
+  const entries: RecruitmentPoolEntry[] = [];
+  addPoolEntries(entries, "pickup", pickup3, pickupRate);
+  addPoolEntries(entries, "pickup", pickup2, pickupTwoRate);
+  addPoolEntries(entries, "fes", fes, fesRate);
+  addPoolEntries(entries, "regular", regularByRarity(3), regularThreeRate);
+  addPoolEntries(entries, "regular", regularByRarity(2), regularTwoRate);
+  addPoolEntries(entries, "regular", regularByRarity(1), oneRate);
+
+  return {
+    students,
+    entries,
+    isFes,
+    rarityRates: { "1": oneRate, "2": 18.5, "3": threeRate },
+  };
 }
 
 export function makeInitialState(period: RecruitmentPeriod, bannerId: number, system: SimulatorSystem): SimulatorState {
@@ -269,31 +425,57 @@ export function switchPeriod(state: SimulatorState, period: RecruitmentPeriod, b
   };
 }
 
-function pick<T>(items: T[], rng: () => number): T {
-  return items[Math.min(items.length - 1, Math.floor(rng() * items.length))];
-}
-
-function selectedFeatured(context: SimulationContext) {
+function featuredFromBanner(context: SimulationContext) {
   const byId = new Map(context.pool.map((student) => [student.id, student]));
-  const students = context.banner.characters.filter((student) => student.availability !== "event").map((student) => byId.get(recruitmentStudentId(student.id)) ?? ({
-    ...student,
-    id: recruitmentStudentId(student.id),
-    pathName: "",
-    club: "",
-  }));
-  return [...new Map(students.map((student) => [student.id, student])).values()];
+  const students = context.banner.characters
+    .filter((student) => student.availability !== "event")
+    .map((student) => byId.get(recruitmentStudentId(student.id)) ?? ({
+      ...student,
+      id: recruitmentStudentId(student.id),
+      pathName: "",
+      club: "",
+    }));
+  return distinctStudents(students);
 }
 
-function randomStudent(context: SimulationContext, rarity: 1 | 2 | 3, rng: () => number, featuredChance: number): { student: CharacterRecord; featured: boolean } {
-  const featured = selectedFeatured(context).filter((student) => student.starGrade === rarity);
-  if (rarity === 3 && featured.length && rng() < featuredChance) {
-    return { student: pick(featured, rng), featured: true };
+function fallbackRecruitmentPool(context: SimulationContext): RecruitmentPool {
+  const pickup = featuredFromBanner(context);
+  return makeFallbackDistribution(distinctStudents([...context.pool, ...pickup]), pickup, context.banner.type.includes("Fes"), isSelectableBanner(context.banner));
+}
+
+function makeFallbackDistribution(students: CharacterRecord[], pickup: CharacterRecord[], isFes: boolean, selectable = false): RecruitmentPool {
+  const selectedIds = new Set(pickup.map((student) => student.id));
+  const three = students.filter((student) => student.starGrade === 3 && !selectedIds.has(student.id));
+  const entries: RecruitmentPoolEntry[] = [];
+  const oneRate = isFes ? 75.5 : 78.5;
+  const twoRate = 18.5;
+  const threeRate = isFes ? 6 : 3;
+  const pickup3 = pickup.filter((student) => student.starGrade === 3);
+  const pickup2 = pickup.filter((student) => student.starGrade === 2);
+  const pickupRate = selectable ? (pickup3.length ? 0.7 : 0) : Math.min(threeRate, pickup3.length * 0.7);
+  const pickupTwoRate = selectable ? (pickup2.length ? 0.7 : 0) : Math.min(twoRate, pickup2.length * 3);
+  addPoolEntries(entries, "pickup", pickup3, pickupRate);
+  addPoolEntries(entries, "pickup", pickup2, pickupTwoRate);
+  addPoolEntries(entries, "regular", three, Math.max(0, threeRate - pickupRate));
+  addPoolEntries(entries, "regular", students.filter((student) => student.starGrade === 2 && !selectedIds.has(student.id)), Math.max(0, twoRate - pickupTwoRate));
+  addPoolEntries(entries, "regular", students.filter((student) => student.starGrade === 1), oneRate);
+  return { students, entries, isFes, rarityRates: { "1": oneRate, "2": twoRate, "3": threeRate } };
+}
+
+function selectedPool(context: SimulationContext) {
+  return context.recruitmentPool ?? fallbackRecruitmentPool(context);
+}
+
+function weightedPick(entries: RecruitmentPoolEntry[], rng: () => number) {
+  if (!entries.length) return undefined;
+  const total = entries.reduce((sum, entry) => sum + Math.max(0, entry.rate), 0);
+  if (total <= 0) return entries[entries.length - 1];
+  let target = rng() * total;
+  for (const entry of entries) {
+    target -= Math.max(0, entry.rate);
+    if (target < 0) return entry;
   }
-  const selectedIds = new Set(selectedFeatured(context).map((student) => student.id));
-  const other = context.pool.filter((student) => student.starGrade === rarity && !selectedIds.has(student.id));
-  if (other.length) return { student: pick(other, rng), featured: false };
-  if (featured.length) return { student: pick(featured, rng), featured: true };
-  return { student: pick(context.pool, rng), featured: false };
+  return entries[entries.length - 1];
 }
 
 function drawOne(state: SimulatorState, context: SimulationContext, source: PullSource, tenIndex: number, rng: () => number): { state: SimulatorState; result: PullResult } {
@@ -303,39 +485,33 @@ function drawOne(state: SimulatorState, context: SimulationContext, source: Pull
   const hard = state.system === "charge" && chargePull >= 200;
   const soft = state.system === "charge" && beforeCharge < 100 && chargePull >= 100;
   const forcedTwo = tenIndex === 9;
-  const threeRate = context.banner.type.includes("Fes") ? 0.06 : 0.03;
-  let rarity: 1 | 2 | 3;
+  const pool = selectedPool(context);
+  const entries3 = pool.entries.filter((entry) => entry.rarity === 3);
+  const pickup3 = entries3.filter((entry) => entry.group === "pickup");
   let forced: PullResult["forced"] = "none";
+  let candidates: RecruitmentPoolEntry[];
   let forceFeatured = false;
 
   if (hard) {
-    rarity = 3;
     forced = "hard-pity";
     forceFeatured = true;
+    candidates = pickup3.length ? pickup3 : entries3;
   } else if (soft) {
-    rarity = 3;
     forced = "soft-pity";
     forceFeatured = rng() < 0.5;
+    candidates = forceFeatured && pickup3.length ? pickup3 : entries3;
   } else if (forcedTwo) {
-    rarity = rng() < threeRate / (threeRate + 0.185) ? 3 : 2;
     forced = "two-star";
+    candidates = pool.entries.filter((entry) => entry.rarity >= 2);
   } else {
-    const roll = rng();
-    rarity = roll < threeRate ? 3 : roll < threeRate + 0.185 ? 2 : 1;
+    candidates = pool.entries;
   }
 
-  const selected = selectedFeatured(context).filter((student) => student.starGrade === rarity);
-  let student: CharacterRecord;
-  let featured = false;
-  if (forceFeatured && selected.length) {
-    student = pick(selected, rng);
-    featured = true;
-  } else {
-    const featuredChance = rarity === 3 ? Math.min(1, (0.007 * selected.length) / threeRate) : 0;
-    const drawn = randomStudent(context, rarity, rng, featuredChance);
-    student = drawn.student;
-    featured = drawn.featured;
-  }
+  const drawn = weightedPick(candidates, rng);
+  if (!drawn) throw new Error("This banner has no recruitable students in the historical pool.");
+  const rarity = drawn.rarity;
+  const student = drawn.student;
+  const featured = drawn.group === "pickup";
 
   let next = {
     ...state,
@@ -403,7 +579,7 @@ export function resolvePulls(state: SimulatorState, context: SimulationContext, 
 
 export function exchangeSpark(state: SimulatorState, context: SimulationContext, studentId: number): SimulatorState {
   if (state.system !== "spark" || state.points < 200) throw new Error("200 Recruitment Points are required to exchange.");
-  const student = selectedFeatured(context).find((candidate) => candidate.id === recruitmentStudentId(studentId));
+  const student = featuredFromBanner(context).find((candidate) => candidate.id === recruitmentStudentId(studentId));
   if (!student) throw new Error("Choose a student currently featured on this period.");
   state = normalizeRecruitmentCollection(state);
   const duplicate = state.ownedIds.includes(student.id);
