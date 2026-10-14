@@ -1,17 +1,21 @@
 <!doctype html>
 <!--
-  Crawler-visible entry for the calendar route.
+  Route document for /calendar.
 
-  The app routes by URL fragment, and fragments never reach the server, so
-  `/#/calendar` and `/#/about` are the same document to any crawler. This shim is
-  a real, distinct document carrying the calendar's metadata; it then forwards
-  to the hash route so the SPA takes over. Share the `.html` URL, not the
-  fragment.
+  Path-based, not hash-based: a URL fragment never reaches the server, so
+  `/#/calendar` and `/#/simulator` are the same bytes to a crawler and every
+  shared link produced the same social card. Each route therefore has its own
+  file, and this one carries the calendar's metadata. See src/client/route.ts.
 
-  The og:image URL must be absolute, so unlike src/client/seo.ts (which resolves
-  against location.origin) it is hardcoded here. Update the origin literals in
-  this file, public/simulator.html, public/about.html, public/sitemap.xml and
-  index.html if the site moves to another domain.
+  It sits flat beside index.html rather than in a subdirectory, which is what
+  keeps every relative asset URL (./assets/..., ./data/...) resolving correctly
+  from any route at any subpath.
+
+  The og:image URL must be absolute and static HTML cannot compute it, so the
+  origin is hardcoded here. Update it here, in index.html, simulator.html,
+  about.html and sitemap.xml if the site moves to another domain. The runtime
+  copy in src/client/seo.ts resolves against location.href and follows the
+  domain by itself.
 -->
 <html lang="en">
   <head>
@@ -54,10 +58,7 @@
     />
   </head>
   <body>
-    <p>Loading the calendar… <a href="./#/calendar">Shittim Chest</a></p>
-    <script>
-      // replace, not assign, so Back does not bounce through this shim again.
-      location.replace("./#/calendar");
-    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/client/main.tsx"></script>
   </body>
 </html>

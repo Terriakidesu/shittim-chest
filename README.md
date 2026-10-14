@@ -73,41 +73,57 @@ token and runs `scripts/weekly-refresh.sh`, so no workflow files are needed
 here. Without any Actions access, use the local weekly refresh instead
 (next section).
 
-Routes live in the URL hash (`#/calendar`, `#/simulator`, `#/about`), so no
-server rewrite rules are needed. `public/404.html` forwards legacy
-path-based links (`/calendar`, `/simulator?...`, `/about`) to their hash
-equivalents.
+Routes are path-based (`/calendar`, `/simulator`, `/about`) because GitHub
+Pages has no rewrite rules, and each route is a real document so it can carry
+its own metadata. See "Routing and SEO" below. `public/404.html` forwards
+trailing-slash and legacy hash URLs.
 
-## SEO and social previews
+## Routing and SEO
 
-Because a URL fragment never reaches the server, `/#/calendar` and `/#/about`
-are the *same document* to any crawler, and social scrapers parse raw HTML
-without running JavaScript. So each route also has a real static document
-carrying its own metadata:
+Routes are **path-based**: `/`, `/calendar`, `/simulator`, `/about`. GitHub
+Pages serves an extensionless URL from the matching `.html` file, so
+`/calendar` and `/calendar.html` are the same document and both work.
+
+This was not always so — the app originally routed by URL fragment. A fragment
+is never sent to the server, which made `/#/calendar` and `/#/simulator` the
+same bytes to any crawler, and every shared link produced the same preview. Now
+each route is a real document and carries its own:
 
 | Route | Share/crawl URL | Social image |
 | --- | --- | --- |
 | Lobby | `/` | `public/og/home.png` |
-| Calendar | `/calendar.html` | `public/og/calendar.png` |
-| Simulator | `/simulator.html` | `public/og/simulator.png` |
-| About | `/about.html` | `public/og/about.png` |
+| Calendar | `/calendar` | `public/og/calendar.png` |
+| Simulator | `/simulator` | `public/og/simulator.png` |
+| About | `/about` | `public/og/about.png` |
 
-The `public/*.html` shims hold the crawler-visible title, description,
-canonical, Open Graph and Twitter tags, then forward to the matching hash
-route. `src/client/seo.ts` holds the same copy in `ROUTE_META` and applies it
-on in-app navigation. **Edit both together** — nothing checks that they agree.
-`public/robots.txt` and `public/sitemap.xml` list only the static entries.
+Two things follow from this and are easy to break:
 
-Two things to know before touching this area:
+- **Route documents are flat siblings of `index.html`**, never
+  `calendar/index.html`, and they are Vite build entries (see `vite.config.ts`).
+  A subdirectory would make every relative asset URL (`./assets/...`,
+  `./data/...`) resolve one level too deep. All four entries load the same
+  `main.tsx`, and Rollup emits one shared chunk, so the extra entries cost three
+  small HTML files and no duplicated JavaScript.
+- **`og:image` must be absolute, and static HTML cannot compute it**, so the
+  origin is hardcoded in five files: `index.html`, the three route documents,
+  and `sitemap.xml`. A domain change means editing all five. The runtime copy in
+  `src/client/seo.ts` resolves against `location.href` instead, so it follows
+  the domain by itself. Nothing checks that the two copies agree.
 
-- **`og:image` must be absolute and a static shim cannot compute it**, so
-  `index.html`, the three shims and `sitemap.xml` hardcode
-  `https://terriakidesu.github.io/shittim-chest/`. A domain change means
-  updating all five. The runtime copy in `seo.ts` resolves against
-  `location.href` instead, so it follows the domain by itself.
-- **The cards in `public/og/` are prepared offline, not built.** They render
-  from `scripts/og/template.html`, which documents the exact steps; each card's
-  background reuses that route's lobby art from `public/ba-lobby/`.
+`public/404.html` forwards the shapes that still need handling: trailing-slash
+URLs (`/calendar/`) and pre-migration hash links. `src/client/route.ts`
+(`redirectLegacyHash`) catches the hash case in JS, because `/#/simulator`
+resolves to a valid `/` and never reaches `404.html` at all.
+
+Navigation between routes is a real page load. That is the trade for correct
+previews; a `pushState` router would restore SPA smoothness, but the served
+HTML would then only be right on a cold load.
+
+The cards in `public/og/` are prepared offline from `scripts/og/template.html`,
+which documents the exact steps. To exercise Pages' own URL resolution
+(extensionless files, `404.html` fallback) locally, use
+`python3 scripts/pageslike-server.py dist 4328` — `vite preview` does not
+reproduce either behaviour.
 
 ## Provenance & rights
 

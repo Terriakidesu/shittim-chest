@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { api, asset, emblemUrl, type Banner, type CharacterRecord, type Server } from "./api";
 import { IconChevronLeft, IconChevronRight, IconClose, IconRotate, IconStar, Stars } from "./components/icons";
-import { hashQuery, link } from "./route";
+import { link, query } from "./route";
 import { REQUEST_REVEAL_PEAK_MS, useRecruitmentAudio, type RecruitmentPlayback, type RecruitmentSound } from "./recruitmentAudio";
 import { CARD_FLIP_MS, DISPATCH_DEPARTURE_MS, RESULTS_SETTLE_MS, cardImpactMs, portraitEntranceMs } from "./recruitmentTiming";
 import { ThemeSwitch } from "./components/ThemeSwitch";
@@ -54,7 +54,7 @@ export function Simulator() {
   const [server, setServer] = useState<Server>(() => requestedServer());
   const [banners, setBanners] = useState<Banner[]>([]);
   const [characters, setCharacters] = useState<CharacterRecord[]>([]);
-  const [periodKey, setPeriodKey] = useState(() => hashQuery().get("period") ?? "");
+  const [periodKey, setPeriodKey] = useState(() => query().get("period") ?? "");
   const [mode, setMode] = useState<Mode>("historical");
   const [state, setState] = useState<SimulatorState | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -146,7 +146,7 @@ export function Simulator() {
   const period = periods.find((candidate) => candidate.key === periodKey) ?? periods[0];
   const historical = period && period.banners[0] ? historicalSystem(period, period.banners.find((banner) => banner.id === state?.bannerId) ?? period.banners[0]) : null;
   const effectiveSystem: SimulatorSystem = mode === "historical" ? (historical?.system ?? "spark") : mode;
-  const requestedBannerId = Number(hashQuery().get("banner"));
+  const requestedBannerId = Number(query().get("banner"));
   const defaultBanner = period?.banners.find((banner) => banner.id === requestedBannerId) ?? period?.banners[0];
   const selectedBanner = period?.banners.find((banner) => banner.id === state?.bannerId) ?? defaultBanner;
   const recruitmentPool = useMemo(() => period ? buildRecruitmentPool(characters, banners, period, selectedBanner?.id) : null, [characters, banners, period, selectedBanner?.id]);
@@ -757,5 +757,5 @@ function systemLabel(system: SimulatorSystem) {
 }
 
 function requestedServer(): Server {
-  return hashQuery().get("server") === "JP" ? "JP" : "GL";
+  return query().get("server") === "JP" ? "JP" : "GL";
 }

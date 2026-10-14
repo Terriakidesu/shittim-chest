@@ -1,10 +1,10 @@
 # Shittim Chest — Blue Archive gacha calendar (unofficial fan project)
 #
-# Crawlable documents are the four HTML entries below. The app itself routes by
-# URL fragment, and fragments are never sent to the server, so `/#/calendar` and
-# `/#/about` are indistinguishable to a crawler. public/calendar.html,
-# public/simulator.html and public/about.html carry each route's metadata and
-# forward to the fragment route.
+# Crawlable documents are the four route HTML files at the site root. The app
+# routes by path, and GitHub Pages serves an extensionless URL from the matching
+# .html file, so /calendar and /calendar.html are the same resource. Those
+# documents carry each route's metadata; public/404.html forwards trailing-slash
+# and pre-migration hash URLs.
 User-agent: *
 Allow: /
 

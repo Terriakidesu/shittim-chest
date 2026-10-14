@@ -1,9 +1,9 @@
 <!doctype html>
 <!--
-  Crawler-visible entry for the about/credits route.
+  Route document for /about.
 
-  See public/calendar.html for why a per-route shim is needed, and for the
-  hardcoded-origin caveat.
+  See calendar.html for why routes are path-based rather than hash-based, why
+  this file sits flat beside index.html, and for the hardcoded-origin caveat.
 -->
 <html lang="en">
   <head>
@@ -28,10 +28,7 @@
     <meta property="og:image" content="https://terriakidesu.github.io/shittim-chest/og/about.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta
-      property="og:image:alt"
-      content="Credits and data sources for Shittim Chest"
-    />
+    <meta property="og:image:alt" content="Credits and data sources for Shittim Chest" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="About &amp; Credits — Shittim Chest" />
@@ -46,9 +43,7 @@
     />
   </head>
   <body>
-    <p>Loading… <a href="./#/about">Shittim Chest</a></p>
-    <script>
-      location.replace("./#/about");
-    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/client/main.tsx"></script>
   </body>
 </html>

@@ -1,38 +1,30 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import { Home } from "./Home";
 import { Simulator } from "./Simulator";
 import { About } from "./About";
 import { SiteFooter } from "./components/SiteFooter";
-import { routeFromHash } from "./route";
+import { currentRoute, redirectLegacyHash } from "./route";
 import { applySeo } from "./seo";
 import "./styles.css";
 import { initializeTheme } from "./theme";
 
 initializeTheme();
+// Before first paint, so an old shared #/simulator link lands on the simulator
+// rather than silently rendering the lobby.
+redirectLegacyHash();
 
+/**
+ * Each route is its own HTML document, so the route is fixed for the lifetime
+ * of this component: there is nothing to listen for. Changing routes is a real
+ * page load, which is what lets the server return route-specific metadata to a
+ * crawler. Deep-link query parameters are read-only, so changing one is also a
+ * page load, and the query-driven views mount without needing a remount key.
+ */
 function Shell() {
-  // Track the raw hash (not just the route) so query-only changes — e.g. one
-  // simulator deep link to another — remount the query-driven views.
-  // Bare `#fragment` links (about-page sections) are in-page anchors and
-  // must not change the route.
-  const [hash, setHash] = useState(() => window.location.hash);
-  useEffect(() => {
-    const onHash = () => {
-      const next = window.location.hash;
-      if (next === "" || next === "#" || next.startsWith("#/")) {
-        setHash(next);
-        window.scrollTo(0, 0);
-      }
-    };
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-  const route = routeFromHash(hash);
-  useEffect(() => {
-    applySeo(route);
-  }, [route]);
+  const route = currentRoute();
+  applySeo(route);
   const isHome = route === "/";
   return (
     <React.StrictMode>
@@ -41,7 +33,7 @@ function Shell() {
       ) : route === "/about" ? (
         <About />
       ) : route === "/simulator" ? (
-        <Simulator key={hash} />
+        <Simulator />
       ) : (
         <App />
       )}

@@ -9,19 +9,28 @@
   <body>
     <p>Redirecting… <a id="fallback" href="./">Shittim Chest</a></p>
     <script>
-      // Compatibility shim for the old path-based URLs (/calendar,
-      // /simulator?..., /about). The static site routes by hash, and GitHub
-      // Pages has no rewrite rules, so any legacy deep link lands here and is
-      // forwarded to its hash equivalent, preserving the query string.
+      // GitHub Pages serves no rewrite rules, so anything that is not a real
+      // file lands here. Normalise the two shapes that should still work:
+      // a trailing-slash form (/calendar/) and any pre-migration hash link
+      // (#/calendar, /#/simulator), which is what older bookmarks and shared
+      // links use. Everything else falls back to the calendar.
       (function () {
+        var KNOWN = { calendar: 1, simulator: 1, about: 1 };
         var parts = window.location.pathname.split("/").filter(Boolean);
-        var last = parts.length ? parts[parts.length - 1] : "";
-        var known = { calendar: 1, simulator: 1, about: 1 };
-        var route = known[last] ? last : "calendar";
-        var base = known[last]
-          ? "/" + parts.slice(0, -1).join("/") + "/"
-          : window.location.pathname.replace(/\/?$/, "/");
-        var target = base + "#/" + route + window.location.search;
+        var last = (parts.length ? parts[parts.length - 1] : "").replace(/\.html$/i, "");
+
+        // A legacy hash route wins over the path: /#/simulator means simulator.
+        var hashRoute = /^#\/?(calendar|simulator|about)/.exec(window.location.hash);
+        if (hashRoute) last = hashRoute[1];
+
+        // Rebuild the path inside this directory. Careful at the domain root:
+        // joining an empty parent yields "//", which is a protocol-relative URL
+        // and would resolve to a bogus host.
+        var parent = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+        var prefix = parent ? "/" + parent + "/" : "/";
+        var target = KNOWN[last]
+          ? prefix + last + ".html" + window.location.search
+          : prefix + "calendar.html" + window.location.search;
         document.getElementById("fallback").href = target;
         window.location.replace(target);
       })();

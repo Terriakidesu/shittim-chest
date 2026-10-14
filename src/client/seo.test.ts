@@ -16,15 +16,20 @@ describe("absoluteFrom", () => {
     );
   });
 
-  test("does not double up the subpath when served from a shim", () => {
+  test("resolves the same from a sibling route document", () => {
+    // Every route is a flat sibling of index.html, so a route file must reach
+    // the same assets the lobby does. A subdirectory would break this.
     expect(
-      absoluteFrom("https://terriakidesu.github.io/shittim-chest/calendar.html", "./calendar.html"),
-    ).toBe("https://terriakidesu.github.io/shittim-chest/calendar.html");
+      absoluteFrom("https://terriakidesu.github.io/shittim-chest/calendar.html", "./og/calendar.png"),
+    ).toBe("https://terriakidesu.github.io/shittim-chest/og/calendar.png");
+    expect(
+      absoluteFrom("https://terriakidesu.github.io/shittim-chest/about.html", "./data/status.json"),
+    ).toBe("https://terriakidesu.github.io/shittim-chest/data/status.json");
   });
 
-  test("ignores the hash fragment", () => {
-    expect(absoluteFrom(`${PAGES}#/simulator`, "./og/simulator.png")).toBe(
-      "https://terriakidesu.github.io/shittim-chest/og/simulator.png",
+  test("ignores a trailing hash", () => {
+    expect(absoluteFrom(`${PAGES}#/calendar`, "./og/calendar.png")).toBe(
+      "https://terriakidesu.github.io/shittim-chest/og/calendar.png",
     );
   });
 
@@ -59,12 +64,21 @@ describe("ROUTE_META", () => {
     expect(seen.size).toBe(routes.length);
   });
 
-  test("share paths and image paths are the site's own shims", () => {
+  test("share paths match the route documents that actually exist", () => {
+    // A share path with no corresponding file is a dead canonical URL and a
+    // preview with no metadata, and nothing else in the build would catch it.
+    expect(ROUTE_META["/"].share).toBe("./");
+    expect(ROUTE_META["/calendar"].share).toBe("./calendar.html");
+    expect(ROUTE_META["/simulator"].share).toBe("./simulator.html");
+    expect(ROUTE_META["/about"].share).toBe("./about.html");
+  });
+
+  test("image paths are the site's own social cards", () => {
     for (const route of routes) {
       const m = ROUTE_META[route];
-      expect(m.share).toStartWith("./");
       // A typo here yields a 404 social card that no local check would catch.
       expect(m.image).toStartWith("og/");
+      expect(absoluteFrom(PAGES, "./" + m.image)).toEndWith(".png");
     }
   });
 });
