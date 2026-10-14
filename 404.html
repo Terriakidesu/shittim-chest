@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shittim Chest — Gacha Calendar</title>
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <p>Redirecting… <a id="fallback" href="./">Shittim Chest</a></p>
+    <script>
+      // Compatibility shim for the old path-based URLs (/calendar,
+      // /simulator?..., /about). The static site routes by hash, and GitHub
+      // Pages has no rewrite rules, so any legacy deep link lands here and is
+      // forwarded to its hash equivalent, preserving the query string.
+      (function () {
+        var parts = window.location.pathname.split("/").filter(Boolean);
+        var last = parts.length ? parts[parts.length - 1] : "";
+        var known = { calendar: 1, simulator: 1, about: 1 };
+        var route = known[last] ? last : "calendar";
+        var base = known[last]
+          ? "/" + parts.slice(0, -1).join("/") + "/"
+          : window.location.pathname.replace(/\/?$/, "/");
+        var target = base + "#/" + route + window.location.search;
+        document.getElementById("fallback").href = target;
+        window.location.replace(target);
+      })();
+    </script>
+  </body>
+</html>

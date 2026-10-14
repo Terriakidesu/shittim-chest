@@ -1,0 +1,21 @@
+<!-- Vector interpretation of the angular Shittim Chest S reference.
+     Drawn as polygons; no reference image is embedded. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 140" fill="none">
+  <style>
+    .face { fill: #173554; }
+    .edge { fill: #00bcd4; }
+    @media (prefers-color-scheme: dark) {
+      .face { fill: #edf5ff; }
+      .edge { fill: #51e3f2; }
+    }
+  </style>
+  <g class="edge" transform="translate(5 0)">
+    <path d="M16 8H75L90 29H2ZM60 31H90L75 52ZM30 31 59 73 43 94 16 52ZM60 75 90 116 75 138H17L3 117 17 95 32 116H62L45 96Z" />
+  </g>
+  <g class="face">
+    <path d="M16 8H75L90 29H2Z" />
+    <path d="M60 31H90L75 52Z" />
+    <path d="M30 31 59 73 43 94 16 52Z" />
+    <path d="M60 75 90 116 75 138H17L3 117 17 95 32 116H62L45 96Z" />
+  </g>
+</svg>
