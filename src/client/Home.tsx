@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ThemeSwitch } from "./components/ThemeSwitch";
 import { DecoShapes, IconPlay } from "./components/icons";
-import { asset } from "./api";
+import { api, asset } from "./api";
 import { link } from "./route";
 import "./lobby.css";
 
@@ -16,6 +16,20 @@ export function Home() {
   // or nighttime with Plana. Picked once, never re-rolled mid-visit.
   const [variant] = useState<"day" | "night">(() => (Math.random() < 0.5 ? "day" : "night"));
   const isDay = variant === "day";
+  // Forecast snapshot date, so the lobby shows the site's last update.
+  const [updatedMs, setUpdatedMs] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.status().then(
+      (s) => { if (live) setUpdatedMs(s.exportedAtMs ?? null); },
+      () => { /* keep the generic refresh note */ },
+    );
+    return () => { live = false; };
+  }, []);
+  const updatedLabel =
+    updatedMs != null
+      ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(updatedMs)
+      : null;
   // Background via inline style so the URL stays base-relative: an absolute
   // `/ba-lobby/...` reference in CSS would break under a repository subpath.
   const background = asset(isDay ? "ba-lobby/classroom-day.webp" : "ba-lobby/classroom-night.webp");
@@ -41,7 +55,7 @@ export function Home() {
           {destinations.slice(2).map(item => <a key={item.href} className={`lobby-tile ${item.className}`} href={item.href}>
             <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" /><div className="lobby-tile-caption"><strong>{item.name}</strong><span>{item.detail}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
           </a>)}
-          <p className="lobby-disclaimer">Forecasts are estimates.<br />Simulated recruitment uses no real currency.</p>
+          <p className="lobby-disclaimer">Forecasts are estimates.<br />Simulated recruitment uses no real currency.<br />{updatedLabel ? `Forecast data updated ${updatedLabel}.` : "Forecast data refreshes weekly."}</p>
         </div>
       </nav>
     </section>
