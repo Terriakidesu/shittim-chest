@@ -383,7 +383,7 @@ export function Simulator() {
               <div className="sim-hero-copy">
                 <div className="sim-period-banners" role="group" aria-label="Concurrent recruitment banners">
                   {period.banners.map((banner) => <button key={banner.id} aria-pressed={selectedBanner.id === banner.id} aria-label={`${banner.characters.map((student) => student.name).join(" / ") || banner.code} · ${banner.rerun ? "Rerun" : "Pick-up"}${banner.limited ? " · Limited" : ""}`} title={`${banner.characters.map((student) => student.name).join(" / ") || banner.code} · ${banner.rerun ? "Rerun" : "Pick-up"}${banner.limited ? " · Limited" : ""}`} className={`sim-banner-tab ${selectedBanner.id === banner.id ? "on" : ""}`} onClick={() => chooseBanner(banner.id)}>
-                    {banner.imageUrl ? <img className="sim-tab-banner-art" src={asset(banner.imageUrl)} alt="" /> : banner.characters[0] && <img src={asset(banner.characters[0].avatar)} alt="" />}
+                    {banner.imageUrl ? <img className="sim-tab-banner-art" src={asset(banner.imageUrl)} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : banner.characters[0] && <img src={asset(banner.characters[0].avatar)} alt="" />}
                     {!banner.imageUrl && <span><strong>{banner.characters.map((student) => student.name).join(" / ") || banner.code}</strong><small>{banner.rerun ? "Rerun" : "Pick-up"}{banner.limited ? " · Limited" : ""}</small></span>}
                   </button>)}
                 </div>
