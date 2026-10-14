@@ -42,6 +42,23 @@ workflow runs `bun run export` in CI, commits the refreshed
 then redeploys. The calendar shows the snapshot date from `status.json`, so
 stale data is visible rather than silent.
 
+## Deploying to GitHub Pages
+
+1. Push this repository to GitHub (default branch `main`).
+2. Open **Settings → Pages** and set **Source** to **GitHub Actions**.
+3. Push to `main` (or run the `pages` workflow manually). The site deploys
+   from `dist/`; no branch publishing or Jekyll is involved (`.nojekyll`
+   is shipped, and all URLs are relative so a `user.github.io/repo`
+   subpath works as-is).
+4. The `forecast` workflow needs no secrets: it uses the default
+   `GITHUB_TOKEN` with `contents: write` to commit the weekly snapshot,
+   which in turn triggers a redeploy.
+
+Routes live in the URL hash (`#/calendar`, `#/simulator`, `#/about`), so no
+server rewrite rules are needed. `public/404.html` forwards legacy
+path-based links (`/calendar`, `/simulator?...`, `/about`) to their hash
+equivalents.
+
 ## Provenance & rights
 
 Banner history: Blue Archive Wiki. Character metadata, portraits and
