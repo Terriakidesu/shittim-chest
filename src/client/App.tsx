@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ThemeSwitch } from "./components/ThemeSwitch";
+import { IconChevronLeft, IconChevronRight, IconClose, IconExternal } from "./components/icons";
 import {
   api,
   asset,
@@ -239,7 +240,7 @@ export function App() {
           <p className="tagline">
             Live on the Japanese server, and when Global is expected to catch up.
           </p>
-          <a className="simulator-link" href={link.simulator}>Open recruitment simulator ↗</a>
+          <a className="simulator-link" href={link.simulator}>Open recruitment simulator <IconExternal /></a>
           <div className="calendar-theme"><ThemeSwitch /><a className="about-link" href={link.about}>About &amp; credits</a></div>
         </div>
         <div className="pills">
@@ -316,9 +317,9 @@ export function App() {
       <main className="layout">
         <section className="panel calendar">
           <div className="calendar-head">
-            <button className="nav" onClick={() => shift(-1)} aria-label="Previous month">‹</button>
+            <button className="nav" onClick={() => shift(-1)} aria-label="Previous month"><IconChevronLeft /></button>
             <h2>{MONTH_NAMES[month - 1]} {year}</h2>
-            <button className="nav" onClick={() => shift(1)} aria-label="Next month">›</button>
+            <button className="nav" onClick={() => shift(1)} aria-label="Next month"><IconChevronRight /></button>
             <button className="btn ghost" onClick={() => setCursor(today)}>
               <span>Today</span>
             </button>
@@ -559,7 +560,7 @@ function Pager({
         onClick={() => onChange(page - 1)}
         aria-label="Previous page"
       >
-        ‹
+        <IconChevronLeft />
       </button>
       <span className="pinfo">
         Page {page + 1} / {pages}
@@ -570,7 +571,7 @@ function Pager({
         onClick={() => onChange(page + 1)}
         aria-label="Next page"
       >
-        ›
+        <IconChevronRight />
       </button>
     </div>
   );
@@ -625,7 +626,7 @@ function Detail({
         {banner ? "Banner detail" : "Select a banner"}
         {banner ? (
           <button className="nav" onClick={onClose} aria-label="Close" style={{ marginLeft: "auto" }}>
-            ×
+            <IconClose />
           </button>
         ) : (
           <span className="section-note">Details</span>
@@ -716,7 +717,7 @@ function DetailBody({ banner, tz }: { banner: Banner; tz: string }) {
 
       {p && <p className="disclaimer">{p.explanation} {p.method !== "scheduled" && "Estimate only, not an announcement."}</p>}
       {!p && banner.forecastStatus === "unresolved" && <p className="disclaimer">No reliable Global correspondence or date estimate is available.</p>}
-      <a className="sim-detail-link" href={`#/simulator?server=${banner.server}&period=${encodeURIComponent(`${banner.server}:${banner.startMs}`)}&banner=${banner.id}`}>Open this period in the recruitment simulator ↗</a>
+      <a className="sim-detail-link" href={`#/simulator?server=${banner.server}&period=${encodeURIComponent(`${banner.server}:${banner.startMs}`)}&banner=${banner.id}`}>Open this period in the recruitment simulator <IconExternal /></a>
     </>
   );
 }

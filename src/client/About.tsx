@@ -1,4 +1,5 @@
 import { ThemeSwitch } from "./components/ThemeSwitch";
+import { IconChevronLeft } from "./components/icons";
 import { asset } from "./api";
 import { link } from "./route";
 
@@ -21,7 +22,7 @@ const software = [
 export function About() {
   return <main className="about-page">
     <header className="about-header">
-      <div><a className="back-link" href={link.calendar}>‹ Calendar</a><span className="sim-kicker">Shittim Chest</span><h1>About &amp; credits</h1><p>An unofficial Blue Archive calendar, Global arrival forecast, and recruitment simulator.</p></div>
+      <div><a className="back-link" href={link.calendar}><IconChevronLeft /> Calendar</a><span className="sim-kicker">Shittim Chest</span><h1>About &amp; credits</h1><p>An unofficial Blue Archive calendar, Global arrival forecast, and recruitment simulator.</p></div>
       <ThemeSwitch />
     </header>
 

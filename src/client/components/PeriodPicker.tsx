@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { IconCheck, IconChevronDown } from "./icons";
 
 export interface PeriodOption { value: string; dates: string; names: string; detail: string }
 
@@ -52,7 +53,7 @@ export function PeriodPicker({ options, value, disabled, onChange }: { options: 
       else {
         setQuery(""); setActive(Math.max(0, options.findIndex((option) => option.value === value))); place(); popup.current?.showPopover();
       }
-    }}><span id={`${id}-value`}><strong>{selected?.dates ?? "Choose a period"}</strong><span>{selected?.names}</span><small>{selected?.detail}</small></span><b aria-hidden="true">⌄</b></button>
+    }}><span id={`${id}-value`}><strong>{selected?.dates ?? "Choose a period"}</strong><span>{selected?.names}</span><small>{selected?.detail}</small></span><b aria-hidden="true"><IconChevronDown /></b></button>
     <div ref={popup} id={`${id}-popup`} className="period-picker-popup" role="dialog" aria-label="Choose recruitment period" popover="auto" style={position} onToggle={(event) => {
       const visible = event.currentTarget.matches(":popover-open"); setOpen(visible);
       if (visible) search.current?.focus();
@@ -67,7 +68,7 @@ export function PeriodPicker({ options, value, disabled, onChange }: { options: 
       }} /></div>
       <div className="period-picker-list" id={`${id}-list`} role="listbox" aria-label="Recruitment periods">
         {filtered.map((option, index) => <div role="option" id={`${id}-option-${index}`} aria-selected={option.value === value} className={`period-picker-option ${index === activeIndex ? "is-active" : ""}`} key={option.value} onPointerDown={(event) => { if (event.pointerType === "mouse") event.preventDefault(); }} onClick={() => choose(option)}>
-          <div><strong>{option.dates}</strong>{option.value === value && <b aria-label="Selected">✓</b>}</div><span>{option.names}</span><small>{option.detail}</small>
+          <div><strong>{option.dates}</strong>{option.value === value && <b aria-label="Selected"><IconCheck /></b>}</div><span>{option.names}</span><small>{option.detail}</small>
         </div>)}
       </div>
       <p className="period-picker-count" role="status">{filtered.length ? `${filtered.length} periods · ↑ ↓ to browse · Enter to select` : "No matching periods. Try another name or date."}</p>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { api, asset, emblemUrl, type Banner, type CharacterRecord, type Server } from "./api";
+import { IconChevronLeft, IconChevronRight, IconClose, IconRotate, IconStar, Stars } from "./components/icons";
 import { hashQuery, link } from "./route";
 import { REQUEST_REVEAL_PEAK_MS, useRecruitmentAudio, type RecruitmentPlayback, type RecruitmentSound } from "./recruitmentAudio";
 import { CARD_FLIP_MS, DISPATCH_DEPARTURE_MS, RESULTS_SETTLE_MS, cardImpactMs, portraitEntranceMs } from "./recruitmentTiming";
@@ -352,7 +353,7 @@ export function Simulator() {
       <LandscapeGuard />
       <header className="sim-topbar">
         <div className="sim-brand">
-          <a className="back-link" href={link.calendar}>‹ Calendar</a>
+          <a className="back-link" href={link.calendar}><IconChevronLeft /> Calendar</a>
           <div className="sim-title-line">
             <img src={asset("ba-icons/schale.png")} alt="" width="38" height="44" />
             <div><h1>Recruitment</h1><p>Historical recruitment simulator</p></div>
@@ -391,12 +392,12 @@ export function Simulator() {
                 <p className="sim-banner-dates">{formatDate(period.startMs)} — {formatDate(period.endMs)}</p>
                 <h2>{selectedBanner.characters.map((student) => student.name).join(" / ") || selectedBanner.code}</h2>
                 <strong className="sim-pickup-heading">{selectedBanner.type.includes("Fes") ? "Fest Recruitment" : selectedBanner.type === "SelectPickupGacha" ? "Archive Recruitment" : selectedBanner.limited ? "Unique Pick-Up Recruitment" : "Pick-Up Recruitment"}</strong>
-                <p className="sim-guarantee">One 2★ or higher student guaranteed in every ten recruitments!</p>
+                <p className="sim-guarantee">One 2<IconStar /> or higher student guaranteed in every ten recruitments!</p>
                 <div className="sim-tags"><span className={`sim-tag ${effectiveSystem === "charge" ? "charge" : "spark"}`}>{mode === "historical" ? `Historical · ${systemLabel(effectiveSystem)}` : `What-if · ${systemLabel(effectiveSystem)}`}</span><span className="sim-tag">{effectiveSystem === "charge" ? bannerPoolKind(selectedBanner) === "limited" ? "Limited Recruitment Charge" : "Recruitment Charge" : selectedBanner.limited ? "Unique Pick-Up" : "Pick-Up"}</span></div>
                 <div className="sim-buttons sim-game-pulls"><button className="sim-secondary" onClick={() => recruit(1)}><GameIcon name="pyroxene" className="sim-pull-icon" /><span><small><GameIcon name="pyroxene" /> {PULL_COST} Pyroxene</small>Recruit ×1</span></button><button className="sim-primary" onClick={() => recruit(10)}><GameIcon name="pyroxene" className="sim-pull-icon" /><span><small><GameIcon name="pyroxene" /> {TEN_PULL_COST.toLocaleString()} Pyroxene</small>Recruit ×10</span></button>{effectiveSystem === "charge" && <button className="sim-ticket" disabled={state.tickets < 1 || ticketExpired} onClick={() => recruit(10, "ticket")}><GameIcon name="recruitment-10" />Use free ×10 <small>{state.tickets} tickets{state.ticketExpiresAt ? ` · expires ${formatDate(state.ticketExpiresAt)}` : ""}</small></button>}</div>
                 <Progress state={state} banner={selectedBanner} charge={charge} />
                 {effectiveSystem === "spark" && <button className="sim-secondary sim-select-student" onClick={() => setSparkOpen(true)}>Select Student</button>}
-                <details className="sim-rate-info"><summary>Rate Info</summary><p>1★ {selectedBanner.type.includes("Fes") ? "75.5" : "78.5"}% · 2★ 18.5% · 3★ {selectedBanner.type.includes("Fes") ? "6" : "3"}%</p><p>Featured 3★ rate: 0.7% total. The tenth student in a ten-pull is 2★ or higher. Historical pools are approximate.</p></details>
+                <details className="sim-rate-info"><summary>Rate Info</summary><p>1<IconStar /> {selectedBanner.type.includes("Fes") ? "75.5" : "78.5"}% · 2<IconStar /> 18.5% · 3<IconStar /> {selectedBanner.type.includes("Fes") ? "6" : "3"}%</p><p>Featured 3<IconStar /> rate: 0.7% total. The tenth student in a ten-pull is 2<IconStar /> or higher. Historical pools are approximate.</p></details>
               </div>
             </section>}
 
@@ -430,7 +431,7 @@ export function Simulator() {
             <Collection state={preRevealState ?? state} students={ownedStudents(preRevealState ?? state, characters, pool)} />
 
 
-            <section className="sim-footnote"><span>Pool is an approximate historical reconstruction from the calendar data.</span><span>Event/welfare students are never recruitable; limited-only students appear only when featured.</span><span>Rates: 1★ {selectedBanner.type.includes("Fes") ? "75.5" : "78.5"}% · 2★ 18.5% · 3★ {selectedBanner.type.includes("Fes") ? "6" : "3"}%.</span><span>Free tickets advance Charge, but do not recursively advance the recruitment-count reward track.</span></section>
+            <section className="sim-footnote"><span>Pool is an approximate historical reconstruction from the calendar data.</span><span>Event/welfare students are never recruitable; limited-only students appear only when featured.</span><span>Rates: 1<IconStar /> {selectedBanner.type.includes("Fes") ? "75.5" : "78.5"}% · 2<IconStar /> 18.5% · 3<IconStar /> {selectedBanner.type.includes("Fes") ? "6" : "3"}%.</span><span>Free tickets advance Charge, but do not recursively advance the recruitment-count reward track.</span></section>
           </main>
         </div>
       )}
@@ -453,7 +454,7 @@ function RecruitmentAtmosphere({ arriving, submitted }: { arriving: boolean; sub
 }
 
 function LandscapeGuard() {
-  return <div className="sim-orientation-guard" role="status"><GameIcon name="schale" /><div className="sim-rotate-device" aria-hidden="true">↻</div><h2>Rotate your device</h2><p>Recruitment is designed for landscape.<br />Turn your phone sideways to continue.</p><small>Your recruitment is paused while in portrait.</small></div>;
+  return <div className="sim-orientation-guard" role="status"><GameIcon name="schale" /><div className="sim-rotate-device" aria-hidden="true"><IconRotate /></div><h2>Rotate your device</h2><p>Recruitment is designed for landscape.<br />Turn your phone sideways to continue.</p><small>Your recruitment is paused while in portrait.</small></div>;
 }
 
 function SparkSelection({ period, points, onExchange, onClose }: { period: RecruitmentPeriod; points: number; onExchange: (studentId: number) => void; onClose: () => void }) {
@@ -467,9 +468,9 @@ function SparkSelection({ period, points, onExchange, onClose }: { period: Recru
   }, []);
   return <dialog ref={dialogRef} className="sim-spark-dialog" aria-labelledby="spark-selection-title" onCancel={(event) => { event.preventDefault(); onClose(); }}>
     <LandscapeGuard />
-    <header><h2 id="spark-selection-title">Select Student</h2><button className="sim-secondary" aria-label="Close student selection" onClick={onClose}>×</button></header>
+    <header><h2 id="spark-selection-title">Select Student</h2><button className="sim-secondary" aria-label="Close student selection" onClick={onClose}><IconClose /></button></header>
     <p>Use 200 Recruitment Points to recruit a student featured in this period.</p><div className="sim-spark-balance"><GameIcon name="recruitment-points" /><strong>{points.toLocaleString()} Recruitment Points</strong></div>
-    <div className="sim-spark-roster">{students.map((student) => <article key={student.id}><img src={asset(`img/avatar/${student.id}.webp`)} alt="" /><strong>{student.name}</strong><span>{"★".repeat(student.starGrade)}</span><button className="sim-primary" disabled={points < 200} onClick={() => onExchange(student.id)}>Recruit · 200 points</button></article>)}</div>
+    <div className="sim-spark-roster">{students.map((student) => <article key={student.id}><img src={asset(`img/avatar/${student.id}.webp`)} alt="" /><strong>{student.name}</strong><span><Stars n={student.starGrade} /></span><button className="sim-primary" disabled={points < 200} onClick={() => onExchange(student.id)}>Recruit · 200 points</button></article>)}</div>
     {points < 200 && <small>You need {200 - points} more Recruitment Points.</small>}<button className="sim-secondary" onClick={onClose}>Cancel</button>
   </dialog>;
 }
@@ -502,7 +503,7 @@ function RecruitmentContract({ results, arrivalPeakMs, arriving, submitted, paus
     <div className="contract-document-lines" aria-hidden="true"><i /><i /><i /></div>
     <div className="contract-request"><span>Requested students</span><b>{results.length.toString().padStart(2, "0")}</b></div>
     <small>Sensei, please authorize this recruitment.</small>
-    <div className="contract-signature"><span>Signature <b>{arriving ? "Receiving…" : `${"★".repeat(maxRarity)} · Highest rarity`}</b></span><svg viewBox="0 0 320 100" aria-label="Signature drawing area; release to open after a short delay, or use Sign and open" onPointerDown={(event) => { if (arriving || submitted || paused || !event.isPrimary) return; setPendingOpen(false); event.currentTarget.setPointerCapture(event.pointerId); const rect = event.currentTarget.getBoundingClientRect(); setStrokes((previous) => [...previous, `M ${(event.clientX - rect.left) * 320 / rect.width} ${(event.clientY - rect.top) * 100 / rect.height}`]); }} onPointerMove={(event) => { if (arriving || submitted || paused || !event.currentTarget.hasPointerCapture(event.pointerId)) return; const rect = event.currentTarget.getBoundingClientRect(); const point = ` L ${(event.clientX - rect.left) * 320 / rect.width} ${(event.clientY - rect.top) * 100 / rect.height}`; setStrokes((previous) => previous.map((stroke, index) => index === previous.length - 1 ? stroke + point : stroke)); }} onPointerUp={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; event.currentTarget.releasePointerCapture(event.pointerId); if (arriving || submitted || paused) return; signingDelay.current = 650; setPendingOpen(true); }} onPointerCancel={() => setPendingOpen(false)}>
+    <div className="contract-signature"><span>Signature <b>{arriving ? "Receiving…" : <><Stars n={maxRarity} /> · Highest rarity</>}</b></span><svg viewBox="0 0 320 100" aria-label="Signature drawing area; release to open after a short delay, or use Sign and open" onPointerDown={(event) => { if (arriving || submitted || paused || !event.isPrimary) return; setPendingOpen(false); event.currentTarget.setPointerCapture(event.pointerId); const rect = event.currentTarget.getBoundingClientRect(); setStrokes((previous) => [...previous, `M ${(event.clientX - rect.left) * 320 / rect.width} ${(event.clientY - rect.top) * 100 / rect.height}`]); }} onPointerMove={(event) => { if (arriving || submitted || paused || !event.currentTarget.hasPointerCapture(event.pointerId)) return; const rect = event.currentTarget.getBoundingClientRect(); const point = ` L ${(event.clientX - rect.left) * 320 / rect.width} ${(event.clientY - rect.top) * 100 / rect.height}`; setStrokes((previous) => previous.map((stroke, index) => index === previous.length - 1 ? stroke + point : stroke)); }} onPointerUp={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; event.currentTarget.releasePointerCapture(event.pointerId); if (arriving || submitted || paused) return; signingDelay.current = 650; setPendingOpen(true); }} onPointerCancel={() => setPendingOpen(false)}>
       {!strokes.length && <text x="160" y="58" textAnchor="middle">Sign here</text>}{strokes.map((stroke, index) => <path key={index} d={stroke} />)}
     </svg><button disabled={arriving || submitted || paused} className="sim-reset" onClick={() => { setPendingOpen(false); setStrokes([]); }}>Clear signature</button><small className="signature-hint" aria-live="polite">{pendingOpen ? "Authorizing…" : "Sign, then release to authorize"}</small></div>
     <button ref={signButton} disabled={arriving || submitted} className="sim-primary" onClick={onOpen}>{arriving ? "Receiving request…" : submitted ? "Authorized" : "Sign & open"}</button>
@@ -525,7 +526,7 @@ function StudentIntroduction({ result }: { result: PullResult }) {
     <div className="student-intro-backdrop" aria-hidden="true" />
     <img className="student-intro-portrait" src={asset(`img/portrait/${result.student.id}.webp`)} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />
     <div className="student-intro-school">{result.student.school && <>{emblemUrl(result.student.school) && <img src={emblemUrl(result.student.school)!} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />}<span>{result.student.school}</span></>}</div>
-    <div className="student-intro-nameplate"><span className="student-intro-status">New{result.featured ? " · Pick-Up!" : ""}</span><span className="student-intro-stars">{"★".repeat(result.rarity)}</span><h2>{result.student.name}</h2>{result.student.club && <p>{result.student.club}</p>}</div>
+    <div className="student-intro-nameplate"><span className="student-intro-status">New{result.featured ? " · Pick-Up!" : ""}</span><span className="student-intro-stars"><Stars n={result.rarity} /></span><h2>{result.student.name}</h2>{result.student.club && <p>{result.student.club}</p>}</div>
   </div>;
 }
 
@@ -537,7 +538,7 @@ function RevealGrid({ results, revealIndex, onNext }: { results: PullResult[]; r
       <div className="reveal-card-turn"><div className="reveal-face reveal-front" aria-hidden={opened}><ResultCard result={result} hidden /></div><div className="reveal-face reveal-back" aria-hidden={!opened}>{opened && <ResultCard result={result} hidden={false} />}</div></div>
       {opened && <div className="reveal-effects" aria-hidden="true"><div className="reveal-impact" /><div className="reveal-edge-sweep" /><div className="reveal-glint" />{result.rarity >= 2 && <><div className="reveal-ring" /><div className="reveal-sparkles">{Array.from({ length: result.rarity === 3 ? 8 : 4 }, (_, particle) => <i key={particle} />)}</div></>}{result.rarity === 3 && <><div className="reveal-rays" /><div className="reveal-diamond" /></>}</div>}
     </div>;
-  })}</div>{current && !current.duplicate && <StudentIntroduction result={current} key={`introduction-${revealIndex}`} />}<div className="sim-reveal-caption" aria-live="polite">{current ? <div className={`reveal-student-caption rarity-${current.rarity}`} key={revealIndex}><span>{"★".repeat(current.rarity)}</span><strong>{current.student.name}</strong><small>{current.featured ? "Pick-up!" : current.duplicate ? "Already recruited" : "New student"}</small></div> : <span className="sim-kicker">Opening recruitment requests…</span>}</div><button className="sim-reveal-next sim-secondary" disabled={!current} onClick={onNext}>{revealIndex === results.length ? "View results" : "Next student"} ›</button></div>;
+  })}</div>{current && !current.duplicate && <StudentIntroduction result={current} key={`introduction-${revealIndex}`} />}<div className="sim-reveal-caption" aria-live="polite">{current ? <div className={`reveal-student-caption rarity-${current.rarity}`} key={revealIndex}><span><Stars n={current.rarity} /></span><strong>{current.student.name}</strong><small>{current.featured ? "Pick-up!" : current.duplicate ? "Already recruited" : "New student"}</small></div> : <span className="sim-kicker">Opening recruitment requests…</span>}</div><button className="sim-reveal-next sim-secondary" disabled={!current} onClick={onNext}>{revealIndex === results.length ? "View results" : "Next student"} <IconChevronRight /></button></div>;
 }
 
 function Results({ results, counterLabel, counterValue, onConfirm, onRecruitAgain }: { results: PullResult[]; counterLabel: string; counterValue: number; onConfirm: () => void; onRecruitAgain: () => void }) {
@@ -548,7 +549,7 @@ function Results({ results, counterLabel, counterValue, onConfirm, onRecruitAgai
 function ResultCard({ result, hidden }: { result: PullResult; hidden: boolean }) {
   if (hidden) return <div className={`result-card sealed rarity-${result.rarity}`}><div className="result-card-art"><div className="envelope-mark"><GameIcon name="schale" /></div></div><span className="sealed-label">Open</span></div>;
   const status = result.featured ? (result.duplicate ? "Pick-up" : "New Pick-up") : result.duplicate ? "Duplicate" : "New student";
-  return <article className={`result-card rarity-${result.rarity} ${result.featured ? "featured" : ""}`} aria-label={`${result.student.name}, ${result.rarity} star, ${status}`} title={result.student.name}><div className="result-card-art"><img src={asset(`img/avatar/${result.student.id}.webp`)} alt="" />{result.featured ? <span className="result-pickup-label">{result.duplicate ? "Pick-up!" : <>New<br /><b>Pick-up!</b></>}</span> : !result.duplicate && <span className="result-new-label">New</span>}<span className={`result-rarity-strip rarity-${result.rarity}`}>{"★".repeat(result.rarity)}</span></div><div className="result-info sim-visually-hidden"><b>{result.student.name}</b><span>{"★".repeat(result.rarity)} {status}</span>{result.forced !== "none" && <small>{result.forced === "hard-pity" ? "200 Charge guarantee" : result.forced === "soft-pity" ? "100 Charge check" : "10th pull guarantee"}</small>}</div></article>;
+  return <article className={`result-card rarity-${result.rarity} ${result.featured ? "featured" : ""}`} aria-label={`${result.student.name}, ${result.rarity} star, ${status}`} title={result.student.name}><div className="result-card-art"><img src={asset(`img/avatar/${result.student.id}.webp`)} alt="" />{result.featured ? <span className="result-pickup-label">{result.duplicate ? "Pick-up!" : <>New<br /><b>Pick-up!</b></>}</span> : !result.duplicate && <span className="result-new-label">New</span>}<span className={`result-rarity-strip rarity-${result.rarity}`}><Stars n={result.rarity} /></span></div><div className="result-info sim-visually-hidden"><b>{result.student.name}</b><span><Stars n={result.rarity} /> {status}</span>{result.forced !== "none" && <small>{result.forced === "hard-pity" ? "200 Charge guarantee" : result.forced === "soft-pity" ? "100 Charge check" : "10th pull guarantee"}</small>}</div></article>;
 }
 
 function Collection({ state, students }: { state: SimulatorState; students: CharacterRecord[] }) {
@@ -558,9 +559,9 @@ function Collection({ state, students }: { state: SimulatorState; students: Char
     <div className="sim-section-head"><div><span className="sim-kicker">Session collection</span><h3>Students obtained</h3></div><span className="sim-reward-count">{students.length} unique · {duplicateTotal} duplicate{duplicateTotal === 1 ? "" : "s"} · {state.featuredHits} featured</span></div>
     <RarityDistribution counts={state.rarityCounts} total={rarityTotal(state.rarityCounts)} label="Tracked rarity distribution" />
     {students.length ? <div className="collection-rarity-groups">{groups.map((group) => <section className={`collection-rarity-group rarity-group-${group.rarity}`} key={group.rarity}>
-      <div className="collection-rarity-head"><strong>{"★".repeat(group.rarity)} Students</strong><span>{group.students.length} unique</span></div>
+      <div className="collection-rarity-head"><strong><Stars n={group.rarity} /> Students</strong><span>{group.students.length} unique</span></div>
       <div className="collection-grid">{group.students.map((student) => <article className="collection-student" key={student.id}>
-        <img src={asset(student.avatar)} alt="" /><div><strong>{student.name}</strong><small>{"★".repeat(student.starGrade)}{state.duplicateCounts[student.id] ? ` · ×${state.duplicateCounts[student.id] + 1}` : " · New"}</small></div>
+        <img src={asset(student.avatar)} alt="" /><div><strong>{student.name}</strong><small><Stars n={student.starGrade} />{state.duplicateCounts[student.id] ? ` · ×${state.duplicateCounts[student.id] + 1}` : " · New"}</small></div>
         {student.id === 10143 && <div className="collection-linked-form"><img src={asset("img/avatar/10144.webp")} alt="" /><span>Also unlocked<strong>Shunling (Swimsuit)</strong><small>Alternate form · same recruit</small></span></div>}
       </article>)}</div>
     </section>)}</div> : <p className="sim-collection-empty">No students obtained yet. Your collection will appear here after the first reveal.</p>}
@@ -568,7 +569,7 @@ function Collection({ state, students }: { state: SimulatorState; students: Char
 }
 
 function RarityDistribution({ counts, total, label = "Rarity distribution", compact = false }: { counts: Record<"1" | "2" | "3", number>; total: number; label?: string; compact?: boolean }) {
-  return <div className={`rarity-distribution ${compact ? "compact" : ""}`} aria-label={label}><span className="sim-kicker">{label}</span><div className="rarity-bars">{(["1", "2", "3"] as const).map((rarity) => { const count = counts[rarity] ?? 0; const percent = total ? Math.round(count / total * 100) : 0; return <div className={`rarity-bar rarity-${rarity}`} key={rarity}><div className="rarity-bar-label"><b>{"★".repeat(Number(rarity))}</b><strong>{count}</strong><small>{percent}%</small></div><span><i style={{ width: `${percent}%` }} /></span></div>; })}</div></div>;
+  return <div className={`rarity-distribution ${compact ? "compact" : ""}`} aria-label={label}><span className="sim-kicker">{label}</span><div className="rarity-bars">{(["1", "2", "3"] as const).map((rarity) => { const count = counts[rarity] ?? 0; const percent = total ? Math.round(count / total * 100) : 0; return <div className={`rarity-bar rarity-${rarity}`} key={rarity}><div className="rarity-bar-label"><b><Stars n={Number(rarity)} /></b><strong>{count}</strong><small>{percent}%</small></div><span><i style={{ width: `${percent}%` }} /></span></div>; })}</div></div>;
 }
 
 function rarityTotal(counts: Record<"1" | "2" | "3", number>) {

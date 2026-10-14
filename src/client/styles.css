@@ -1,5 +1,10 @@
 /* Blue Archive references: student-management stationery, recruitment tabs,
    and MomoTalk lists. Continuous surfaces rather than nested cards. */
+/* Inline SVG icons inherit size/colour from context; nudge them onto the
+   text baseline and keep them out of flex sizing. */
+svg.icon { vertical-align: -0.15em; flex: none; }
+.stars { display: inline-flex; gap: 0.12em; }
+.deco-shapes { display: inline-flex; align-items: center; gap: 0.9em; }
 :root {
   color-scheme: light;
   --bg: #dfeff7;

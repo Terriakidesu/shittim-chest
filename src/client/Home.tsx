@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ThemeSwitch } from "./components/ThemeSwitch";
+import { DecoShapes, IconPlay } from "./components/icons";
 import { asset } from "./api";
 import { link } from "./route";
 import "./lobby.css";
@@ -33,12 +34,12 @@ export function Home() {
 
       <nav className="lobby-destinations" aria-label="Main navigation">
         {destinations.slice(0, 2).map(item => <a key={item.href} className={`lobby-tile ${item.className}`} href={item.href}>
-          <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" /><div className="lobby-tile-caption"><strong>{item.name}</strong><span>{item.detail}</span></div><span className="lobby-tile-arrow" aria-hidden="true">▶</span></div>
+          <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" /><div className="lobby-tile-caption"><strong>{item.name}</strong><span>{item.detail}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
         </a>)}
         <div className="lobby-secondary-panel">
-          <div className="lobby-panel-decoration" aria-hidden="true"><span />△ × + ○</div>
+          <div className="lobby-panel-decoration" aria-hidden="true"><span /><DecoShapes /></div>
           {destinations.slice(2).map(item => <a key={item.href} className={`lobby-tile ${item.className}`} href={item.href}>
-            <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" /><div className="lobby-tile-caption"><strong>{item.name}</strong><span>{item.detail}</span></div><span className="lobby-tile-arrow" aria-hidden="true">▶</span></div>
+            <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" /><div className="lobby-tile-caption"><strong>{item.name}</strong><span>{item.detail}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
           </a>)}
           <p className="lobby-disclaimer">Forecasts are estimates.<br />Simulated recruitment uses no real currency.</p>
         </div>
