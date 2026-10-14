@@ -40,11 +40,12 @@ export function splitRateup(raw: string | null): string[] {
  * upstream rename silently takes precedence over this table.
  *
  * Deliberately absent: `shun_kid` (no SchaleDB counterpart — `shun_small`
- * is a different variant until proven otherwise) and `hoshino_battle`
- * (SchaleDB has two `hoshino_battle_*` rows; picking one would corrupt
- * pools). Both stay unresolved and are reported by the export script.
+ * is a different variant until proven otherwise). Hoshino (Battle) is the
+ * recruitable tank style; the linked dealer style is not a separate banner
+ * recruit, so `hoshino_battle` is mapped explicitly to `hoshino_battle_tank`.
  */
 const VARIANT_ALIASES: [RegExp, string][] = [
+  [/^hoshino_battle$/, "hoshino_battle_tank"],
   [/_bunny_girl$/, "_bunnygirl"],
   [/_school_uniform$/, "_uniform"],
   [/_sportswear$/, "_track"],
