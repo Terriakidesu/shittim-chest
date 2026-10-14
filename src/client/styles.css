@@ -546,7 +546,7 @@ a { color: var(--cyan); }
 .contract-signature, .contract-paper { transition: border-color .12s ease-out; }
 .contract-signature > span b { transition: color .12s ease-out; }
 .contract-signature > span { color: var(--muted); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; }
-.contract-signature svg { display: block; width: 100%; touch-action: none; cursor: crosshair; }
+.contract-signature svg.signature-pad { display: block; width: 100%; touch-action: none; cursor: crosshair; }
 .contract-signature path { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .contract-signature text { fill: var(--muted); opacity: .6; font-size: 18px; font-style: italic; }
 .contract-signature .sim-reset { font-size: 9px; }
@@ -863,7 +863,7 @@ dialog.sim-stage .sim-skip { right: 140px; }
   dialog.sim-stage .contract-document-head { padding-bottom: 6px; margin-bottom: 0; }
   dialog.sim-stage .contract-document-lines, dialog.sim-stage .contract-paper > small { display: none; }
   dialog.sim-stage .contract-paper strong { font-size: 17px; }
-  dialog.sim-stage .contract-signature svg { height: 60px; }
+  dialog.sim-stage .contract-signature svg.signature-pad { height: 60px; }
   dialog.sim-stage .contract-request { padding: 5px 8px; }
   dialog.sim-stage .sim-animated-reveal { padding-top: 0; }
   dialog.sim-stage .sim-reveal-caption { min-height: 45px; }
