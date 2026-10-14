@@ -9,13 +9,17 @@
 
 export type Route = "/" | "/calendar" | "/simulator" | "/about";
 
-export function currentRoute(): Route {
-  const hash = window.location.hash.replace(/^#/, "");
-  const path = (hash.split("?")[0] || "/").replace(/\/$/, "") || "/";
+export function routeFromHash(hash: string): Route {
+  const clean = hash.replace(/^#/, "");
+  const path = (clean.split("?")[0] || "/").replace(/\/$/, "") || "/";
   if (path === "/about") return "/about";
   if (path === "/simulator") return "/simulator";
   if (path === "/") return "/";
   return "/calendar";
+}
+
+export function currentRoute(): Route {
+  return routeFromHash(window.location.hash);
 }
 
 /** Query string carried in the hash, e.g. `#/simulator?server=JP&banner=3`. */

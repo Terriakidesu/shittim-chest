@@ -279,8 +279,12 @@ export function Simulator() {
     });
   }
 
-  function recruit(count: 1 | 10, source: "pyroxene" | "ticket" = "pyroxene") {
+  function recruit(count: 1 | 10, requested: "pyroxene" | "ticket" = "pyroxene") {
     if (!state || !period || !selectedBanner || phase === "arriving" || phase === "signing" || phase === "dispatching" || phase === "envelopes") return;
+    // Charge-system tickets are spent automatically: a ten-pull consumes a
+    // held ticket instead of Pyroxene, so the cost never rises while tickets
+    // last. Ticket pulls earn no Pyroxene-track rewards by design.
+    const source = requested === "pyroxene" && count === 10 && state.system === "charge" && state.tickets > 0 ? "ticket" : requested;
     try {
       const outcome = resolvePulls(state, { period, banner: selectedBanner, pool }, count, source);
       setPreRevealState(state);
@@ -344,6 +348,8 @@ export function Simulator() {
 
   const busy = phase === "arriving" || phase === "signing" || phase === "dispatching" || phase === "envelopes";
   const charge = state && period ? activeCharge(state, period, selectedBanner) : 0;
+  // A Charge ten-pull spends a held ticket before Pyroxene (see recruit).
+  const autoTicket = !!state && state.system === "charge" && state.tickets > 0;
   // The simulator has no wall-clock banner session: historical periods may be
   // replayed long after their real expiry date. Keep the expiry timestamp in
   // the state for display/auditing, but allow the simulated ticket to be used.
@@ -395,7 +401,7 @@ export function Simulator() {
                 <strong className="sim-pickup-heading">{selectedBanner.type.includes("Fes") ? "Fest Recruitment" : selectedBanner.type === "SelectPickupGacha" ? "Archive Recruitment" : selectedBanner.limited ? "Unique Pick-Up Recruitment" : "Pick-Up Recruitment"}</strong>
                 <p className="sim-guarantee">One 2<IconStar /> or higher student guaranteed in every ten recruitments!</p>
                 <div className="sim-tags"><span className={`sim-tag ${effectiveSystem === "charge" ? "charge" : "spark"}`}>{mode === "historical" ? `Historical · ${systemLabel(effectiveSystem)}` : `What-if · ${systemLabel(effectiveSystem)}`}</span><span className="sim-tag">{effectiveSystem === "charge" ? bannerPoolKind(selectedBanner) === "limited" ? "Limited Recruitment Charge" : "Recruitment Charge" : selectedBanner.limited ? "Unique Pick-Up" : "Pick-Up"}</span></div>
-                <div className="sim-buttons sim-game-pulls"><button className="sim-secondary" onClick={() => recruit(1)}><GameIcon name="pyroxene" className="sim-pull-icon" /><span><small><GameIcon name="pyroxene" /> {PULL_COST} Pyroxene</small>Recruit ×1</span></button><button className="sim-primary" onClick={() => recruit(10)}><GameIcon name="pyroxene" className="sim-pull-icon" /><span><small><GameIcon name="pyroxene" /> {TEN_PULL_COST.toLocaleString()} Pyroxene</small>Recruit ×10</span></button>{effectiveSystem === "charge" && <button className="sim-ticket" disabled={state.tickets < 1 || ticketExpired} onClick={() => recruit(10, "ticket")}><GameIcon name="recruitment-10" />Use free ×10 <small>{state.tickets} tickets{state.ticketExpiresAt ? ` · expires ${formatDate(state.ticketExpiresAt)}` : ""}</small></button>}</div>
+                <div className="sim-buttons sim-game-pulls"><button className="sim-secondary" onClick={() => recruit(1)}><GameIcon name="pyroxene" className="sim-pull-icon" /><span><small><GameIcon name="pyroxene" /> {PULL_COST} Pyroxene</small>Recruit ×1</span></button><button className="sim-primary" onClick={() => recruit(10)}>{autoTicket ? <GameIcon name="recruitment-10" className="sim-pull-icon" /> : <GameIcon name="pyroxene" className="sim-pull-icon" />}<span><small>{autoTicket ? <>Ticket · {state.tickets} available</> : <><GameIcon name="pyroxene" /> {TEN_PULL_COST.toLocaleString()} Pyroxene</>}</small>Recruit ×10</span></button>{effectiveSystem === "charge" && <button className="sim-ticket" disabled={state.tickets < 1 || ticketExpired} onClick={() => recruit(10, "ticket")}><GameIcon name="recruitment-10" />Use free ×10 <small>{state.tickets} tickets{state.ticketExpiresAt ? ` · expires ${formatDate(state.ticketExpiresAt)}` : ""}</small></button>}</div>
                 <Progress state={state} banner={selectedBanner} charge={charge} />
                 {effectiveSystem === "spark" && <button className="sim-secondary sim-select-student" onClick={() => setSparkOpen(true)}>Select Student</button>}
                 <details className="sim-rate-info"><summary>Rate Info</summary><p>1<IconStar /> {selectedBanner.type.includes("Fes") ? "75.5" : "78.5"}% · 2<IconStar /> 18.5% · 3<IconStar /> {selectedBanner.type.includes("Fes") ? "6" : "3"}%</p><p>Featured 3<IconStar /> rate: 0.7% total. The tenth student in a ten-pull is 2<IconStar /> or higher. Historical pools are approximate.</p></details>
@@ -419,13 +425,15 @@ export function Simulator() {
               <LandscapeGuard />
               {phase !== "results" && <RecruitmentAtmosphere arriving={phase === "arriving"} submitted={phase === "dispatching"} />}
               <div className="sim-cinematic-title"><GameIcon name="schale" /><span>{phase === "results" ? "Recruitment Results" : "Recruitment"}</span></div>
-              <button className="sim-sound-toggle sim-secondary" aria-pressed={!muted} onClick={toggleSound}>{muted ? "Sound: Off" : "Sound: On"}</button>
-              <FullscreenButton className="sim-sound-toggle sim-secondary" landscape />
-              {busy && <button className="sim-skip" onClick={skipAnimation}>Skip animation</button>}
+              <div className="sim-stage-controls">
+                {busy && <button className="sim-skip" onClick={skipAnimation}>Skip animation</button>}
+                <button className="sim-sound-toggle sim-secondary" aria-pressed={!muted} onClick={toggleSound}>{muted ? "Sound: Off" : "Sound: On"}</button>
+                <FullscreenButton className="sim-sound-toggle sim-secondary" landscape />
+              </div>
               {(phase === "arriving" || phase === "signing" || phase === "dispatching") && <RecruitmentContract results={results} arrivalPeakMs={arrivalPeakMs} arriving={phase === "arriving"} submitted={phase === "dispatching"} paused={portraitBlocked} onOpen={() => setPhase("dispatching")} />}
               {phase === "dispatching" && <div className="sim-dispatch" role="status"><div className="dispatch-orbit" aria-hidden="true" /><div className="dispatch-envelope"><div className="dispatch-application" aria-hidden="true"><GameIcon name="schale" /></div>{recruitmentSource === "ticket" && <GameIcon name="recruitment-10" className="dispatch-ticket" />}</div><strong>Recruitment authorized</strong><small>Delivering student applications…</small></div>}
               {phase === "envelopes" && <RevealGrid results={results} revealIndex={revealIndex} onNext={advanceReveal} />}
-              {phase === "results" && <Results results={results} counterLabel={state.system === "spark" ? "Recruitment Points" : "Recruitment Charge"} counterValue={state.system === "spark" ? state.points : charge} onConfirm={confirmResults} onRecruitAgain={() => recruit(results.length === 1 ? 1 : 10)} />}
+              {phase === "results" && <Results results={results} counterLabel={state.system === "spark" ? "Recruitment Points" : "Recruitment Charge"} counterValue={state.system === "spark" ? state.points : charge} ticket={state.system === "charge" && results.length === 10 && state.tickets > 0} onConfirm={confirmResults} onRecruitAgain={() => recruit(results.length === 1 ? 1 : 10)} />}
             </dialog>}
 
             {sparkOpen && <SparkSelection period={period} points={state.points} onExchange={exchange} onClose={() => setSparkOpen(false)} />}
@@ -543,9 +551,9 @@ function RevealGrid({ results, revealIndex, onNext }: { results: PullResult[]; r
   })}</div>{current && !current.duplicate && <StudentIntroduction result={current} key={`introduction-${revealIndex}`} />}<div className="sim-reveal-caption" aria-live="polite">{current ? <div className={`reveal-student-caption rarity-${current.rarity}`} key={revealIndex}><span><Stars n={current.rarity} /></span><strong>{current.student.name}</strong><small>{current.featured ? "Pick-up!" : current.duplicate ? "Already recruited" : "New student"}</small></div> : <span className="sim-kicker">Opening recruitment requests…</span>}</div><button className="sim-reveal-next sim-secondary" disabled={!current} onClick={onNext}>{revealIndex === results.length ? "View results" : "Next student"} <IconChevronRight /></button></div>;
 }
 
-function Results({ results, counterLabel, counterValue, onConfirm, onRecruitAgain }: { results: PullResult[]; counterLabel: string; counterValue: number; onConfirm: () => void; onRecruitAgain: () => void }) {
+function Results({ results, counterLabel, counterValue, ticket, onConfirm, onRecruitAgain }: { results: PullResult[]; counterLabel: string; counterValue: number; ticket: boolean; onConfirm: () => void; onRecruitAgain: () => void }) {
   if (!results.length) return <div className="sim-empty-stage"><GameIcon name="schale" /><strong>Ready for recruitment</strong><span>Choose the banner and ruleset, then authorize a pull.</span></div>;
-  return <div className="sim-reveal sim-results-screen"><div className="sim-reveal-heading"><span className="sim-kicker">Recruitment complete</span><span className="sim-result-source">{results.length} student{results.length === 1 ? "" : "s"} recruited</span></div><div className={`sim-result-grid ${results.length === 1 ? "single-result" : ""}`}>{results.map((result, index) => <ResultCard key={`${result.student.id}-${index}`} result={result} hidden={false} />)}</div><div className="sim-result-actions"><button autoFocus className="sim-result-confirm" onClick={onConfirm}>Confirm</button><button className="sim-result-again" onClick={onRecruitAgain}><span>Recruit Again <small>{results.length === 1 ? "×1" : "×10"}</small></span><span className="result-again-cost"><GameIcon name="pyroxene" />{(results.length === 1 ? PULL_COST : TEN_PULL_COST).toLocaleString()}</span></button><div className="sim-result-counter" aria-label={`${counterLabel}: ${counterValue} of 200`}>{counterLabel === "Recruitment Points" && <GameIcon name="recruitment-points" />}<span>{counterLabel}</span><strong>{counterValue}<small>/ 200</small></strong></div></div></div>;
+  return <div className="sim-reveal sim-results-screen"><div className="sim-reveal-heading"><span className="sim-kicker">Recruitment complete</span><span className="sim-result-source">{results.length} student{results.length === 1 ? "" : "s"} recruited</span></div><div className={`sim-result-grid ${results.length === 1 ? "single-result" : ""}`}>{results.map((result, index) => <ResultCard key={`${result.student.id}-${index}`} result={result} hidden={false} />)}</div><div className="sim-result-actions"><button autoFocus className="sim-result-confirm" onClick={onConfirm}>Confirm</button><button className="sim-result-again" onClick={onRecruitAgain}><span>Recruit Again <small>{results.length === 1 ? "×1" : "×10"}</small></span>{ticket ? <span className="result-again-cost"><GameIcon name="recruitment-10" />Ticket</span> : <span className="result-again-cost"><GameIcon name="pyroxene" />{(results.length === 1 ? PULL_COST : TEN_PULL_COST).toLocaleString()}</span>}</button><div className="sim-result-counter" aria-label={`${counterLabel}: ${counterValue} of 200`}>{counterLabel === "Recruitment Points" && <GameIcon name="recruitment-points" />}<span>{counterLabel}</span><strong>{counterValue}<small>/ 200</small></strong></div></div></div>;
 }
 
 function ResultCard({ result, hidden }: { result: PullResult; hidden: boolean }) {

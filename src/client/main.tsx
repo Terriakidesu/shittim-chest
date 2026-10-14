@@ -5,7 +5,7 @@ import { Home } from "./Home";
 import { Simulator } from "./Simulator";
 import { About } from "./About";
 import { SiteFooter } from "./components/SiteFooter";
-import { currentRoute, type Route } from "./route";
+import { routeFromHash, type Route } from "./route";
 import "./styles.css";
 import { initializeTheme } from "./theme";
 
@@ -19,15 +19,23 @@ const TITLES: Record<Route, string> = {
 };
 
 function Shell() {
-  const [route, setRoute] = useState<Route>(currentRoute);
+  // Track the raw hash (not just the route) so query-only changes — e.g. one
+  // simulator deep link to another — remount the query-driven views.
+  // Bare `#fragment` links (about-page sections) are in-page anchors and
+  // must not change the route.
+  const [hash, setHash] = useState(() => window.location.hash);
   useEffect(() => {
     const onHash = () => {
-      setRoute(currentRoute());
-      window.scrollTo(0, 0);
+      const next = window.location.hash;
+      if (next === "" || next === "#" || next.startsWith("#/")) {
+        setHash(next);
+        window.scrollTo(0, 0);
+      }
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+  const route = routeFromHash(hash);
   useEffect(() => {
     document.title = TITLES[route];
   }, [route]);
@@ -39,7 +47,7 @@ function Shell() {
       ) : route === "/about" ? (
         <About />
       ) : route === "/simulator" ? (
-        <Simulator key={window.location.hash} />
+        <Simulator key={hash} />
       ) : (
         <App />
       )}

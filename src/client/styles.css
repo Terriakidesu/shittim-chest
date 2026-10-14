@@ -848,10 +848,10 @@ dialog.sim-stage .sim-results-screen .sim-result-grid { max-width: min(100%, 150
 .sim-orientation-guard { display: none; }
 .sim-top-note .sim-sound-toggle { margin-left: 0; }
 .sim-sound-toggle { min-height: 32px; padding: 6px 10px; font-size: 11px; }
-dialog.sim-stage > .sim-sound-toggle { position: absolute; z-index: 6; top: 20px; right: 25px; }
-dialog.sim-stage .sim-skip { right: 140px; }
+dialog.sim-stage > .sim-stage-controls { position: absolute; z-index: 6; top: 20px; right: 25px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; max-width: 72vw; }
+.sim-stage-controls .sim-skip { position: static; }
 @media (max-height: 560px) and (orientation: landscape) {
-  dialog.sim-stage > .sim-sound-toggle { top: 10px; }
+  dialog.sim-stage > .sim-stage-controls { top: 10px; }
 }
 @keyframes sim-student-introduction { 0% { opacity: 0; transform: translateX(20px); } 12%, 85% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; transform: translateX(-10px); } }
 .sim-results-screen { animation: sim-results-settle .18s ease-out both; }
@@ -869,7 +869,7 @@ dialog.sim-stage .sim-skip { right: 140px; }
   dialog.sim-stage .sim-reveal-caption { min-height: 45px; }
   dialog.sim-stage .sim-result-grid { padding-top: 5px; padding-bottom: 10px; }
   .sim-cinematic-title { font-size: 16px; top: 12px; }
-  dialog.sim-stage .sim-skip { top: 10px; }
+  dialog.sim-stage > .sim-stage-controls { top: 10px; right: 12px; }
   .student-introduction { inset: 44px 0 45px; }
   .student-intro-school img { width: 48px; height: 48px; }
   .student-intro-school { font-size: 10px; }
