@@ -23,6 +23,7 @@ import { BlueArchiveWikiSource } from "../src/model/sources/bawiki";
 import { SchaleDbSource } from "../src/model/sources/schaledb";
 import { CharacterIndex } from "../src/model/domain/characters";
 import { normalizeAll } from "../src/model/domain/normalize";
+import { splitRateup } from "../src/model/domain/characters";
 import { buildBatches, indexBatches, type BatchIndex } from "../src/model/domain/batches";
 import { matchBanners, matchSummary } from "../src/model/domain/match";
 import { alignBatches, batchAnchors, type Alignment } from "../src/model/domain/align";
@@ -445,6 +446,24 @@ if (!imagesOnly) {
   console.log(`GL batches   : ${snap.batchIndex.GL.length}`);
   console.log(`current lag  : ${snap.lagDays} days`);
   console.log(`predictions  : ${snap.predictions.size} JP banners in flight`);
+
+  // Rate-up names that link to no student (not even by alias). New variant
+  // spellings appear regularly; surface them here instead of silently
+  // shipping code-only banners with broken simulator rosters.
+  const unresolved = new Map<string, string[]>();
+  for (const b of snap.banners) {
+    for (const part of splitRateup(b.rateupRaw)) {
+      if (!snap.characters.has(part)) {
+        const list = unresolved.get(part) ?? [];
+        if (list.length < 3) list.push(`${b.server}:${b.id}`);
+        unresolved.set(part, list);
+      }
+    }
+  }
+  console.log(`unresolved rate-ups: ${unresolved.size}`);
+  for (const [name, examples] of unresolved) {
+    console.log(`  no student: ${JSON.stringify(name)} (e.g. ${examples.join(", ")})`);
+  }
 
   if (!skipImages) {
     const res = await mirrorImages(snap, imgDir);

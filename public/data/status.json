@@ -5,18 +5,18 @@
   "dueForRefresh": false,
   "refreshIntervalDays": 7,
   "dataAgeDays": 0,
-  "exportedAtMs": 1791959221822,
+  "exportedAtMs": 1791967957526,
   "sources": [
     {
       "key": "bluearchive.wiki",
       "label": "Blue Archive Wiki",
-      "fetchedAtMs": 1791959219879,
+      "fetchedAtMs": 1791967956399,
       "lastModified": "Sun, 05 Oct 2025 02:27:12 GMT"
     },
     {
       "key": "schaledb.com",
       "label": "SchaleDB",
-      "fetchedAtMs": 1791959215994,
+      "fetchedAtMs": 1791967952523,
       "lastModified": null
     }
   ],
