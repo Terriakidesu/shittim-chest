@@ -21,6 +21,7 @@ import { join, dirname } from "node:path";
 import { CONFIG, SCHOOL_EMBLEMS } from "../src/model/config";
 import { BlueArchiveWikiSource } from "../src/model/sources/bawiki";
 import { SchaleDbSource } from "../src/model/sources/schaledb";
+import { WikiClubSource } from "../src/model/sources/wikiclubs";
 import { CharacterIndex } from "../src/model/domain/characters";
 import { normalizeAll } from "../src/model/domain/normalize";
 import { splitRateup } from "../src/model/domain/characters";
@@ -86,6 +87,7 @@ interface Snapshot {
   unresolved: Set<number>;
   wikiMeta: { key: string; label: string; fetchedAtMs: number; lastModified?: string };
   schaleMeta: { key: string; label: string; fetchedAtMs: number; lastModified?: string };
+  clubMeta?: { key: string; label: string; fetchedAtMs: number; lastModified?: string };
 }
 
 function bannerBatchMap(batches: Batch[], server: "JP" | "GL") {
@@ -143,9 +145,33 @@ function toDto(banner: Banner, snap: Snapshot): BannerDto {
 async function buildSnapshot(): Promise<Snapshot> {
   const wiki = new BlueArchiveWikiSource();
   const schale = new SchaleDbSource();
-  const [wikiRes, schaleRes] = await Promise.all([wiki.fetchAll(), schale.fetchAll()]);
+  const clubs = new WikiClubSource();
+  const [wikiRes, schaleRes, clubRes] = await Promise.all([
+    wiki.fetchAll(),
+    schale.fetchAll(),
+    // Club names are cosmetic: a wiki hiccup must not fail the whole export,
+    // so fall back to the SchaleDB keys rather than propagating the error.
+    clubs.fetchAll().catch((err) => {
+      console.warn(`club names unavailable (${err}); keeping SchaleDB keys`);
+      return null;
+    }),
+  ]);
 
-  const characters = new CharacterIndex(schaleRes.records.values());
+  // SchaleDB's `Club` is an internal key (`Kohshinjo68`); the wiki's student
+  // infobox has the official English name under the same id.
+  let named = 0;
+  const characters = new CharacterIndex(
+    [...schaleRes.records.values()].map((c) => {
+      const club = clubRes?.records.get(c.id);
+      if (club !== undefined) named++;
+      return { ...c, club: club ?? c.club };
+    }),
+  );
+  if (clubRes && named < characters.size) {
+    console.warn(
+      `club names    : ${named}/${characters.size} — the rest keep SchaleDB keys`,
+    );
+  }
   const banners = normalizeAll(wikiRes.records, characters);
   const asOfMs = Date.now();
 
@@ -225,6 +251,17 @@ async function buildSnapshot(): Promise<Snapshot> {
       label: schaleRes.meta.label,
       fetchedAtMs: schaleRes.meta.fetchedAtMs,
     },
+    // Omitted when the club fetch failed: the snapshot then carries SchaleDB
+    // keys, and the provenance line should say so.
+    ...(clubRes
+      ? {
+          clubMeta: {
+            key: clubRes.meta.key,
+            label: clubRes.meta.label,
+            fetchedAtMs: clubRes.meta.fetchedAtMs,
+          },
+        }
+      : {}),
   };
 }
 
@@ -377,6 +414,7 @@ if (!imagesOnly) {
     sources: [
       { ...snap.wikiMeta, lastModified: snap.wikiMeta.lastModified ?? null },
       { ...snap.schaleMeta, lastModified: null },
+      ...(snap.clubMeta ? [{ ...snap.clubMeta, lastModified: null }] : []),
     ],
     model: {
       currentLagDays: snap.lagDays,
@@ -442,6 +480,9 @@ if (!imagesOnly) {
   console.log(`JP banners   : ${jp.length}`);
   console.log(`GL banners   : ${gl.length}`);
   console.log(`characters   : ${snap.characters.size}`);
+  console.log(
+    `club names   : ${snap.clubMeta ? "wiki" : "SCHALEDB KEYS (wiki fetch failed)"}`,
+  );
   console.log(`JP batches   : ${snap.batchIndex.JP.length}`);
   console.log(`GL batches   : ${snap.batchIndex.GL.length}`);
   console.log(`current lag  : ${snap.lagDays} days`);

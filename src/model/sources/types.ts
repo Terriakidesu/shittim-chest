@@ -44,4 +44,11 @@ export interface BannerSource {
   fetchAll(opts?: { since?: string }): Promise<SourceResult<RawWikiBanner[]>>;
 }
 
+/** Maps a student id to its localised club name. */
+export interface ClubSource {
+  readonly key: string;
+  readonly label: string;
+  fetchAll(): Promise<SourceResult<Map<number, string>>>;
+}
+
 export type { Server };

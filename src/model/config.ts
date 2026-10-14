@@ -12,6 +12,9 @@ const num = (v: string | undefined, fallback: number) => {
 export const WIKI_BASE =
   "https://bluearchive.wiki/w/index.php";
 
+/** Scriptable endpoint on the same wiki, for structured queries. */
+export const WIKI_API = "https://bluearchive.wiki/w/api.php";
+
 export const SCHALEDB_BASE = "https://schaledb.com/data";
 
 /** The wiki keeps full banner history in yearly subpages, per server. */

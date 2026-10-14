@@ -33,6 +33,7 @@ bun run dev        # local dev server
 bun run build      # static production build in dist/
 bun run preview    # serve the production build locally
 bun run typecheck  # strict type check
+bun run test       # bun test unit tests
 ```
 
 `bun run export --skip-images` refreshes the JSON without touching artwork.
@@ -80,7 +81,10 @@ equivalents.
 ## Provenance & rights
 
 Banner history: Blue Archive Wiki. Character metadata, portraits and
-headshots: SchaleDB. Banner/mascot/emblem art: Blue Archive Wiki. Game icons
+headshots: SchaleDB. Club names: the Blue Archive Wiki's character infoboxes,
+joined to SchaleDB students by their shared numeric ID (SchaleDB exposes only
+internal club keys such as `Kohshinjo68`). Banner/mascot/emblem art: Blue
+Archive Wiki. Game icons
 and recruitment SFX: original game assets — see `public/ba-icons/SOURCES.md`,
 `public/ba-sounds/SOURCES.md`, and `public/ba-sounds/manifest.json`. The
 lobby artwork notes are in `public/ba-lobby/SOURCES.md`.
