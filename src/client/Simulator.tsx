@@ -5,6 +5,7 @@ import { hashQuery, link } from "./route";
 import { REQUEST_REVEAL_PEAK_MS, useRecruitmentAudio, type RecruitmentPlayback, type RecruitmentSound } from "./recruitmentAudio";
 import { CARD_FLIP_MS, DISPATCH_DEPARTURE_MS, RESULTS_SETTLE_MS, cardImpactMs, portraitEntranceMs } from "./recruitmentTiming";
 import { ThemeSwitch } from "./components/ThemeSwitch";
+import { FullscreenButton } from "./components/Fullscreen";
 import { PeriodPicker } from "./components/PeriodPicker";
 import {
   activeCharge,
@@ -359,7 +360,7 @@ export function Simulator() {
             <div><h1>Recruitment</h1><p>Historical recruitment simulator</p></div>
           </div>
         </div>
-        <div className="sim-top-note"><span>No real currency · results are local</span><a className="about-link" href={link.about}>About &amp; credits</a><ThemeSwitch /><button className="sim-sound-toggle sim-secondary" aria-pressed={!muted} onClick={toggleSound}>{muted ? "Sound: Off" : "Sound: On"}</button></div>
+        <div className="sim-top-note"><span>No real currency · results are local</span><a className="about-link" href={link.about}>About &amp; credits</a><ThemeSwitch /><button className="sim-sound-toggle sim-secondary" aria-pressed={!muted} onClick={toggleSound}>{muted ? "Sound: Off" : "Sound: On"}</button><FullscreenButton className="sim-sound-toggle sim-secondary" landscape /></div>
       </header>
 
       {error && <div className="sim-alert" role="alert">{error.replace(/^Error: /, "")}</div>}
@@ -419,6 +420,7 @@ export function Simulator() {
               {phase !== "results" && <RecruitmentAtmosphere arriving={phase === "arriving"} submitted={phase === "dispatching"} />}
               <div className="sim-cinematic-title"><GameIcon name="schale" /><span>{phase === "results" ? "Recruitment Results" : "Recruitment"}</span></div>
               <button className="sim-sound-toggle sim-secondary" aria-pressed={!muted} onClick={toggleSound}>{muted ? "Sound: Off" : "Sound: On"}</button>
+              <FullscreenButton className="sim-sound-toggle sim-secondary" landscape />
               {busy && <button className="sim-skip" onClick={skipAnimation}>Skip animation</button>}
               {(phase === "arriving" || phase === "signing" || phase === "dispatching") && <RecruitmentContract results={results} arrivalPeakMs={arrivalPeakMs} arriving={phase === "arriving"} submitted={phase === "dispatching"} paused={portraitBlocked} onOpen={() => setPhase("dispatching")} />}
               {phase === "dispatching" && <div className="sim-dispatch" role="status"><div className="dispatch-orbit" aria-hidden="true" /><div className="dispatch-envelope"><div className="dispatch-application" aria-hidden="true"><GameIcon name="schale" /></div>{recruitmentSource === "ticket" && <GameIcon name="recruitment-10" className="dispatch-ticket" />}</div><strong>Recruitment authorized</strong><small>Delivering student applications…</small></div>}
