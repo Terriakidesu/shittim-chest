@@ -810,6 +810,12 @@ dialog.sim-stage:has(.sim-contract) { overflow: clip; }
 .recruitment-atmosphere.is-revealed .recruitment-horizon { animation: sim-scene-diamond .65s cubic-bezier(.1, .8, .2, 1) both, sim-scene-diamond-drift 6s .65s ease-in-out infinite; }
 .sim-stage.fakeout-revealing .recruitment-horizon { animation-delay: 160ms, 810ms; }
 .recruitment-horizon::after { content: ""; position: absolute; inset: 12%; border: 1px solid color-mix(in srgb, var(--authorization-color) 35%, transparent); animation: sim-scene-diamond-inner 8s ease-in-out infinite; }
+.recruitment-purple-diamond { display: none; position: absolute; left: 50%; top: 50%; width: min(100dvh, 80vw); aspect-ratio: 1; translate: -50% -50%; rotate: 45deg; border: clamp(20px, 4.8dvh, 60px) solid var(--authorization-color); }
+.preview-rarity-3:not(.fakeout-preview-blue):not(.fakeout-preview-gold) .recruitment-atmosphere.is-revealed .recruitment-purple-diamond,
+.fakeout-revealing .recruitment-atmosphere .recruitment-purple-diamond,
+.fakeout-revealed .recruitment-atmosphere .recruitment-purple-diamond { display: block; animation: sim-purple-diamond-arrive .65s cubic-bezier(.1, .8, .2, 1) both, sim-scene-diamond-drift 6s .65s ease-in-out infinite; }
+.fakeout-revealing .recruitment-purple-diamond { animation-delay: 160ms, 810ms; }
+@keyframes sim-purple-diamond-arrive { from { opacity: 0; transform: scale(.3); } to { opacity: 1; transform: scale(1); } }
 @keyframes sim-scene-diamond-drift { 0%, 100% { transform: scale(1) rotate(0); } 50% { transform: scale(1.07) rotate(5deg); } }
 @keyframes sim-scene-diamond-inner { 0%, 100% { transform: scale(.96) rotate(0); opacity: .35; } 50% { transform: scale(1.06) rotate(-10deg); opacity: .8; } }
 .recruitment-sparkle-field { position: absolute; inset: 0; opacity: 1; transition: opacity .15s ease-out; }
