@@ -25,6 +25,7 @@ ships the static subset that can be hosted on GitHub Pages.
 | `public/img/` | Locally bundled artwork (avatars, portraits, banners, mascots, emblems). The client never loads images from upstream hosts. |
 | `public/og/` | Per-route Open Graph / Twitter card images (1200×630), prepared offline. |
 | `public/ba-icons/`, `public/ba-lobby/`, `public/ba-sounds/` | Game-derived static assets with provenance notes (`SOURCES.md`, `manifest.json`). |
+| `public/ba-cards/` | Recruitment card and star recreations by Terriakidesu, with their upstream asset notice and local source notes. |
 | `AGENTS.md` | Notes for agents working in this repository. |
 
 ## Commands
@@ -41,6 +42,11 @@ bun run test       # bun test unit tests
 
 `bun run export --skip-images` refreshes the JSON without touching artwork.
 Both `export` variants need network access.
+Student reveal profiles (combat class, weapon, birthday, voice actor and English
+recruitment dialogue) come from wiki character infoboxes and `/audio` pages,
+joined by numeric student ID. `bun run scripts/student-profiles.ts` regenerates
+only the profile fields in `public/data/characters.json`, without refreshing
+the calendar or artwork. Missing upstream dialogue is omitted, never invented.
 
 To exercise the routing locally the way GitHub Pages resolves it — extensionless
 URLs and the `404.html` fallback, neither of which `bun run preview` reproduces:

@@ -8,6 +8,8 @@ import { SiteFooter } from "./components/SiteFooter";
 import { currentRoute, redirectLegacyHash } from "./route";
 import { applySeo } from "./seo";
 import "./styles.css";
+import "./recruitment.css";
+import "./recruitmentResults.css";
 import { initializeTheme } from "./theme";
 
 initializeTheme();

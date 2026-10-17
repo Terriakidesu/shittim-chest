@@ -1,0 +1,123 @@
+/* Recruitment motion follows the animation showcase; student layouts follow
+   the in-game admission-sheet references. All artwork is locally bundled. */
+.sim-animated-reveal .reveal-slot {
+  animation-name: recruitment-fly-in;
+  animation-duration: 700ms;
+  animation-timing-function: cubic-bezier(.3, 1.09, .36, .99);
+  perspective: none;
+}
+@keyframes recruitment-fly-in {
+  from { opacity: 0; transform: perspective(800px) translate3d(0, 9.6px, 640px); }
+  80%, to { opacity: 1; transform: perspective(800px) translate3d(0, 0, 0); }
+}
+.sim-animated-reveal .reveal-card-turn { perspective: 800px; transition: none; }
+.sim-animated-reveal .reveal-slot.is-open { perspective: 800px; }
+.sim-animated-reveal .reveal-slot.is-open .reveal-card-turn { animation: recruitment-flip var(--card-flip-duration) cubic-bezier(.51, -.33, .38, 1.05) both; }
+@keyframes recruitment-flip {
+  from { transform: rotateY(0); }
+  90%, to { transform: rotateY(180deg); }
+}
+.reveal-face .result-card.sealed { overflow: visible; background: none; clip-path: none; }
+.result-card.sealed img.recruitment-card-front { width: 100%; height: 100%; object-fit: contain; padding: 0; background: none; transform: rotate(-15deg); }
+.sim-animated-reveal .reveal-slot::before { display: none; }
+.recruitment-landing { position: absolute; z-index: 2; inset: 0; pointer-events: none; }
+.recruitment-landing-outline {
+  --landing-border-start: 4px;
+  --landing-gap: 0px;
+  position: absolute;
+  box-sizing: border-box;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: 100%;
+  height: 100%;
+  border: var(--landing-border-start) solid var(--reveal-glow);
+  filter: blur(1.5px) brightness(1.05);
+  animation: recruitment-land 800ms var(--envelope-land-delay) cubic-bezier(.15, .95, .34, .97) both;
+}
+.rarity-3 .recruitment-landing-outline { border-image: linear-gradient(135deg, #f5a7ea, #f9def8, #87f3f6, #d2b3f5) 1; }
+.recruitment-landing-outline.is-thick { --landing-border-start: 16px; --landing-gap: 8px; animation-delay: calc(var(--envelope-land-delay) + 120ms); }
+@keyframes recruitment-land {
+  from { opacity: 1; transform: rotate(-15deg) scale(1.1); width: 100%; height: 100%; border-width: var(--landing-border-start); }
+  48% { opacity: 1; transform: rotate(0) scale(1); width: calc(200% - 2 * var(--landing-gap)); height: calc(200% * 566 / 740 - 2 * var(--landing-gap)); border-width: var(--landing-border-start); box-shadow: 0 0 24px var(--reveal-glow), inset 0 0 30px var(--reveal-glow); }
+  62% { opacity: .72; transform: rotate(0) scale(1); width: calc(200% - 2 * var(--landing-gap)); height: calc(200% * 566 / 740 - 2 * var(--landing-gap)); border-width: calc(var(--landing-border-start) * .55); box-shadow: 0 0 20px var(--reveal-glow), inset 0 0 24px var(--reveal-glow); }
+  to { opacity: 0; transform: rotate(0) scale(1); width: calc(200% - 2 * var(--landing-gap)); height: calc(200% * 566 / 740 - 2 * var(--landing-gap)); border-width: 0; }
+}
+
+.student-introduction {
+  --intro-base: #b9dfed;
+  --intro-light: #e0f5fb;
+  position: fixed;
+  z-index: 4;
+  inset: 0;
+  overflow: hidden;
+  color: #34495f;
+  pointer-events: auto;
+  animation: recruitment-introduction 250ms ease-out both;
+}
+.student-introduction.rarity-2 { --intro-base: #f5d58d; --intro-light: #fff0be; }
+.student-introduction.rarity-3 { --intro-base: #c2b4ec; --intro-light: #f9d3ef; }
+@keyframes recruitment-introduction {
+  from { opacity: 0; visibility: hidden; transform: translateX(20px); }
+  to { opacity: 1; visibility: visible; transform: translateX(0); }
+}
+.student-intro-backdrop { position: absolute; inset: 0; background: radial-gradient(ellipse at 42% 35%, var(--intro-light), transparent 75%), linear-gradient(125deg, var(--intro-base), var(--intro-light)); }
+.student-intro-backdrop::after { content: ""; position: absolute; inset: 0; background: conic-gradient(from 30deg at 50% 75%, #ffffff18 0 60deg, transparent 60deg 180deg, #ffffff20 180deg 240deg, transparent 240deg); background-size: 32vw 40vw; }
+.student-introduction.rarity-3 .student-intro-backdrop { background: radial-gradient(ellipse at 70% 5%, #ffd4eb, transparent 60%), radial-gradient(ellipse at 5% 90%, #edbafa, transparent 60%), linear-gradient(120deg, #c7dbf6, #c4b7e9); }
+.student-intro-portrait { position: absolute; left: 5%; bottom: -9%; width: 63%; height: 108%; object-fit: contain; object-position: center bottom; filter: drop-shadow(0 8px 18px #52659a20); }
+
+.student-intro-application { position: absolute; right: 7%; top: 22%; width: 29%; height: 66%; padding: 13px; background: #e8f6fcaa; border: 1px solid #ffffff80; border-radius: 4px; transform: rotate(-3deg); box-shadow: 0 2px 4px #43637f35; }
+.student-intro-application::before { content: "○ + × △"; position: absolute; left: 12px; top: -18px; width: 78px; height: 22px; padding: 2px 8px; background: #e8f6fcaa; border-radius: 4px 12px 0 0; color: #9abacb; font-size: 12px; }
+.student-application-paper { position: relative; display: flex; flex-direction: column; height: 100%; padding: 12px; background: #fffffff5; border: 1px solid #e2e7e9; box-shadow: 5px -5px 0 #ffffff90, 0 3px 4px #43637f20; }
+.student-application-paper::before { content: ""; position: absolute; top: -9px; left: 3px; width: 10px; height: 30px; border: 2px solid #92c6dd; border-radius: 9px; rotate: -25deg; }
+.student-application-heading { display: flex; gap: 8px; margin: 0 0 10px; padding-bottom: 6px; border-bottom: 2px solid #cdd5dc; color: #9caab4; font-family: Georgia, serif; font-size: clamp(9px, 1.1vw, 17px); white-space: nowrap; }
+.student-application-heading span { overflow: hidden; text-overflow: ellipsis; }
+.student-application-school { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 20%; padding: 6px; border: 1px solid #d8dfe5; color: #273747; }
+.student-application-school img { width: 20%; max-height: 65px; object-fit: contain; }
+.student-application-school strong { font-size: clamp(11px, 1.4vw, 22px); font-weight: 500; }
+.student-application-paper dl { display: flex; flex-direction: column; flex: 1; margin: 0; border: 1px solid #d8dfe5; border-top: 0; text-align: center; }
+.student-application-paper dt { padding: 3px; background: #eef1f5; border-block: 1px solid #e0e5e9; color: #8d99a6; font-size: clamp(9px, 1.1vw, 16px); }
+.student-application-paper dd { display: grid; place-content: center; flex: 1; margin: 0; padding: 3px 6px; color: #626d79; font-size: clamp(11px, 1.4vw, 22px); line-height: 1.15; }
+.student-application-paper dd.application-role { color: #e96c50; font-weight: 850; font-style: italic; }
+.student-application-paper dd.application-role.is-special { color: #358ddd; }
+.student-application-footer { padding-top: 8px; color: #a7b6c2; font-size: clamp(5px, .55vw, 9px); letter-spacing: .12em; text-align: center; }
+
+.student-intro-identity { position: absolute; left: 5%; bottom: 7%; width: 42%; }
+.student-intro-status { position: absolute; left: 1%; bottom: calc(100% - 3px); z-index: 1; color: #fff041; font-size: clamp(14px, 1.5vw, 24px); font-style: italic; font-weight: 900; text-shadow: -1px -1px #304668, 1px 2px #304668; }
+.student-intro-nameplate { position: relative; display: flex; align-items: center; gap: 14px; width: 100%; height: clamp(44px, 8dvh, 72px); padding: 8px 20px; background: #233e66e8; color: #fff; border-radius: 5px; transform: skewX(-10deg); box-shadow: 0 3px 8px #43637f20; }
+.student-intro-stars { display: flex; align-items: center; flex-shrink: 0; color: #ffe375; font-size: clamp(14px, 1.6vw, 25px); transform: skewX(10deg); }
+.student-intro-stars img { width: clamp(14px, 1.6vw, 25px); height: auto; filter: drop-shadow(0 1px 1px #162a4970); }
+.student-intro-nameplate h2 { display: flex; align-items: center; flex: 1; min-width: 0; height: 100%; margin: 0; padding-left: 14px; border-left: 1px solid #ffffff40; overflow: hidden; white-space: nowrap; font-size: var(--fit-font-size, clamp(22px, 3vw, 46px)); font-style: italic; line-height: 1.1; transform: skewX(10deg); }
+.student-intro-nameplate h2 > span { display: block; flex-shrink: 0; }
+.student-intro-voice { flex: 0 1 auto; max-width: 26%; align-self: end; padding-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d2dceb; font-size: clamp(9px, 1vw, 15px); font-style: italic; transform: skewX(10deg); }
+.student-intro-message { display: flex; flex-direction: column; gap: 4px; margin: 0 0 0 12px; padding: 12px 20px; background: #fffffff0; border: 3px double #d9e9ef; border-radius: 4px; box-shadow: 0 2px 4px #43637f15; transform: skewX(-10deg); }
+.student-intro-message > * { transform: skewX(10deg); }
+.student-intro-message span { font-size: clamp(12px, 1.5vw, 22px); color: #657383; }
+.student-intro-message small { align-self: flex-end; color: #cbdbe3; font-size: clamp(8px, .8vw, 12px); font-style: italic; }
+.student-intro-continue { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; border: 0; background: transparent; cursor: pointer; }
+.student-intro-continue:disabled { cursor: default; }
+.student-intro-continue:focus-visible { outline: 3px solid #269abd; outline-offset: -5px; }
+.student-intro-continue > span { position: absolute; bottom: 3%; right: 8%; color: #4c6380; font-size: clamp(10px, 1vw, 15px); letter-spacing: .04em; }
+.phase-envelopes:has(.student-introduction) .sim-cinematic-title { display: none; }
+dialog.sim-stage .sim-stage-controls > button, .sim-top-note .sim-sound-toggle { position: static; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; height: 36px; min-height: 36px; padding: 6px 10px; transform: skewX(-10deg); border: 0; border-radius: 3px; color: #4b5765; background: #ffffffed; font-size: 14px; font-weight: 850; font-style: italic; box-shadow: 0 3px 4px #48608030; }
+dialog.sim-stage .sim-stage-controls > button .icon, .sim-top-note .sim-sound-toggle .icon { width: 20px; height: 20px; transform: skewX(10deg); }
+dialog.sim-stage .sim-stage-controls > button:hover, .sim-top-note .sim-sound-toggle:hover { background: #dff6ff; color: #245971; }
+.sim-skip:disabled { opacity: .45; cursor: default; }
+
+@media (max-height: 500px) {
+  .student-intro-application { top: 20%; height: 66%; padding: 7px; }
+  .student-application-paper { padding: 6px; }
+  .student-application-heading { margin-bottom: 4px; padding-bottom: 3px; }
+  .student-application-paper dt { padding: 1px; }
+  .student-application-footer { padding-top: 3px; }
+  .student-intro-nameplate { padding: 8px 14px; gap: 8px; }
+  .student-intro-message { padding: 7px 14px; }
+  .student-intro-continue > span { right: 29%; bottom: 3%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .student-introduction { animation: none; }
+  .sim-animated-reveal .reveal-slot { animation: none; }
+  .sim-animated-reveal .reveal-slot.is-open .reveal-card-turn { animation: none; transform: rotateY(180deg); }
+  .sim-animated-reveal .reveal-slot::before { display: none; }
+  .recruitment-landing { display: none; }
+}

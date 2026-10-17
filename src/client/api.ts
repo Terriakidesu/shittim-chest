@@ -62,6 +62,15 @@ export interface Banner {
   forecastStatus: "arrived" | "scheduled" | "estimated" | "unresolved";
 }
 
+/** Exported by scripts/student-profiles.ts from wiki infoboxes and audio tables. */
+export interface StudentProfile {
+  tacticalRole: string;
+  weaponType: string;
+  birthday: string;
+  voiceActor: string;
+  recruitmentDialogue: string;
+}
+
 export interface CharacterRecord {
   id: number;
   name: string;
@@ -73,6 +82,7 @@ export interface CharacterRecord {
   avatar: string;
   availability?: CharacterAvailability;
   releasedOn?: { jp: boolean; gl: boolean; kr: boolean };
+  profile?: StudentProfile;
 }
 
 export interface Status {

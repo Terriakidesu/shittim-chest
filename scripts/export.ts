@@ -38,6 +38,7 @@ import {
 import type { Banner, Batch, Prediction } from "../src/model/domain/types";
 import { buildCalibration } from "../src/model/domain/calibration";
 import { verifiedTruth } from "../src/model/domain/evaluation";
+import { fetchStudentProfiles, type StudentProfileDto } from "./student-profiles";
 
 /* ------------------------------------------------------------------ */
 /* Local (relative) artwork paths. No leading slash: the built site may */
@@ -73,6 +74,7 @@ interface BannerDto {
 }
 
 interface Snapshot {
+  studentProfiles: Map<number, StudentProfileDto>;
   banners: Banner[];
   batchIndex: BatchIndex;
   characters: CharacterIndex;
@@ -146,7 +148,7 @@ async function buildSnapshot(): Promise<Snapshot> {
   const wiki = new BlueArchiveWikiSource();
   const schale = new SchaleDbSource();
   const clubs = new WikiClubSource();
-  const [wikiRes, schaleRes, clubRes] = await Promise.all([
+  const [wikiRes, schaleRes, clubRes, studentProfiles] = await Promise.all([
     wiki.fetchAll(),
     schale.fetchAll(),
     // Club names are cosmetic: a wiki hiccup must not fail the whole export,
@@ -154,6 +156,11 @@ async function buildSnapshot(): Promise<Snapshot> {
     clubs.fetchAll().catch((err) => {
       console.warn(`club names unavailable (${err}); keeping SchaleDB keys`);
       return null;
+    }),
+    fetchStudentProfiles().catch(async (err) => {
+      console.warn(`student profiles unavailable (${err}); preserving the last exported profiles`);
+      const cached = await Bun.file(join(outDir, "data/characters.json")).json().catch(() => ({ characters: [] })) as { characters: { id: number; profile?: StudentProfileDto }[] };
+      return new Map(cached.characters.filter((c) => c.profile).map((c) => [c.id, c.profile!]));
     }),
   ]);
 
@@ -228,6 +235,7 @@ async function buildSnapshot(): Promise<Snapshot> {
   );
 
   return {
+    studentProfiles,
     banners,
     batchIndex,
     characters,
@@ -466,6 +474,7 @@ if (!imagesOnly) {
       avatar: portraitPath(c.id),
       availability: c.availability,
       releasedOn: c.releasedOn,
+      ...(snap.studentProfiles.has(c.id) ? { profile: snap.studentProfiles.get(c.id) } : {}),
     })),
   };
 

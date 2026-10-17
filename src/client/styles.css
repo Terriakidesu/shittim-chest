@@ -846,20 +846,6 @@ dialog.sim-stage .contract-aura { width: min(440px, 100%, 70dvh); }
 dialog.sim-stage .sim-skip { z-index: 6; top: 20px; right: 25px; }
 .sim-cinematic-title { position: absolute; z-index: 6; top: 19px; left: 28px; display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 20px; font-weight: 850; }
 .sim-cinematic-title .ba-game-icon { width: 30px; height: 30px; }
-.sim-reveal-next { position: fixed; z-index: 6; right: 25px; bottom: 20px; min-width: 145px; }
-.student-introduction { --intro-color: #42b9ef; position: fixed; z-index: 3; inset: 60px 0 65px; overflow: hidden; pointer-events: none; animation: sim-student-introduction ease-in-out both; }
-.student-introduction.rarity-2 { --intro-color: var(--gold); }
-.student-introduction.rarity-3 { --intro-color: #b977e8; }
-.student-intro-backdrop { position: absolute; inset: 0; background: linear-gradient(115deg, var(--surface) 0 42%, color-mix(in srgb, var(--intro-color) 15%, var(--surface-alt)) 42% 73%, var(--surface) 73%); }
-.student-intro-backdrop::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(115deg, transparent 0 80px, color-mix(in srgb, var(--intro-color) 7%, transparent) 80px 82px); }
-.student-intro-portrait { position: absolute; left: 30%; bottom: 0; width: 65%; height: 100%; object-fit: contain; object-position: center bottom; filter: drop-shadow(0 0 25px color-mix(in srgb, var(--intro-color) 22%, transparent)); }
-.student-intro-school { position: absolute; left: 7%; top: 9%; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; font-size: 13px; font-weight: 800; color: var(--muted); }
-.student-intro-school img { width: 85px; height: 85px; object-fit: contain; }
-.student-intro-nameplate { position: absolute; left: 7%; bottom: 17%; width: min(48%, 570px); padding: 18px 22px; border-left: 5px solid var(--intro-color); background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: 0 10px 25px #00000010; }
-.student-intro-status { display: block; color: var(--accent); font-size: 14px; font-weight: 900; font-style: italic; margin-bottom: 8px; }
-.student-intro-stars { display: block; color: var(--gold); font-size: 26px; letter-spacing: 5px; text-shadow: 0 1px 2px #00000030; }
-.student-intro-nameplate h2 { margin: 8px 0 0; font-size: clamp(24px, 3.5vw, 48px); line-height: 1.1; overflow-wrap: anywhere; }
-.student-intro-nameplate p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
 .sim-result-grid.single-result { grid-template-columns: minmax(100px, 220px); justify-content: center; }
 .sim-animated-reveal .sim-result-grid:has(> .reveal-slot:only-child) { grid-template-columns: minmax(100px, 220px); justify-content: center; }
 dialog.sim-stage .sim-results-screen .sim-result-grid { max-width: min(100%, 150dvh); margin: 0 auto; width: 100%; }
@@ -928,7 +914,6 @@ dialog.sim-stage > .sim-stage-controls { position: absolute; z-index: 6; top: 20
 @media (max-height: 560px) and (orientation: landscape) {
   dialog.sim-stage > .sim-stage-controls { top: 10px; }
 }
-@keyframes sim-student-introduction { 0% { opacity: 0; transform: translateX(20px); } 12%, 85% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; transform: translateX(-10px); } }
 .sim-results-screen { animation: sim-results-settle .18s ease-out both; }
 @keyframes sim-results-settle { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-height: 560px) and (orientation: landscape) {
@@ -952,7 +937,6 @@ dialog.sim-stage > .sim-stage-controls { position: absolute; z-index: 6; top: 20
   .student-intro-nameplate h2 { font-size: 27px; }
   .student-intro-stars { font-size: 20px; }
   .student-intro-nameplate p { font-size: 10px; }
-  .sim-reveal-next { bottom: 8px; min-height: 34px; }
 }
 @media (orientation: portrait) and (hover: none) and (pointer: coarse) {
   .sim-app > :not(.sim-orientation-guard), dialog.sim-stage > :not(.sim-orientation-guard), .sim-spark-dialog > :not(.sim-orientation-guard) { visibility: hidden; }

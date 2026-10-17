@@ -42,6 +42,7 @@ MIT grant, and are not being redistributed under it:
 | `public/ba-icons/**` | Original game interface icons | Property of NEXON Games / Yostar |
 | `public/ba-lobby/**` | Original game artwork | Property of NEXON Games / Yostar |
 | `public/ba-sounds/**` | Original recruitment sound effects | Property of NEXON Games / Yostar |
+| `public/ba-cards/**` | Recreated recruitment cards and stars by Terriakidesu | Creative Commons assets; see the preserved `ASSET-LICENSE.md` and `SOURCES.md` in that directory |
 | `public/data/*.json` | Generated forecast snapshot | Derived from Blue Archive Wiki text (CC BY-SA 4.0) and SchaleDB data; retains upstream terms |
 
 Per-file provenance is recorded in `public/ba-icons/SOURCES.md`,

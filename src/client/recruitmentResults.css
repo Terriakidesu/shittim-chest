@@ -1,0 +1,94 @@
+/* Portrait-side cards use the showcase's 566:740 shape, rounded white rim,
+   counter-skewed portrait, 21% star bar, and persistent rare-card facets. */
+/* Match the reference's light backdrop while preserving the chosen theme. */
+dialog.sim-stage { --recruitment-card-height: 23dvh; overflow: clip; overscroll-behavior: none; }
+dialog.sim-stage.phase-results, dialog.sim-stage.phase-envelopes {
+  color: #31536a;
+  background: radial-gradient(ellipse at 50% 20%, #e4f7fc99, transparent 65%), linear-gradient(180deg, #b8e5f2, #c5eaf5 55%, #e0e7ef);
+}
+dialog.sim-stage.phase-results::before, dialog.sim-stage.phase-envelopes::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; background: conic-gradient(from 30deg at 50% 75%, #ffffff1c 0 60deg, transparent 60deg 180deg, #ffffff12 180deg 240deg, transparent 240deg); background-size: 35dvh 40dvh; }
+.phase-results .sim-cinematic-title, .phase-envelopes .sim-cinematic-title { color: #31536a; }
+:root[data-theme="dark"] dialog.sim-stage.phase-results, :root[data-theme="dark"] dialog.sim-stage.phase-envelopes { color: var(--text); background: linear-gradient(145deg, color-mix(in srgb, var(--cyan-soft) 88%, var(--surface)), color-mix(in srgb, var(--header) 76%, var(--surface)) 52%, var(--surface-alt)); }
+:root[data-theme="dark"] .phase-results .sim-cinematic-title, :root[data-theme="dark"] .phase-envelopes .sim-cinematic-title { color: var(--text); }
+:root[data-theme="dark"] dialog.sim-stage::before { opacity: .2; }
+dialog.sim-stage .sim-results-screen, dialog.sim-stage .sim-animated-reveal { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; }
+.sim-results-screen .sim-reveal-heading, .sim-animated-reveal .sim-reveal-heading { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.sim-animated-reveal .sim-reveal-caption { position: absolute; bottom: 8%; left: 0; width: 100%; min-height: 0; margin: 0; pointer-events: none; text-align: center; }
+dialog.sim-stage .sim-results-screen .sim-result-grid, dialog.sim-stage .sim-animated-reveal .sim-result-grid {
+  position: absolute;
+  top: 17%;
+  left: 50%;
+  translate: -50% 0;
+  width: min(112dvh, calc(100% - 64px));
+  max-width: none;
+  justify-items: center;
+  align-items: center;
+  gap: 8dvh 4dvh;
+  padding: 0 12px;
+}
+dialog.sim-stage .sim-results-screen .recruitment-result { max-width: calc(var(--recruitment-card-height) * 566 / 740); }
+.sim-results-screen .recruitment-result[data-index]::before { display: none; }
+dialog.sim-stage .sim-result-grid.single-result, dialog.sim-stage .sim-result-grid:has(> .reveal-slot:only-child) { --recruitment-card-height: 32dvh; top: 25%; grid-template-columns: minmax(0, calc(var(--recruitment-card-height) * 566 / 740)); justify-content: center; }
+dialog.sim-stage .sim-animated-reveal .reveal-slot { width: 100%; max-width: calc(var(--recruitment-card-height) * 566 / 740); height: auto; aspect-ratio: 566 / 740; }
+dialog.sim-stage .recruitment-result {
+  --result-rim: #fff;
+  position: relative;
+  width: 100%;
+  max-width: calc(var(--recruitment-card-height) * 566 / 740);
+  height: auto;
+  aspect-ratio: 566 / 740;
+  padding: 2px;
+  border: 0;
+  border-radius: 7px;
+  background: #fff;
+  clip-path: none;
+  overflow: visible;
+  transform: skewX(-10deg);
+  box-shadow: 0 3px 5px #264c5d4d;
+  filter: none;
+}
+.sim-stage .recruitment-result[data-index]::before { content: attr(data-index); position: absolute; top: -21px; left: -7px; color: #64a9bc; font-size: 11px; font-weight: 850; letter-spacing: .05em; transform: skewX(10deg); }
+.recruitment-result-inner { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) 21%; width: 100%; height: 100%; border-radius: 5px; background: #d7e3ec; overflow: hidden; }
+.sim-stage .recruitment-result .result-card-art { position: relative; inset: auto; min-height: 0; padding: 0; clip-path: none; overflow: hidden; background: #d7e3ec; box-shadow: none; }
+.sim-stage .recruitment-result .result-card-art > img { position: relative; display: block; width: 100%; height: 100%; padding: 0; object-fit: cover; object-position: center; background: none; transform: skewX(10deg); }
+.sim-stage .recruitment-result .result-rarity-strip { position: relative; inset: auto; display: flex; align-items: center; justify-content: center; gap: 5%; height: auto; padding: 0 10%; background: #607182; border-top: 2px solid var(--result-rim); clip-path: none; }
+.sim-stage .recruitment-result .result-rarity-strip img { display: block; flex: 0 1 22%; width: 22%; height: auto; max-width: 2rem; aspect-ratio: 1; padding: 0; background: none; object-fit: contain; transform: skewX(10deg); filter: drop-shadow(0 1px 1px #0006); }
+.sim-stage .recruitment-result .result-new-label, .sim-stage .recruitment-result .result-pickup-label { position: absolute; z-index: 3; top: -10px; left: 3px; padding: 0; background: none; color: #fff04f; transform: skewX(10deg); font-size: clamp(9px, 1.15vw, 18px); font-style: italic; font-weight: 900; line-height: .95; text-align: left; -webkit-text-stroke: 3px #344852; paint-order: stroke fill; text-shadow: 0 2px 1px #344852; }
+.sim-stage .recruitment-result .result-pickup-label b { color: #fff; font-size: inherit; }
+
+.sim-stage .recruitment-result.rarity-2 { --result-rim: #ffe46c; --result-glow: #ffc9358c; --result-fill: #ffe65b; --result-light: #fff7ad; --result-facet: #ffeb8485; --result-sparkle: #fff5bc; background: linear-gradient(135deg, #fff9ce, #ffe36b 28%, #fff9c8 48%, #efb933 75%, #fff1a0); }
+.sim-stage .recruitment-result.rarity-3 { --result-rim: #ffb6ef; --result-glow: #eb71f08c; --result-fill: #f2acd9; --result-light: #ffe1f4; --result-facet: #ffaeef7a; --result-sparkle: #ffe5fc; background: linear-gradient(135deg, #ffe6fb, #f9a4e5 28%, #e5cbff 48%, #e88bd8 75%, #ffd8f6); }
+.sim-stage .recruitment-result:is(.rarity-2, .rarity-3) { padding: clamp(2px, .2vw, 3px); box-shadow: 0 0 3px var(--result-rim), 0 0 15px var(--result-glow), 0 3px 5px #264c5d4d; }
+.sim-stage .recruitment-result:is(.rarity-2, .rarity-3) .result-card-art { background: linear-gradient(135deg, var(--result-light), var(--result-fill) 65%); }
+.recruitment-result:is(.rarity-2, .rarity-3) .result-card-art::before { content: ""; position: absolute; inset: 0; background: linear-gradient(32deg, transparent 56%, #ffffff4d 56% 72%, transparent 72%), linear-gradient(145deg, transparent 58%, #ffffff40 58% 77%, transparent 77%), linear-gradient(65deg, #fff3 22%, transparent 22%); }
+.recruitment-result:is(.rarity-2, .rarity-3) .recruitment-result-inner::after { content: ""; position: absolute; z-index: 2; inset: 0; pointer-events: none; background: linear-gradient(145deg, var(--result-facet), transparent 44%), linear-gradient(325deg, var(--result-facet), transparent 40%); clip-path: polygon(0 0, 38% 0, 0 31%, 0 0, 100% 0, 100% 34%, 85% 12%, 100% 0, 0 0, 100% 100%, 58% 100%, 100% 64%, 100% 100%, 0 0, 0 100%, 0 72%, 19% 91%, 0 100%, 0 0); }
+.recruitment-result:is(.rarity-2, .rarity-3)::after { content: ""; position: absolute; z-index: 2; inset: 0; pointer-events: none; background: var(--result-sparkle); clip-path: polygon(0 0, 8% 13%, 15% 17%, 9% 22%, 8% 13%, 0 0, 88% 28%, 94% 22%, 95% 32%, 88% 28%, 0 0, 78% 68%, 86% 72%, 80% 77%, 78% 68%, 0 0, 13% 61%, 19% 67%, 11% 69%, 13% 61%, 0 0); }
+.sim-results-screen .sim-result-actions { position: absolute; inset: 0; display: block; width: 100%; margin: 0; padding: 0; pointer-events: none; }
+.sim-results-screen .sim-result-actions > * { pointer-events: auto; }
+.sim-result-buttons { position: absolute; left: 50%; bottom: 7.5%; display: flex; align-items: stretch; gap: clamp(14px, 1.5vw, 24px); transform: translateX(-50%); }
+.sim-results-screen .sim-result-buttons button { position: relative; width: clamp(135px, 16vw, 250px); height: clamp(42px, 9.5dvh, 82px); padding: 4px 12px; border-radius: 7px; transform: skewX(-8deg); box-shadow: 0 3px 4px #294f6c50; }
+.sim-results-screen .sim-result-confirm { background: linear-gradient(125deg, #6cd4f4 0 38%, #82ddf9 38% 76%, #71d4f3 76%); color: #2b536c; font-size: clamp(18px, 2.1vw, 34px); font-style: normal; font-weight: 800; }
+.sim-results-screen .sim-result-actions .sim-result-again { display: flex; flex-direction: column; justify-content: center; gap: 3px; background: linear-gradient(125deg, #ffe554 0 38%, #ffeb79 38% 76%, #ffdc40 76%); color: #344a5b; font-size: clamp(14px, 1.6vw, 25px); line-height: 1.1; }
+.sim-results-screen .sim-result-again > * { transform: skewX(8deg); }
+.sim-results-screen .sim-result-again .ba-game-icon { width: 22px; height: 20px; }
+.sim-results-screen .sim-result-again .result-again-cost { font-size: clamp(10px, 1vw, 15px); line-height: 1.1; }
+.sim-results-screen .sim-result-counter { position: absolute; right: 5%; bottom: 7.5%; display: grid; grid-template-rows: 1fr 1fr; gap: 0; min-width: 0; width: clamp(145px, 17vw, 250px); height: clamp(42px, 8.5dvh, 76px); padding: 0; background: #2b5b78; border: 1px solid #4c7890; border-radius: 4px; clip-path: none; transform: skewX(-10deg); color: #fff; }
+.sim-results-screen .sim-result-counter .ba-game-icon { position: absolute; left: -24px; top: 50%; width: clamp(48px, 5vw, 72px); height: auto; translate: 0 -50%; transform: skewX(10deg); }
+.sim-results-screen .sim-result-counter > span { display: block; padding: 3px 12px 3px 30px; border-radius: 3px 3px 0 0; background: #fff; color: #4c6c82; font-size: clamp(10px, 1vw, 16px); font-weight: 800; line-height: 1.2; white-space: nowrap; text-align: center; }
+.sim-results-screen .sim-result-counter > strong { padding: 2px 12px 2px 30px; text-align: center; font-size: clamp(14px, 1.4vw, 23px); line-height: 1.2; transform: skewX(10deg); }
+.sim-results-screen .sim-result-counter > strong small { display: none; }
+.sim-results-screen .sim-result-counter:not(:has(.ba-game-icon)) > span, .sim-results-screen .sim-result-counter:not(:has(.ba-game-icon)) > strong { padding-left: 12px; }
+
+/* Use the same silhouette on the flip's portrait face, without the result
+   grid's viewport cap overriding its parent envelope dimensions. */
+.sim-stage .reveal-face .recruitment-result { max-width: none; width: 100%; height: 100%; aspect-ratio: auto; }
+@media (max-height: 500px) {
+  .sim-results-screen .sim-result-again .ba-game-icon { width: 18px; height: 16px; }
+  .sim-stage .recruitment-result[data-index]::before { top: -16px; font-size: 9px; }
+  .sim-results-screen .sim-reveal-heading { min-height: 0; margin-bottom: 0; }
+  .sim-stage .recruitment-result .result-new-label, .sim-stage .recruitment-result .result-pickup-label { top: -6px; font-size: 9px; -webkit-text-stroke-width: 2px; }
+}
+@media (max-width: 760px) {
+  .sim-result-buttons { left: 5%; transform: none; }
+  .sim-results-screen .sim-result-buttons button { width: clamp(110px, 20vw, 150px); }
+}

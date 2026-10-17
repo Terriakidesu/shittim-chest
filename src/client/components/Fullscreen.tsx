@@ -71,8 +71,7 @@ export function FullscreenButton({
       title={active ? "Exit fullscreen" : "Enter fullscreen"}
       onClick={() => void toggle(landscape)}
     >
-      {active ? <IconCompress /> : <IconExpand />}{" "}
-      {active ? "Exit" : "Fullscreen"}
+      {active ? <IconCompress /> : <IconExpand />}
     </button>
   );
 }

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { api, asset, emblemUrl, type Banner, type CharacterRecord, type Server } from "./api";
-import { IconChevronLeft, IconChevronRight, IconClose, IconRotate, IconStar, Stars } from "./components/icons";
+import { api, asset, type Banner, type CharacterRecord, type Server } from "./api";
+import { nextUnseenPurple } from "./recruitmentSequence";
+import { readSelection, saveSelection } from "./simulatorSelection";
+import { IconChevronLeft, IconClose, IconRotate, IconSound, IconStar, Stars } from "./components/icons";
 import { link, query } from "./route";
 import { REQUEST_REVEAL_PEAK_MS, useRecruitmentAudio, type RecruitmentPlayback, type RecruitmentSound } from "./recruitmentAudio";
-import { CARD_FLIP_MS, DISPATCH_DEPARTURE_MS, RESULTS_SETTLE_MS, cardImpactMs, portraitEntranceMs } from "./recruitmentTiming";
+import { CARD_FLIP_MS, CARD_SPREAD_MS, DISPATCH_DEPARTURE_MS, RESULTS_SETTLE_MS, cardImpactMs, portraitEntranceMs } from "./recruitmentTiming";
+import { StudentIntroduction } from "./components/StudentIntroduction";
 import { ThemeSwitch } from "./components/ThemeSwitch";
 import { FullscreenButton } from "./components/Fullscreen";
 import { PeriodPicker } from "./components/PeriodPicker";
@@ -37,13 +40,7 @@ const SIMULATOR_STORAGE_VERSION = 4;
 const FAKEOUT_CHANCE = 0.1;
 const FAKEOUT_REVEAL_DELAY_MS = 160;
 const FAKEOUT_REVEAL_MS = 950;
-const REVEAL_HOLD_MS: Record<1 | 2 | 3, number> = { 1: 1800, 2: 2200, 3: 3000 };
-const DUPLICATE_HOLD_MS: Record<1 | 2 | 3, number> = { 1: 820, 2: 1240, 3: 1900 };
 const PORTRAIT_TOUCH_QUERY = "(orientation: portrait) and (hover: none) and (pointer: coarse)";
-
-function revealHoldMs(result: PullResult | undefined) {
-  return (result?.duplicate ? DUPLICATE_HOLD_MS : REVEAL_HOLD_MS)[result?.rarity ?? 1];
-}
 
 function rollFakeoutPreview(results: PullResult[]): FakeoutPreview | null {
   if (!results.some((result) => result.rarity === 3) || Math.random() >= FAKEOUT_CHANCE) return null;
@@ -51,10 +48,11 @@ function rollFakeoutPreview(results: PullResult[]): FakeoutPreview | null {
 }
 
 export function Simulator() {
-  const [server, setServer] = useState<Server>(() => requestedServer());
+  const [initialSelection] = useState(() => readSelection(query()));
+  const [server, setServer] = useState<Server>(() => initialSelection.server ?? "GL");
   const [banners, setBanners] = useState<Banner[]>([]);
   const [characters, setCharacters] = useState<CharacterRecord[]>([]);
-  const [periodKey, setPeriodKey] = useState(() => query().get("period") ?? "");
+  const [periodKey, setPeriodKey] = useState(() => initialSelection.period ?? "");
   const [mode, setMode] = useState<Mode>("historical");
   const [state, setState] = useState<SimulatorState | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -62,6 +60,8 @@ export function Simulator() {
   const [recruitmentSource, setRecruitmentSource] = useState<"pyroxene" | "ticket">("pyroxene");
   const [rewards, setRewards] = useState<{ at: number; label: string; ticket?: number }[]>([]);
   const [revealIndex, setRevealIndex] = useState(0);
+  const [skipRequested, setSkipRequested] = useState(false);
+  const [revealReady, setRevealReady] = useState(false);
   const [preRevealState, setPreRevealState] = useState<SimulatorState | null>(null);
   const [fakeoutPreview, setFakeoutPreview] = useState<FakeoutPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +120,7 @@ export function Simulator() {
       if (result) {
         const tier = result.rarity === 3 ? "SSR" : result.rarity === 2 ? "SR" : "R";
         cues.push({ at: reducedMotion ? 0 : cardImpactMs(result.rarity), cue: `UI_Gacha_Result_${tier}` as RecruitmentSound, volume: result.rarity === 1 ? .85 : 1 });
-        if (!result.duplicate && !reducedMotion) cues.push({ at: portraitEntranceMs(result.rarity), cue: `UI_Gacha_Sqr_${tier}` as RecruitmentSound, layer: true, volume: .9 });
+        if (!reducedMotion) cues.push({ at: portraitEntranceMs(result.rarity), cue: `UI_Gacha_Sqr_${tier}` as RecruitmentSound, layer: true, volume: .9 });
       }
     }
     if (phase === "results") cues.push({ at: reducedMotion ? 0 : RESULTS_SETTLE_MS, cue: results.length === 1 ? "UI_Gacha_Result1_01" : "UI_Gacha_Result10_01", volume: .8 });
@@ -146,7 +146,7 @@ export function Simulator() {
   const period = periods.find((candidate) => candidate.key === periodKey) ?? periods[0];
   const historical = period && period.banners[0] ? historicalSystem(period, period.banners.find((banner) => banner.id === state?.bannerId) ?? period.banners[0]) : null;
   const effectiveSystem: SimulatorSystem = mode === "historical" ? (historical?.system ?? "spark") : mode;
-  const requestedBannerId = Number(query().get("banner"));
+  const requestedBannerId = initialSelection.banner;
   const defaultBanner = period?.banners.find((banner) => banner.id === requestedBannerId) ?? period?.banners[0];
   const selectedBanner = period?.banners.find((banner) => banner.id === state?.bannerId) ?? defaultBanner;
   const recruitmentPool = useMemo(() => period ? buildRecruitmentPool(characters, banners, period, selectedBanner?.id) : null, [characters, banners, period, selectedBanner?.id]);
@@ -164,9 +164,12 @@ export function Simulator() {
     if (!cinematicOpen) return;
     cinematicRef.current?.showModal();
     const previousOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousRootOverflow;
       window.requestAnimationFrame(() => {
         if (!document.querySelector("dialog:modal")) document.querySelector<HTMLButtonElement>(".sim-game-pulls .sim-primary")?.focus();
       });
@@ -202,17 +205,21 @@ export function Simulator() {
   useEffect(() => {
     if (!state) return;
     try { localStorage.setItem(storageKey(state.system, state.periodKey), JSON.stringify(state)); } catch { /* private browsing */ }
-  }, [state]);
+    saveSelection({ server, period: state.periodKey, banner: state.bannerId });
+    const url = new URL(window.location.href);
+    url.searchParams.set("server", server);
+    url.searchParams.set("period", state.periodKey);
+    url.searchParams.set("banner", String(state.bannerId));
+    window.history.replaceState(null, "", url);
+  }, [state, server]);
 
   useEffect(() => {
     // Warm headshots behind the signing screen so the flip never waits on art.
     for (const result of results) {
       const image = new Image();
       image.src = asset(`img/avatar/${result.student.id}.webp`);
-      if (!result.duplicate) {
-        const portrait = new Image();
-        portrait.src = asset(`img/portrait/${result.student.id}.webp`);
-      }
+      const portrait = new Image();
+      portrait.src = asset(`img/portrait/${result.student.id}.webp`);
     }
   }, [results]);
 
@@ -231,20 +238,16 @@ export function Simulator() {
   }, [phase, portraitBlocked]);
 
   useEffect(() => {
+    setRevealReady(false);
     if (phase !== "envelopes" || portraitBlocked) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (revealIndex >= results.length) {
-      // Keep the last card on stage until its flip/glow has fully finished.
-      const timer = window.setTimeout(() => {
-        setFakeoutPreview(null);
-        setPreRevealState(null);
-        setPhase("results");
-      }, reducedMotion ? 0 : revealHoldMs(results[results.length - 1]) + 200);
-      return () => window.clearTimeout(timer);
-    }
-    const previous = results[revealIndex - 1];
-    const delay = reducedMotion ? 80 : revealIndex === 0 ? 1100 : revealHoldMs(previous);
-    const timer = window.setTimeout(() => setRevealIndex((index) => index + 1), delay);
+    // Only the initial spread advances automatically. Every student waits for input.
+    const current = results[revealIndex - 1];
+    const delay = reducedMotion ? 0 : current ? portraitEntranceMs(current.rarity) + 250 : CARD_SPREAD_MS;
+    const timer = window.setTimeout(() => {
+      if (revealIndex === 0) setRevealIndex(1);
+      else setRevealReady(true);
+    }, delay);
     return () => window.clearTimeout(timer);
   }, [phase, revealIndex, results, portraitBlocked]);
 
@@ -319,6 +322,7 @@ export function Simulator() {
       setRecruitmentSource(source);
       setRewards(outcome.rewards);
       setRevealIndex(0);
+      setSkipRequested(false);
       setError(null);
       arrivalElapsed.current = 0;
       arrivalPlayback.current = undefined;
@@ -354,12 +358,25 @@ export function Simulator() {
 
   function skipAnimation() {
     if (phase === "arriving" || phase === "signing" || phase === "fakeout" || phase === "dispatching" || phase === "envelopes") {
+      if (portraitBlocked) return;
+      const current = phase === "envelopes" ? results[revealIndex - 1] : undefined;
+      if (current?.rarity === 3 && !current.duplicate && !revealReady) return;
       stopSound(65);
-      setRevealIndex(results.length);
+      const next = nextUnseenPurple(results, revealIndex);
+      setSkipRequested(true);
       setFakeoutPreview(null);
-      setPreRevealState(null);
-      setPhase("results");
+      if (next !== -1) {
+        setRevealReady(false);
+        setRevealIndex(next + 1);
+        setPhase("envelopes");
+      } else finishReveal();
     }
+  }
+
+  function finishReveal() {
+    setPreRevealState(null);
+    setFakeoutPreview(null);
+    setPhase("results");
   }
 
   function confirmResults() {
@@ -370,9 +387,11 @@ export function Simulator() {
   }
 
   function advanceReveal() {
-    if (phase !== "envelopes" || revealIndex === 0) return;
-    if (revealIndex >= results.length) skipAnimation();
-    else { stopSound(65, true); setRevealIndex((index) => index + 1); }
+    if (phase !== "envelopes" || revealIndex === 0 || !revealReady || portraitBlocked) return;
+    stopSound(65, true);
+    const next = skipRequested ? nextUnseenPurple(results, revealIndex) : revealIndex < results.length ? revealIndex : -1;
+    if (next === -1) finishReveal();
+    else { setRevealReady(false); setRevealIndex(next + 1); }
   }
 
   const busy = phase === "arriving" || phase === "signing" || phase === "fakeout" || phase === "dispatching" || phase === "envelopes";
@@ -401,7 +420,7 @@ export function Simulator() {
             <div><h1>Recruitment</h1><p>Historical recruitment simulator</p></div>
           </div>
         </div>
-        <div className="sim-top-note"><span>No real currency · results are local</span><a className="about-link" href={link.about}>About &amp; credits</a><ThemeSwitch /><button className="sim-sound-toggle sim-secondary" aria-pressed={!muted} onClick={toggleSound}>{muted ? "Sound: Off" : "Sound: On"}</button><FullscreenButton className="sim-sound-toggle sim-secondary" landscape /></div>
+        <div className="sim-top-note"><span>No real currency · results are local</span><a className="about-link" href={link.about}>About &amp; credits</a><ThemeSwitch /><button className="sim-sound-toggle sim-secondary" aria-label={muted ? "Enable sound" : "Mute sound"} title={muted ? "Enable sound" : "Mute sound"} aria-pressed={!muted} onClick={toggleSound}><IconSound muted={muted} /></button><FullscreenButton className="sim-sound-toggle sim-secondary" landscape /></div>
       </header>
 
       {error && <div className="sim-alert" role="alert">{error.replace(/^Error: /, "")}</div>}
@@ -458,16 +477,16 @@ export function Simulator() {
 
             {phase !== "idle" && <dialog ref={cinematicRef} className={`sim-stage panel-like phase-${phase} preview-rarity-${stageRarity} ${fakeoutStageClass}`} aria-label="Recruitment" onCancel={(event) => { event.preventDefault(); if (portraitBlocked) return; if (busy) skipAnimation(); else confirmResults(); }}>
               <LandscapeGuard />
-              {phase !== "results" && <RecruitmentAtmosphere key={phase === "fakeout" ? "fakeout-reveal" : "atmosphere"} arriving={phase === "arriving"} submitted={phase === "dispatching"} />}
+              {phase !== "results" && phase !== "envelopes" && <RecruitmentAtmosphere key={phase === "fakeout" ? "fakeout-reveal" : "atmosphere"} arriving={phase === "arriving"} submitted={phase === "dispatching"} />}
               <div className="sim-cinematic-title"><GameIcon name="schale" /><span>{phase === "results" ? "Recruitment Results" : "Recruitment"}</span></div>
               <div className="sim-stage-controls">
-                {busy && <button className="sim-skip" onClick={skipAnimation}>Skip animation</button>}
-                <button className="sim-sound-toggle sim-secondary" aria-pressed={!muted} onClick={toggleSound}>{muted ? "Sound: Off" : "Sound: On"}</button>
+                {busy && <button className="sim-skip" disabled={portraitBlocked || (phase === "envelopes" && results[revealIndex - 1]?.rarity === 3 && !results[revealIndex - 1]?.duplicate && !revealReady)} onClick={skipAnimation}>Skip ≫</button>}
+                <button className="sim-sound-toggle sim-secondary" aria-label={muted ? "Enable sound" : "Mute sound"} title={muted ? "Enable sound" : "Mute sound"} aria-pressed={!muted} onClick={toggleSound}><IconSound muted={muted} /></button>
                 <FullscreenButton className="sim-sound-toggle sim-secondary" landscape />
               </div>
               {(phase === "arriving" || phase === "signing" || phase === "fakeout" || phase === "dispatching") && <RecruitmentContract results={results} fakeout={fakeoutPreview} arrivalPeakMs={arrivalPeakMs} arriving={phase === "arriving"} revealing={phase === "fakeout"} submitted={phase === "dispatching"} paused={portraitBlocked} onOpen={() => setPhase(fakeoutPreview ? "fakeout" : "dispatching")} />}
               {phase === "dispatching" && <div className="sim-dispatch" role="status"><div className="dispatch-orbit" aria-hidden="true" /><div className="dispatch-envelope"><div className="dispatch-application" aria-hidden="true"><GameIcon name="schale" /></div>{recruitmentSource === "ticket" && <GameIcon name="recruitment-10" className="dispatch-ticket" />}</div><strong>Recruitment authorized</strong><small>Delivering student applications…</small></div>}
-              {phase === "envelopes" && <RevealGrid results={results} revealIndex={revealIndex} onNext={advanceReveal} />}
+              {phase === "envelopes" && <RevealGrid results={results} revealIndex={revealIndex} ready={revealReady} onNext={advanceReveal} />}
               {phase === "results" && <Results results={results} counterLabel={state.system === "spark" ? "Recruitment Points" : "Recruitment Charge"} counterValue={state.system === "spark" ? state.points : charge} ticket={state.system === "charge" && results.length === 10 && state.tickets > 0} onConfirm={confirmResults} onRecruitAgain={() => recruit(results.length === 1 ? 1 : 10)} />}
             </dialog>}
 
@@ -623,35 +642,46 @@ function RewardTrack({ count, rewards }: { count: number; rewards: { at: number;
   return <section className="sim-reward panel-like"><div className="sim-section-head"><div><span className="sim-kicker">New-system bonus</span><h3>Recruitment-count rewards</h3></div><span className="sim-reward-count">{count} pulls{ticketCount ? ` · +${ticketCount} ticket${ticketCount === 1 ? "" : "s"}` : ""}</span></div><div className="sim-reward-track">{RECRUITMENT_REWARDS.map((reward) => <div key={reward.at} className={`reward-step ${count >= reward.at ? "done" : ""}`}><span>{reward.at}</span><i />{reward.ticket ? <strong>×10</strong> : <small>item</small>}</div>)}</div><p>Milestones reset with the recruitment period. Tickets earned at 70, 130, 150, 170, 270, 330, 350 and 370 eligible pulls expire 40 days after the period starts.</p></section>;
 }
 
-function StudentIntroduction({ result }: { result: PullResult }) {
-  return <div className={`student-introduction rarity-${result.rarity}`} style={{ animationDuration: `${REVEAL_HOLD_MS[result.rarity] - portraitEntranceMs(result.rarity)}ms`, animationDelay: `${portraitEntranceMs(result.rarity)}ms` }} aria-label={`${result.student.name}, ${result.rarity} star`}>
-    <div className="student-intro-backdrop" aria-hidden="true" />
-    <img className="student-intro-portrait" src={asset(`img/portrait/${result.student.id}.webp`)} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />
-    <div className="student-intro-school">{result.student.school && <>{emblemUrl(result.student.school) && <img src={emblemUrl(result.student.school)!} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />}<span>{result.student.school}</span></>}</div>
-    <div className="student-intro-nameplate"><span className="student-intro-status">New{result.featured ? " · Pick-Up!" : ""}</span><span className="student-intro-stars"><Stars n={result.rarity} /></span><h2>{result.student.name}</h2>{result.student.club && <p>{result.student.club}</p>}</div>
-  </div>;
-}
-
-function RevealGrid({ results, revealIndex, onNext }: { results: PullResult[]; revealIndex: number; onNext: () => void }) {
+function RevealGrid({ results, revealIndex, ready, onNext }: { results: PullResult[]; revealIndex: number; ready: boolean; onNext: () => void }) {
   const current = results[revealIndex - 1];
-  return <div className="sim-reveal sim-animated-reveal">{current && <div className={`reveal-ambient rarity-${current.rarity}`} key={`ambient-${revealIndex}`} aria-hidden="true" />}<div className="sim-reveal-heading"><span className="sim-kicker">Recruitment in progress</span><strong>{revealIndex} / {results.length} envelopes opened</strong></div><div className="sim-result-grid">{results.map((result, index) => {
+  return <div className="sim-reveal sim-animated-reveal"><div className="sim-reveal-heading"><span className="sim-kicker">Recruitment in progress</span><strong>{revealIndex} / {results.length} envelopes opened</strong></div><div className="sim-result-grid">{results.map((result, index) => {
     const opened = index < revealIndex;
-    return <div className={`reveal-slot rarity-${result.rarity} ${opened ? "is-open" : ""} ${index === revealIndex - 1 ? "is-current" : ""}`} style={{ animationDelay: `${index * 45}ms`, "--envelope-land-delay": `${index * 45 + 450}ms`, "--card-flip-duration": `${CARD_FLIP_MS[result.rarity]}ms`, "--card-impact-delay": `${CARD_FLIP_MS[result.rarity]}ms` } as CSSProperties} key={`${result.student.id}-${index}`}>
+    return <div className={`reveal-slot rarity-${result.rarity} ${opened ? "is-open" : ""} ${index === revealIndex - 1 ? "is-current" : ""}`} style={{ animationDelay: `${index * 100}ms`, "--envelope-land-delay": `${index * 100 + 296.5}ms`, "--card-flip-duration": `${CARD_FLIP_MS[result.rarity]}ms`, "--card-impact-delay": `${cardImpactMs(result.rarity)}ms` } as CSSProperties} key={`${result.student.id}-${index}`}>
       <div className="reveal-card-turn"><div className="reveal-face reveal-front" aria-hidden={opened}><ResultCard result={result} hidden /></div><div className="reveal-face reveal-back" aria-hidden={!opened}>{opened && <ResultCard result={result} hidden={false} />}</div></div>
-      {opened && <div className="reveal-effects" aria-hidden="true"><div className="reveal-impact" /><div className="reveal-edge-sweep" /><div className="reveal-glint" />{result.rarity >= 2 && <><div className="reveal-ring" /><div className="reveal-sparkles">{Array.from({ length: result.rarity === 3 ? 8 : 4 }, (_, particle) => <i key={particle} />)}</div></>}{result.rarity === 3 && <><div className="reveal-rays" /><div className="reveal-diamond" /></>}</div>}
+      {result.rarity >= 2 && <div className="recruitment-landing" aria-hidden="true"><span className="recruitment-landing-outline" />{result.rarity === 3 && <span className="recruitment-landing-outline is-thick" />}</div>}
     </div>;
-  })}</div>{current && !current.duplicate && <StudentIntroduction result={current} key={`introduction-${revealIndex}`} />}<div className="sim-reveal-caption" aria-live="polite">{current ? <div className={`reveal-student-caption rarity-${current.rarity}`} key={revealIndex}><span><Stars n={current.rarity} /></span><strong>{current.student.name}</strong><small>{current.featured ? "Pick-up!" : current.duplicate ? "Already recruited" : "New student"}</small></div> : <span className="sim-kicker">Opening recruitment requests…</span>}</div><button className="sim-reveal-next sim-secondary" disabled={!current} onClick={onNext}>{revealIndex === results.length ? "View results" : "Next student"} <IconChevronRight /></button></div>;
+  })}</div>{current && <StudentIntroduction result={current} ready={ready} onNext={onNext} key={`introduction-${revealIndex}`} />}<div className="sim-reveal-caption" aria-live="polite">{current ? <span>{current.student.name} · {current.rarity}★ · {current.duplicate ? "Already recruited" : "New student"}</span> : <span className="sim-kicker">Opening recruitment requests…</span>}</div></div>;
 }
 
 function Results({ results, counterLabel, counterValue, ticket, onConfirm, onRecruitAgain }: { results: PullResult[]; counterLabel: string; counterValue: number; ticket: boolean; onConfirm: () => void; onRecruitAgain: () => void }) {
   if (!results.length) return <div className="sim-empty-stage"><GameIcon name="schale" /><strong>Ready for recruitment</strong><span>Choose the banner and ruleset, then authorize a pull.</span></div>;
-  return <div className="sim-reveal sim-results-screen"><div className="sim-reveal-heading"><span className="sim-kicker">Recruitment complete</span><span className="sim-result-source">{results.length} student{results.length === 1 ? "" : "s"} recruited</span></div><div className={`sim-result-grid ${results.length === 1 ? "single-result" : ""}`}>{results.map((result, index) => <ResultCard key={`${result.student.id}-${index}`} result={result} hidden={false} />)}</div><div className="sim-result-actions"><button autoFocus className="sim-result-confirm" onClick={onConfirm}>Confirm</button><button className="sim-result-again" onClick={onRecruitAgain}><span>Recruit Again <small>{results.length === 1 ? "×1" : "×10"}</small></span>{ticket ? <span className="result-again-cost"><GameIcon name="recruitment-10" />Ticket</span> : <span className="result-again-cost"><GameIcon name="pyroxene" />{(results.length === 1 ? PULL_COST : TEN_PULL_COST).toLocaleString()}</span>}</button><div className="sim-result-counter" aria-label={`${counterLabel}: ${counterValue} of 200`}>{counterLabel === "Recruitment Points" && <GameIcon name="recruitment-points" />}<span>{counterLabel}</span><strong>{counterValue}<small>/ 200</small></strong></div></div></div>;
+  return <div className="sim-reveal sim-results-screen">
+    <div className="sim-reveal-heading"><span className="sim-kicker">Recruitment complete</span><span className="sim-result-source">{results.length} student{results.length === 1 ? "" : "s"} recruited</span></div>
+    <div className={`sim-result-grid ${results.length === 1 ? "single-result" : ""}`}>{results.map((result, index) => <ResultCard key={`${result.student.id}-${index}`} result={result} hidden={false} index={index + 1} />)}</div>
+    <div className="sim-result-actions">
+      <div className="sim-result-buttons">
+        <button autoFocus className="sim-result-confirm" onClick={onConfirm}><span>Confirm</span></button>
+        <button className="sim-result-again" onClick={onRecruitAgain} aria-label={ticket ? "Recruit again using one 10-recruitment ticket" : `Recruit again for ${results.length === 1 ? PULL_COST : TEN_PULL_COST} Pyroxene`}>
+          <span>Recruit Again <small>{results.length === 1 ? "×1" : "×10"}</small></span>
+          {ticket ? <span className="result-again-cost"><GameIcon name="recruitment-10" />Use ticket</span> : <span className="result-again-cost"><GameIcon name="pyroxene" />{(results.length === 1 ? PULL_COST : TEN_PULL_COST).toLocaleString()}</span>}
+        </button>
+      </div>
+      <div className="sim-result-counter" aria-label={`${counterLabel}: ${counterValue} of 200`}>{counterLabel === "Recruitment Points" && <GameIcon name="recruitment-points" />}<span>{counterLabel}</span><strong>{counterValue}<small>/ 200</small></strong></div>
+    </div>
+  </div>;
 }
 
-function ResultCard({ result, hidden }: { result: PullResult; hidden: boolean }) {
-  if (hidden) return <div className={`result-card sealed rarity-${result.rarity}`}><div className="result-card-art"><div className="envelope-mark"><GameIcon name="schale" /></div></div><span className="sealed-label">Open</span></div>;
+function ResultCard({ result, hidden, index }: { result: PullResult; hidden: boolean; index?: number }) {
+  if (hidden) return <div className={`result-card sealed rarity-${result.rarity}`}><img className="recruitment-card-front" src={asset(`ba-cards/Gacha-${result.rarity === 3 ? "Purple" : result.rarity === 2 ? "Gold" : "Blue"}.webp`)} alt="" /></div>;
   const status = result.featured ? (result.duplicate ? "Pick-up" : "New Pick-up") : result.duplicate ? "Duplicate" : "New student";
-  return <article className={`result-card rarity-${result.rarity} ${result.featured ? "featured" : ""}`} aria-label={`${result.student.name}, ${result.rarity} star, ${status}`} title={result.student.name}><div className="result-card-art"><img src={asset(`img/avatar/${result.student.id}.webp`)} alt="" />{result.featured ? <span className="result-pickup-label">{result.duplicate ? "Pick-up!" : <>New<br /><b>Pick-up!</b></>}</span> : !result.duplicate && <span className="result-new-label">New</span>}<span className={`result-rarity-strip rarity-${result.rarity}`}><Stars n={result.rarity} /></span></div><div className="result-info sim-visually-hidden"><b>{result.student.name}</b><span><Stars n={result.rarity} /> {status}</span>{result.forced !== "none" && <small>{result.forced === "hard-pity" ? "200 Charge guarantee" : result.forced === "soft-pity" ? "100 Charge check" : "10th pull guarantee"}</small>}</div></article>;
+  return <article className={`result-card recruitment-result rarity-${result.rarity} ${result.featured ? "featured" : ""}`} data-index={index?.toString().padStart(2, "0")} aria-label={`${result.student.name}, ${result.rarity} star, ${status}`} title={result.student.name}>
+    <div className="recruitment-result-inner">
+      <div className="result-card-art"><img src={asset(`img/avatar/${result.student.id}.webp`)} alt="" /></div>
+      <span className={`result-rarity-strip rarity-${result.rarity}`} aria-hidden="true">{Array.from({ length: result.rarity }, (_, star) => <img key={star} src={asset("ba-cards/Star.webp")} alt="" />)}</span>
+    </div>
+    {result.featured ? <span className="result-pickup-label">{result.duplicate ? <b>Pick Up!</b> : <>New<br /><b>Pick Up!</b></>}</span> : !result.duplicate && <span className="result-new-label">New</span>}
+    <div className="result-info sim-visually-hidden"><b>{result.student.name}</b><span><Stars n={result.rarity} /> {status}</span>{result.forced !== "none" && <small>{result.forced === "hard-pity" ? "200 Charge guarantee" : result.forced === "soft-pity" ? "100 Charge check" : "10th pull guarantee"}</small>}</div>
+  </article>;
 }
 
 function Collection({ state, students }: { state: SimulatorState; students: CharacterRecord[] }) {
@@ -756,6 +786,3 @@ function systemLabel(system: SimulatorSystem) {
   return system === "charge" ? "Recruitment Charge" : "200-point spark";
 }
 
-function requestedServer(): Server {
-  return query().get("server") === "JP" ? "JP" : "GL";
-}
