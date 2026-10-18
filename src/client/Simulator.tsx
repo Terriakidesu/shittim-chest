@@ -10,12 +10,13 @@ import { StudentIntroduction } from "./components/StudentIntroduction";
 import { ThemeSwitch } from "./components/ThemeSwitch";
 import { FullscreenButton } from "./components/Fullscreen";
 import { PeriodPicker } from "./components/PeriodPicker";
+import { periodOption } from "./periodPickerOptions";
 import {
   activeCharge,
   bannerPoolKind,
   buildRecruitmentPeriods,
   buildRecruitmentPool,
-  exchangeSpark,
+  resolveSparkExchange,
   historicalSystem,
   makeInitialState,
   normalizeRecruitmentCollection,
@@ -337,11 +338,21 @@ export function Simulator() {
     if (!state || !period || !selectedBanner || state.points < 200) return;
     const banner = period.banners.find((candidate) => candidate.characters.some((student) => student.id === studentId));
     if (!banner) return;
-    setState(exchangeSpark(state, { period, banner, pool, recruitmentPool: recruitmentPool ?? undefined }, studentId));
-    setSparkOpen(false);
-    setResults([]);
-    setRewards([]);
-    setError(null);
+    try {
+      const outcome = resolveSparkExchange(state, { period, banner, pool, recruitmentPool: recruitmentPool ?? undefined }, studentId);
+      unlockSound();
+      setPreRevealState(state);
+      setState(outcome.state);
+      setSparkOpen(false);
+      setResults(outcome.results);
+      setRewards([]);
+      setFakeoutPreview(null);
+      setSkipRequested(false);
+      setRevealReady(false);
+      setRevealIndex(1);
+      setPhase("envelopes");
+      setError(null);
+    } catch (e) { setError(String(e)); }
   }
 
   function reset() {
@@ -434,7 +445,7 @@ export function Simulator() {
             <div className="sim-server-tabs" role="group" aria-label="Recruitment server">
               {(["GL", "JP"] as Server[]).map((candidate) => <button disabled={busy} key={candidate} className={server === candidate ? "on" : ""} onClick={() => chooseServer(candidate)}>{candidate === "GL" ? "Global" : "Japan"}</button>)}
             </div>
-            <PeriodPicker disabled={busy} value={period.key} onChange={choosePeriod} options={periods.map((candidate) => ({ value: candidate.key, dates: periodLabel(candidate), names: [...new Set(candidate.banners.flatMap((banner) => banner.characters.map((student) => student.name)))].join(" / ") || "Unnamed pick-up", detail: `${candidate.banners.length} banner${candidate.banners.length === 1 ? "" : "s"} · ${candidate.server === "GL" ? "Global" : "Japan"}` }))} />
+            <PeriodPicker disabled={busy} value={period.key} onChange={choosePeriod} options={periods.map(periodOption)} />
             <p className="sim-period-note">{historical?.reason ?? period.systemReason}</p>
             <div className="sim-info-box"><strong>Same period, separate banners.</strong><span>Changing tabs changes the featured target, not the set of banners that ran together. Shared counters follow the selected ruleset.</span></div>
           </aside>
@@ -487,7 +498,7 @@ export function Simulator() {
               {(phase === "arriving" || phase === "signing" || phase === "fakeout" || phase === "dispatching") && <RecruitmentContract results={results} fakeout={fakeoutPreview} arrivalPeakMs={arrivalPeakMs} arriving={phase === "arriving"} revealing={phase === "fakeout"} submitted={phase === "dispatching"} paused={portraitBlocked} onOpen={() => setPhase(fakeoutPreview ? "fakeout" : "dispatching")} />}
               {phase === "dispatching" && <div className="sim-dispatch" role="status"><div className="dispatch-orbit" aria-hidden="true" /><div className="dispatch-envelope"><div className="dispatch-application" aria-hidden="true"><GameIcon name="schale" /></div>{recruitmentSource === "ticket" && <GameIcon name="recruitment-10" className="dispatch-ticket" />}</div><strong>Recruitment authorized</strong><small>Delivering student applications…</small></div>}
               {phase === "envelopes" && <RevealGrid results={results} revealIndex={revealIndex} ready={revealReady} onNext={advanceReveal} />}
-              {phase === "results" && <Results results={results} counterLabel={state.system === "spark" ? "Recruitment Points" : "Recruitment Charge"} counterValue={state.system === "spark" ? state.points : charge} ticket={state.system === "charge" && results.length === 10 && state.tickets > 0} onConfirm={confirmResults} onRecruitAgain={() => recruit(results.length === 1 ? 1 : 10)} />}
+              {phase === "results" && <Results results={results} banner={selectedBanner} counterLabel={state.system === "spark" ? "Recruitment Points" : "Recruitment Charge"} counterValue={state.system === "spark" ? state.points : charge} ticket={state.system === "charge" && results.length === 10 && state.tickets > 0} onConfirm={confirmResults} onRecruitAgain={() => recruit(results.length === 1 ? 1 : 10)} />}
             </dialog>}
 
             {sparkOpen && <SparkSelection period={period} points={state.points} onExchange={exchange} onClose={() => setSparkOpen(false)} />}
@@ -632,9 +643,23 @@ function RecruitmentContract({ results, fakeout, arrivalPeakMs, arriving, reveal
 }
 
 function Progress({ state, banner, charge }: { state: SimulatorState; banner: Banner; charge: number }) {
-  if (state.system === "spark") return <section className="sim-progress panel-like"><div className="sim-progress-head"><div><span className="sim-kicker">Legacy protection</span><strong><GameIcon name="recruitment-points" /> Recruitment Points</strong></div><b>{state.points}<small>/ 200</small></b></div><div className="sim-bar spark-bar"><span style={{ width: `${Math.min(state.points, 200) / 2}%` }} /></div><p>At 200 points, choose one featured student. Points are shared by the banners shown in this period.</p></section>;
+  if (state.system === "spark") return <section className="sim-progress panel-like"><div className="sim-progress-head"><div><span className="sim-kicker">Legacy protection</span><strong><GameIcon name="recruitment-points" /> Recruitment Points</strong></div><b>{state.points.toLocaleString()}</b></div><div className="sim-bar spark-bar"><span style={{ width: `${Math.min(state.points, 200) / 2}%` }} /></div><p>Exchange 200 points for one featured student. Points keep accumulating until the period ends; each exchange spends 200.</p></section>;
+  return <ChargeProgress banner={banner} charge={charge} />;
+}
+
+function ChargeProgress({ banner, charge }: { banner: Banner; charge: number }) {
   const kind = bannerPoolKind(banner) === "limited" ? "Limited" : "Regular";
-  return <section className="sim-progress panel-like"><div className="sim-progress-head"><div><span className="sim-kicker">{kind} Recruitment Charge</span><strong>Featured pity progress</strong></div><b>{charge}<small>/ 200</small></b></div><div className="sim-bar charge-bar"><span style={{ width: `${charge / 2}%` }} /><i className="soft-marker">100<br /><small>50% featured</small></i><i className="hard-marker">200<br /><small>guaranteed</small></i></div><p>Charge carries into the next same-type pick-up period. Pulling the selected featured student resets this counter.</p></section>;
+  return <section className="sim-progress sim-charge-progress" aria-label={`${kind} Recruitment Charge: ${charge} of 200`}>
+    <div className="sim-charge-track">
+      <strong className="sim-charge-total">Total {charge}!</strong>
+      <div className="sim-charge-reward at-100"><div className="sim-charge-card random-student"><img src={asset("ba-cards/Gacha-Purple.webp")} alt="" /><b>?</b><small>×1</small></div></div>
+      <div className="sim-charge-reward at-200"><div className="sim-charge-card"><img src={asset(`img/avatar/${banner.characters[0]?.id}.webp`)} alt={banner.characters[0]?.name ?? "Featured student"} /><small>×1</small></div></div>
+      <div className="sim-charge-meter" role="progressbar" aria-label="Recruitment Charge" aria-valuenow={charge} aria-valuemin={0} aria-valuemax={200}><span style={{ width: `${Math.min(charge, 200) / 2}%` }} /></div>
+      <span className="sim-charge-marker at-100">100</span><span className="sim-charge-marker at-200">200</span>
+    </div>
+    <p className="sim-charge-reset">※ Resets when you recruit the pick-up student</p>
+    <details className="sim-charge-details"><summary aria-label="Recruitment Charge details" title="Recruitment Charge details"><svg viewBox="0 0 24 24" className="icon" aria-hidden="true"><circle cx="10" cy="10" r="6" /><path d="m15 15 6 6" /></svg></summary><p>{kind} Charge carries into the next same-type pick-up period. At 100: a 3★ student with a 50% pick-up chance. At 200: the selected pick-up student is guaranteed.</p></details>
+  </section>;
 }
 
 function RewardTrack({ count, rewards }: { count: number; rewards: { at: number; label: string; ticket?: number }[] }) {
@@ -653,7 +678,7 @@ function RevealGrid({ results, revealIndex, ready, onNext }: { results: PullResu
   })}</div>{current && <StudentIntroduction result={current} ready={ready} onNext={onNext} key={`introduction-${revealIndex}`} />}<div className="sim-reveal-caption" aria-live="polite">{current ? <span>{current.student.name} · {current.rarity}★ · {current.duplicate ? "Already recruited" : "New student"}</span> : <span className="sim-kicker">Opening recruitment requests…</span>}</div></div>;
 }
 
-function Results({ results, counterLabel, counterValue, ticket, onConfirm, onRecruitAgain }: { results: PullResult[]; counterLabel: string; counterValue: number; ticket: boolean; onConfirm: () => void; onRecruitAgain: () => void }) {
+function Results({ results, banner, counterLabel, counterValue, ticket, onConfirm, onRecruitAgain }: { results: PullResult[]; banner: Banner; counterLabel: string; counterValue: number; ticket: boolean; onConfirm: () => void; onRecruitAgain: () => void }) {
   if (!results.length) return <div className="sim-empty-stage"><GameIcon name="schale" /><strong>Ready for recruitment</strong><span>Choose the banner and ruleset, then authorize a pull.</span></div>;
   return <div className="sim-reveal sim-results-screen">
     <div className="sim-reveal-heading"><span className="sim-kicker">Recruitment complete</span><span className="sim-result-source">{results.length} student{results.length === 1 ? "" : "s"} recruited</span></div>
@@ -661,12 +686,12 @@ function Results({ results, counterLabel, counterValue, ticket, onConfirm, onRec
     <div className="sim-result-actions">
       <div className="sim-result-buttons">
         <button autoFocus className="sim-result-confirm" onClick={onConfirm}><span>Confirm</span></button>
-        <button className="sim-result-again" onClick={onRecruitAgain} aria-label={ticket ? "Recruit again using one 10-recruitment ticket" : `Recruit again for ${results.length === 1 ? PULL_COST : TEN_PULL_COST} Pyroxene`}>
+        {results[0].source !== "points" && <button className="sim-result-again" onClick={onRecruitAgain} aria-label={ticket ? "Recruit again using one 10-recruitment ticket" : `Recruit again for ${results.length === 1 ? PULL_COST : TEN_PULL_COST} Pyroxene`}>
           <span>Recruit Again <small>{results.length === 1 ? "×1" : "×10"}</small></span>
           {ticket ? <span className="result-again-cost"><GameIcon name="recruitment-10" />Use ticket</span> : <span className="result-again-cost"><GameIcon name="pyroxene" />{(results.length === 1 ? PULL_COST : TEN_PULL_COST).toLocaleString()}</span>}
-        </button>
+        </button>}
       </div>
-      <div className="sim-result-counter" aria-label={`${counterLabel}: ${counterValue} of 200`}>{counterLabel === "Recruitment Points" && <GameIcon name="recruitment-points" />}<span>{counterLabel}</span><strong>{counterValue}<small>/ 200</small></strong></div>
+      {counterLabel === "Recruitment Charge" ? <div className="sim-result-charge"><ChargeProgress banner={banner} charge={counterValue} /></div> : <div className="sim-result-counter" aria-label={`${counterLabel}: ${counterValue}`}><GameIcon name="recruitment-points" /><span>{counterLabel}</span><strong>{counterValue.toLocaleString()}</strong></div>}
     </div>
   </div>;
 }
@@ -767,10 +792,6 @@ function preserveSession(next: SimulatorState, previous: SimulatorState | null) 
 function ownedStudents(state: SimulatorState, characters: CharacterRecord[], pool: CharacterRecord[]) {
   const byId = new Map([...characters, ...pool].map((student) => [student.id, student]));
   return state.ownedIds.map((id) => byId.get(id)).filter((student): student is CharacterRecord => !!student);
-}
-
-function periodLabel(period: RecruitmentPeriod) {
-  return `${formatDate(period.startMs)} — ${formatDate(period.endMs)}`;
 }
 
 function formatDate(ms: number) {

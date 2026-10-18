@@ -77,7 +77,7 @@ export interface PullResult {
   rarity: 1 | 2 | 3;
   featured: boolean;
   duplicate: boolean;
-  source: PullSource;
+  source: PullSource | "points";
   forced: "none" | "two-star" | "soft-pity" | "hard-pity";
 }
 
@@ -534,7 +534,7 @@ function drawOne(state: SimulatorState, context: SimulationContext, source: Pull
     featuredHits: state.featuredHits + (featured ? 1 : 0),
   };
   if (state.system === "spark") {
-    next.points = Math.min(200, state.points + 1);
+    next.points = state.points + 1;
   } else if (limitedPool) {
     next.limitedCharge = featured ? 0 : Math.min(200, chargePull);
   } else {
@@ -598,6 +598,13 @@ export function exchangeSpark(state: SimulatorState, context: SimulationContext,
     ownedIds: duplicate ? state.ownedIds : [...state.ownedIds, student.id],
     duplicateCounts: { ...state.duplicateCounts, [student.id]: (state.duplicateCounts[student.id] ?? 0) + (duplicate ? 1 : 0) },
   };
+}
+
+/** An exchange has the same reveal as a pull, but spends no currency or pulls. */
+export function resolveSparkExchange(state: SimulatorState, context: SimulationContext, studentId: number): SimulationOutcome {
+  const next = exchangeSpark(state, context, studentId);
+  const student = featuredFromBanner(context).find((candidate) => candidate.id === recruitmentStudentId(studentId))!;
+  return { state: next, rewards: [], results: [{ student, rarity: student.starGrade as RecruitmentRarity, featured: true, duplicate: normalizeRecruitmentCollection(state).ownedIds.includes(student.id), source: "points", forced: "none" }] };
 }
 
 export function activeCharge(state: SimulatorState, period: RecruitmentPeriod, banner?: Banner) {

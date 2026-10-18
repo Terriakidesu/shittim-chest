@@ -6,6 +6,7 @@ import {
   buildStudentPool,
   makeInitialState,
   resolvePulls,
+  resolveSparkExchange,
 } from "./gachaRules";
 
 const DAY = 86_400_000;
@@ -85,6 +86,41 @@ describe("recruitment period selection", () => {
 });
 
 describe("historical recruitment pools", () => {
+  test("JP legacy exchanges also return a student reveal without consuming a pull", () => {
+    const selected = banner(1, T0 - 100 * DAY);
+    const period = buildRecruitmentPeriods([selected], "JP")[0];
+    const state = { ...makeInitialState(period, selected.id, "spark"), points: 200 };
+    const outcome = resolveSparkExchange(state, { period, banner: selected, pool: [student(1)] }, 1);
+    expect(outcome.results).toHaveLength(1);
+    expect(outcome.results[0]).toMatchObject({ source: "points", rarity: 3, duplicate: false });
+    expect(outcome.state.points).toBe(0);
+    expect(outcome.state.totalPulls).toBe(0);
+    expect(outcome.state.pyroxeneSpent).toBe(0);
+  });
+
+  test("Global points accumulate beyond 200 and allow repeated exchanges", () => {
+    const students = [student(1), student(2, 2), student(3, 1)];
+    const selected = banner(1, T0, { server: "GL", characters: [students[0]] });
+    const period = buildRecruitmentPeriods([selected], "GL")[0];
+    const pool = buildRecruitmentPool(students, [selected], period, selected.id);
+    const context = { period, banner: selected, pool: pool.students, recruitmentPool: pool };
+    let state = { ...makeInitialState(period, selected.id, "spark"), points: 395 };
+    state = resolvePulls(state, context, 10, "pyroxene", () => .999999).state;
+    expect(state.points).toBe(405);
+    const first = resolveSparkExchange(state, context, 1);
+    expect(first.state.points).toBe(205);
+    expect(first.results[0]).toMatchObject({ student: students[0], rarity: 3, featured: true, duplicate: false, source: "points" });
+    expect(first.state.totalPulls).toBe(state.totalPulls);
+    expect(first.state.pyroxeneSpent).toBe(state.pyroxeneSpent);
+    expect(first.state.rarityCounts).toEqual(state.rarityCounts);
+    const second = resolveSparkExchange(first.state, context, 1);
+    expect(second.state.points).toBe(5);
+    expect(second.results[0].duplicate).toBe(true);
+    expect(second.state.duplicateCounts[1]).toBe(1);
+    expect(() => resolveSparkExchange(second.state, context, 1)).toThrow("200 Recruitment Points");
+    expect(state.ownedIds).not.toContain(1);
+  });
+
   test("excludes unreleased server students and future dated debuts", () => {
     const launch = student(1, 3, { releasedOn: { jp: true, gl: true, kr: true } });
     const unlistedLaunch = student(4, 2, { releasedOn: { jp: true, gl: true, kr: true } });
