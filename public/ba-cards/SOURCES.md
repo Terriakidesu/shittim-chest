@@ -10,7 +10,9 @@ showcase: https://terriakidesu.github.io/blue-archive-gacha-showcase/
 - `Star.webp` — rarity star
 
 These are screenshot-based recreations by Terriakidesu, not extracted game
-files. The upstream `ASSET-LICENSE.md` is preserved alongside them. It describes
-the assets as Creative Commons licensed without naming a specific variant;
-this project does not assert a more specific license or relicense them as MIT.
+files. Terriakidesu releases these recreations under **CC0 1.0 Universal**,
+allowing use and redistribution without attribution, including commercially.
+See `ASSET-LICENSE.md` alongside them for the dedication and its scope.
+They are not covered by the code's MIT license, and CC0 does not grant any
+third-party rights held by the Blue Archive rights holders.
 All assets are served locally; there is no runtime dependency on the showcase.

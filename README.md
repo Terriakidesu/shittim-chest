@@ -159,3 +159,9 @@ under `public/img/`, `public/ba-icons/`, `public/ba-lobby/`, and
 material under their own upstream terms and are **not** covered by the MIT
 license. See the scope table in `LICENSE` and the per-file `SOURCES.md` notes
 before republishing anything from this repository.
+
+The recreated recruitment cards and stars in `public/ba-cards/` are released
+by Terriakidesu under **CC0 1.0 Universal**, with no attribution required.
+See [`public/ba-cards/ASSET-LICENSE.md`](public/ba-cards/ASSET-LICENSE.md).
+This dedication covers only Terriakidesu's rights in those recreations, not
+third-party artwork, trademarks, or other game assets.
