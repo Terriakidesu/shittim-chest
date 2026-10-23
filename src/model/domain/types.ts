@@ -103,6 +103,8 @@ export interface Prediction {
   intervalCoverage: number;
   calibrationSamples: number;
   method: "recent-lag" | "lag-trend" | "alignment" | "scheduled";
+  /** Why a scheduled date is considered authoritative. */
+  source?: "wiki" | "official";
   explanation: string;
   /** Which Global batch we believe this lands in. */
   glBatchIndex: number | null;

@@ -3,6 +3,8 @@ import { ThemeSwitch } from "./components/ThemeSwitch";
 import { DecoShapes, IconPlay } from "./components/icons";
 import { api, asset } from "./api";
 import { link } from "./route";
+import { LobbyNews } from "./components/LobbyNews";
+import { currentBannerHeads, forecastNews, latestBannerNews, type BannerHeads, type LobbyNewsItem } from "./lobbyNews";
 import "./lobby.css";
 
 const destinations = [
@@ -18,11 +20,22 @@ export function Home() {
   const isDay = variant === "day";
   // Forecast snapshot date, so the lobby shows the site's last update.
   const [updatedMs, setUpdatedMs] = useState<number | null>(null);
+  const [news, setNews] = useState<LobbyNewsItem[]>([]);
+  const [heads, setHeads] = useState<BannerHeads[]>([]);
   useEffect(() => {
     let live = true;
     api.status().then(
       (s) => { if (live) setUpdatedMs(s.exportedAtMs ?? null); },
       () => { /* keep the generic refresh note */ },
+    );
+    Promise.all([api.banners(0, Date.UTC(2100, 0, 1)), api.forecast()]).then(
+      ([snapshot, forecast]) => {
+        if (!live) return;
+        const now = Date.now();
+        setNews([...latestBannerNews(snapshot.banners, now), ...forecastNews(forecast.banners, now)]);
+        setHeads(currentBannerHeads(snapshot.banners, now));
+      },
+      () => { /* A missing news snapshot must not block the lobby. */ },
     );
     return () => { live = false; };
   }, []);
@@ -38,6 +51,7 @@ export function Home() {
       <a className="lobby-brand" href={link.home} aria-label="Shittim Chest home"><img src={asset("shittim-chest.svg")} width="34" height="42" alt="" /><h1>Shittim Chest</h1></a>
       <div className="lobby-toolbar"><span className="lobby-project-label">UNOFFICIAL FAN PROJECT</span><ThemeSwitch /><a className="lobby-info" href={link.about} aria-label="About and credits">?</a></div>
     </header>
+    <LobbyNews updatedMs={updatedMs} items={news} />
 
     <section className="lobby-scene" aria-label="S.C.H.A.L.E. classroom">
       <div className="lobby-characters lobby-single" role="img" aria-label={isDay ? "Arona in the Shittim Chest classroom" : "Plana in the Shittim Chest classroom"}>
@@ -48,7 +62,7 @@ export function Home() {
 
       <nav className="lobby-destinations" aria-label="Main navigation">
         {destinations.slice(0, 2).map(item => <a key={item.href} className={`lobby-tile ${item.className}`} href={item.href}>
-          <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" /><div className="lobby-tile-caption"><strong>{item.name}</strong><span>{item.detail}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
+          <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" />{item.image === "gacha" && heads.length > 0 && <div className="lobby-banner-heads">{heads.map((group) => <div className={`lobby-head-group heads-${group.server.toLowerCase()}`} key={group.server}><span>{group.server}</span><div>{group.students.map((student) => <img key={student.id} src={asset(`img/avatar/${student.id}.webp`)} alt={student.name} title={`${group.server === "GL" ? "Global" : "Japan"} live pick-up: ${student.name}`} width="64" height="64" />)}</div></div>)}</div>}<div className="lobby-tile-caption"><strong>{item.name}</strong><span>{item.detail}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
         </a>)}
         <div className="lobby-secondary-panel">
           <div className="lobby-panel-decoration" aria-hidden="true"><span /><DecoShapes /></div>

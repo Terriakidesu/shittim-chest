@@ -9,6 +9,7 @@ import { CARD_FLIP_MS, CARD_SPREAD_MS, DISPATCH_DEPARTURE_MS, RESULTS_SETTLE_MS,
 import { StudentIntroduction } from "./components/StudentIntroduction";
 import { ThemeSwitch } from "./components/ThemeSwitch";
 import { FullscreenButton } from "./components/Fullscreen";
+import { SiteNav } from "./components/SiteNav";
 import { PeriodPicker } from "./components/PeriodPicker";
 import { periodOption } from "./periodPickerOptions";
 import {
@@ -423,6 +424,7 @@ export function Simulator() {
   return (
     <div className="sim-app" onPointerDownCapture={unlockSound} onKeyDownCapture={unlockSound}>
       <LandscapeGuard />
+      <SiteNav active="simulator" />
       <header className="sim-topbar">
         <div className="sim-brand">
           <a className="back-link" href={link.calendar}><IconChevronLeft /> Calendar</a>

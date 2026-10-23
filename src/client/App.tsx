@@ -11,6 +11,7 @@ import {
   type Status,
 } from "./api";
 import { link } from "./route";
+import { SiteNav } from "./components/SiteNav";
 import {
   MONTH_NAMES,
   WEEKDAYS,
@@ -158,7 +159,7 @@ export function App() {
 
   const realBanners = useMemo(() => banners.filter(matches), [banners, matches]);
   const predictedBanners = useMemo(
-    () => banners.filter((b) => b.prediction && matches(b) && (b.prediction.method !== "scheduled" || serverFilter === "expected")),
+    () => banners.filter((b) => b.prediction && matches(b) && (b.prediction.method !== "scheduled" || serverFilter === "expected" || b.prediction.source === "official")),
     [banners, matches],
   );
 
@@ -178,6 +179,15 @@ export function App() {
   const liveCount = realBanners.filter(
     (b) => b.startMs <= nowMs && b.endMs > nowMs,
   ).length;
+
+  const predictionLabel = (rows: Banner[]) => {
+    const confirmed = rows.filter((b) => b.prediction?.source === "official").length;
+    return confirmed === 0
+      ? "Expected Global"
+      : confirmed === rows.length
+        ? "Confirmed Global"
+        : "Global schedule + forecast";
+  };
 
   const shift = (delta: number) => {
     setCursor(
@@ -229,6 +239,7 @@ export function App() {
 
   return (
     <div className={`app mobile-${mobileView}`}>
+      <SiteNav active="calendar" />
       <div className="topbar">
         <div>
           <div className="title">
@@ -384,7 +395,7 @@ export function App() {
 
                   {est.length > 0 && (
                     <div className="est-group">
-                      <div className="est-label">Expected Global</div>
+                        <div className="est-label">{predictionLabel(est)}</div>
                       <div className="chips">
                         {est.slice(0, estLimit).map((b) => (
                           <PredictedChip
@@ -461,15 +472,15 @@ export function App() {
                         <span className="sub">
                           {p ? formatDay(p.expectedMs, tz) : ""}
                         </span>
-                        {p && <span className="range">{p.method === "scheduled" ? "Scheduled on wiki" : `${p.calibrationSamples ? "90% target range" : "Uncalibrated range"} · ${formatShort(p.p05Ms, tz)}–${formatShort(p.p95Ms, tz)}`}</span>}
+                        {p && <span className="range">{p.method === "scheduled" ? (p.source === "official" ? "Official announcement" : "Scheduled on wiki") : `${p.calibrationSamples ? "90% target range" : "Uncalibrated range"} · ${formatShort(p.p05Ms, tz)}–${formatShort(p.p95Ms, tz)}`}</span>}
                       </span>
                       <span
                         className={`count ${(p?.confidence ?? 0) >= 0.8 ? "calm" : (p?.confidence ?? 0) >= 0.6 ? "" : "faint"}`}
-                        title={p?.method === "scheduled" ? "Wiki schedule, not independently verified" : "Historical accuracy within ±7 days, not probability of this exact date"}
+                        title={p?.method === "scheduled" ? (p.source === "official" ? "Date confirmed by an official Blue Archive Global announcement" : "Wiki schedule, not independently verified") : "Historical accuracy within ±7 days, not probability of this exact date"}
                         aria-label={p?.confidence != null ? `${Math.round(p.confidence * 100)}% historical accuracy within seven days` : "No calibrated probability"}
                       >
-                        {p?.method === "scheduled" ? "Wiki" : p?.confidence != null ? `${Math.round(p.confidence * 100)}%` : "—"}
-                        <small className="prob-label">{p?.method === "scheduled" ? "Scheduled" : "±7 days"}</small>
+                        {p?.method === "scheduled" ? (p.source === "official" ? "Official" : "Wiki") : p?.confidence != null ? `${Math.round(p.confidence * 100)}%` : "—"}
+                        <small className="prob-label">{p?.method === "scheduled" ? (p.source === "official" ? "Confirmed" : "Scheduled") : "±7 days"}</small>
                       </span>
                     </button>
                   );
@@ -698,7 +709,7 @@ function DetailBody({ banner, tz }: { banner: Banner; tz: string }) {
           <>
             <dt>{p.method === "scheduled" ? "Scheduled" : "Expected"}</dt>
             <dd className="est">{formatDay(p.expectedMs, tz)}</dd>
-            <dt>{p.method === "scheduled" ? "Wiki date" : p.calibrationSamples ? "90% target range" : "Fallback range"}</dt>
+            <dt>{p.method === "scheduled" ? (p.source === "official" ? "Official date" : "Wiki date") : p.calibrationSamples ? "90% target range" : "Fallback range"}</dt>
             <dd>
               {formatShort(p.p05Ms, tz)} <span className="arrow">→</span>{" "}
               {formatShort(p.p95Ms, tz)}
@@ -710,7 +721,7 @@ function DetailBody({ banner, tz }: { banner: Banner; tz: string }) {
               </span>
               {p.confidence == null ? "Not calibrated" : `${Math.round(p.confidence * 100)}% historically`}
             </dd>
-            <dt>Evidence</dt><dd>{p.calibrationSamples ? `${p.calibrationSamples} update outcomes` : p.method === "scheduled" ? "Wiki schedule" : "Insufficient calibration"}</dd>
+            <dt>Evidence</dt><dd>{p.calibrationSamples ? `${p.calibrationSamples} update outcomes` : p.method === "scheduled" ? (p.source === "official" ? "Official Global announcement" : "Wiki schedule") : "Insufficient calibration"}</dd>
           </>
         )}
       </dl>

@@ -39,6 +39,8 @@ import type { Banner, Batch, Prediction } from "../src/model/domain/types";
 import { buildCalibration } from "../src/model/domain/calibration";
 import { verifiedTruth } from "../src/model/domain/evaluation";
 import { fetchStudentProfiles, type StudentProfileDto } from "./student-profiles";
+import { reuseRerunBannerImages } from "./banner-art";
+import { applyOfficialGlobalSchedules } from "./official-schedules";
 
 /* ------------------------------------------------------------------ */
 /* Local (relative) artwork paths. No leading slash: the built site may */
@@ -179,7 +181,13 @@ async function buildSnapshot(): Promise<Snapshot> {
       `club names    : ${named}/${characters.size} — the rest keep SchaleDB keys`,
     );
   }
-  const banners = normalizeAll(wikiRes.records, characters);
+  const cachedBannerImages = new Set(
+    await readdir(join(outDir, "img/banner")).catch(() => [] as string[]),
+  );
+  const banners = reuseRerunBannerImages(
+    normalizeAll(wikiRes.records, characters),
+    cachedBannerImages,
+  );
   const asOfMs = Date.now();
 
   const batches = buildBatches(banners.filter((b) => b.server === "JP" || b.startMs <= asOfMs));
@@ -214,7 +222,7 @@ async function buildSnapshot(): Promise<Snapshot> {
   });
   for (const [jpId, glBanner] of verifiedTruth(banners)) {
     if (glBanner.startMs <= asOfMs) continue;
-    predictions.set(jpId, {
+      predictions.set(jpId, {
       bannerId: jpId,
       expectedMs: glBanner.startMs,
       p05Ms: glBanner.startMs,
@@ -223,13 +231,15 @@ async function buildSnapshot(): Promise<Snapshot> {
       confidenceToleranceDays: 7,
       intervalCoverage: 1,
       calibrationSamples: 0,
-      method: "scheduled",
-      explanation:
+        method: "scheduled",
+        source: "wiki",
+        explanation:
         "Scheduled date recorded on the Blue Archive Wiki (not independently verified against an official announcement).",
       glBatchIndex: null,
       glBatchStartMs: glBanner.startMs,
-    });
+      });
   }
+  applyOfficialGlobalSchedules(banners, predictions, confirmed);
   const unresolved = new Set(
     jp.filter((b) => !b.evergreen && !confirmed.has(b.id) && !predictions.has(b.id)).map((b) => b.id),
   );

@@ -157,7 +157,7 @@ export function BannerChip({
   );
 }
 
-/** Predicted Global arrival, always marked as an estimate. */
+/** Predicted or officially scheduled Global arrival. */
 export function PredictedChip({
   banner,
   onClick,
@@ -170,17 +170,18 @@ export function PredictedChip({
   const p = banner.prediction;
   const who = banner.characters[0];
   const confidence = p?.confidence;
+  const official = p?.method === "scheduled" && p.source === "official";
   return (
     <button
       type="button"
       className={`chip chip-est ${selected ? "is-selected" : ""}`}
       onClick={onClick}
       aria-pressed={!!selected}
-      title={p?.method === "scheduled" ? "Scheduled on the wiki" : confidence != null ? `Expected on Global — ${Math.round(confidence * 100)}% historical accuracy within ±7 days` : "Expected on Global — insufficient calibration"}
+       title={official ? "Confirmed by an official Blue Archive Global announcement" : p?.method === "scheduled" ? "Scheduled on the wiki" : confidence != null ? `Expected on Global — ${Math.round(confidence * 100)}% historical accuracy within ±7 days` : "Expected on Global — insufficient calibration"}
     >
       {who && <img src={asset(who.avatar)} alt="" loading="lazy" />}
       <span className="chip-name">{label(banner)}</span>
-      <span className="chip-conf">{p?.method === "scheduled" ? "Wiki" : "~"}</span>
+       <span className="chip-conf">{official ? "✓" : p?.method === "scheduled" ? "Wiki" : "~"}</span>
     </button>
   );
 }

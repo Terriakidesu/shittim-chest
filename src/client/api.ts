@@ -39,6 +39,8 @@ export interface Prediction {
   intervalCoverage: number;
   calibrationSamples: number;
   method: "recent-lag" | "lag-trend" | "alignment" | "scheduled";
+  /** Present for scheduled dates; distinguishes an official announcement from a wiki date. */
+  source?: "wiki" | "official";
   explanation: string;
   glBatchIndex: number | null;
   glBatchStartMs: number | null;

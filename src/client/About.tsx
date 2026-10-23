@@ -2,6 +2,7 @@ import { ThemeSwitch } from "./components/ThemeSwitch";
 import { IconChevronLeft } from "./components/icons";
 import { asset } from "./api";
 import { link } from "./route";
+import { SiteNav } from "./components/SiteNav";
 
 const icons = [
   ["Pyroxene", "Currency_Icon_Gem.png"],
@@ -21,6 +22,7 @@ const software = [
 
 export function About() {
   return <main className="about-page">
+    <SiteNav active="about" />
     <header className="about-header">
       <div><a className="back-link" href={link.calendar}><IconChevronLeft /> Calendar</a><span className="sim-kicker">Shittim Chest</span><h1>About &amp; credits</h1><p>An unofficial Blue Archive calendar, Global arrival forecast, and recruitment simulator.</p></div>
       <ThemeSwitch />
