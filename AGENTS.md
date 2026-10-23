@@ -27,9 +27,9 @@ pass.
 
 ## The DTO contract
 
-`scripts/export.ts` writes `public/data/*.json`; `src/client/api.ts` declares the matching interfaces (`CharacterRecord`, `Banner`, `Status`, `ForecastResponse`). **They are not generated and not checked — changing a shape in one without the other fails silently at runtime.** Change both together.
+`scripts/export.ts` writes `public/data/*.json`; `src/client/api.ts` declares the matching interfaces (`CharacterRecord`, `Banner`, `Status`, `ForecastResponse`). **They are not generated and not checked — changing a shape in one without the other fails silently at runtime.** Change both together. The same holds for `StudentProfile` (`src/client/api.ts`) vs `StudentProfileDto` (`scripts/student-profiles.ts`), which both carry the optional localized dialogue fields (`dialogueJp`, `dialogueKr`).
 
-`public/data/*.json` and `public/img/` are committed build artifacts. Regenerate with `bun run export`; hand-editing them is pointless since the next export overwrites them.
+`public/data/*.json` and `public/img/` are committed build artifacts. Regenerate with `bun run export`, or refresh only the profile+dialogue fields with `bun run scripts/student-profiles.ts`. Hand-editing them is pointless since the next export overwrites them.
 
 ## Data sources and joins
 
@@ -41,7 +41,8 @@ Three upstream sources across two hosts, assembled in `buildSnapshot()`
 - **Blue Archive Wiki, club names** — `WikiClubSource` reads the `Club` field
   of each `{{Character}}` infobox.
 - **SchaleDB** (`{jp,en,kr}/students.min.json`) — `SchaleDbSource` supplies
-  the student roster, IDs, schools and artwork.
+  the student roster, IDs, schools and artwork; the `jp`/`kr` dumps add
+  localized `Name` spellings (`nameJp`/`nameKr`) onto every character record.
 
 Everything joins on the **shared numeric student `Id`**. Two traps:
 
@@ -50,12 +51,52 @@ Everything joins on the **shared numeric student `Id`**. Two traps:
 
 Wiki rate-up names rarely match SchaleDB keys; `VARIANT_ALIASES` in `src/model/domain/characters.ts` bridges them. **The export prints `unresolved rate-ups`** — a new spelling upstream shows up there before it breaks a banner.
 
+Localized data rides the same numeric-ID joins. Recruitment dialogue is per-language on the profile: `dialogueJp` is the wiki audio table's own `lang="ja"` cell (same multi-line join as the English `Gachaget` text) and `dialogueKr` is the `CharacterGetIdle1` transcription from SchaleDB `{kr}/voice.min.json` — the same obtained clip, not an unrelated line. When a source fails, the line falls back to English (and the export warns); it must never fall back to an invented substitute. Watch the `student profiles: N; recruitment dialogue: N/278 (ja N, kr N)` line in the export log.
+
+## Interface localization (en/ja/ko)
+
+`src/client/i18n/` holds the dictionaries and store. `en.ts` is the source of
+truth; `ja.ts` and `ko.ts` are typed `Record<keyof typeof en, string>`, so a
+renamed or dropped English key fails typecheck. `i18n.test.ts` re-checks key
+parity at runtime (key order is irrelevant) and that translated placeholders
+stay equal; `cal.guide.suffix` is the only sanctioned empty string — a CJK
+glue artifact. `t()` falls back to the English
+string, so a key can ship before its translations land.
+
+- Every user-facing string goes through `t()`; localized *data* (student
+  names, schools, clubs, the intro-card dialogue, banner type labels) goes
+  through the helpers in `i18n/index.ts` (`studentName`, `studentDialogue`,
+  `schoolName`, `clubName`, `bannerNames`, `typeLabel`,
+  `translateModelString` for strings minted inside the pure model).
+  Components must not branch on the language themselves — add a helper.
+- Dates and numbers format via `localeFor(getLanguage())` (`store.ts`).
+  Internal keys stay `YYYY-MM-DD` and the timezone picker is a separate
+  concern; the language only picks the display locale.
+- `setLanguage()` persists under `shittim-language` and keeps `<html lang>`
+  in sync; `initializeLanguage()` runs on boot. Components that localize must
+  call the `useLanguage()` hook (`useSyncExternalStore`) to re-render.
+- A `LanguageSwitch` sits on every page. Never fold the language into the
+  simulator's persisted `localStorage` key: switching languages must not wipe
+  a collection or counters. Tests that flip the language must restore it
+  (try/finally — bun's `expect()` takes no message argument).
+- Static `<head>` metadata (`index.html`, the three route documents,
+  `sitemap.xml`) stays English-only; only `applySeo` localizes it, at runtime.
+- Decorative English is untranslated on purpose: contract/document seals, the
+  "SHITTIM CHEST" placeholder, "Pick Up!" card labels, source/software names
+  and license identifiers, `<code>` tokens, STRIKER/SPECIAL and other AR
+  game-term codes, and the recruitment voice audio itself.
+- Localized today: all UI strings plus student names and recruitment
+  dialogues. The intro card's birthday and CV credit are still English —
+  localizing them means new profile fields joined by student ID, not
+  dictionary keys.
+
 ## Commands
 
 ```bash
 bun run typecheck   # tsc --noEmit, covers src + scripts + vite.config.ts
 bun run test        # bun test
 bun run export --skip-images   # refresh JSON only, no artwork (network required)
+bun run scripts/student-profiles.ts   # refresh profiles+dialogues only, into the existing characters.json (network)
 ```
 
 Focused runs: `bun test src/model` (dir or file path both work). Tests are colocated `*.test.ts` using `bun:test`.
