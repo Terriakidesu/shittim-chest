@@ -11,8 +11,10 @@ import "./styles.css";
 import "./recruitment.css";
 import "./recruitmentResults.css";
 import { initializeTheme } from "./theme";
+import { initializeLanguage, useLanguage } from "./i18n";
 
 initializeTheme();
+initializeLanguage();
 // Before first paint, so an old shared #/simulator link lands on the simulator
 // rather than silently rendering the lobby.
 redirectLegacyHash();
@@ -26,6 +28,9 @@ redirectLegacyHash();
  */
 function Shell() {
   const route = currentRoute();
+  // Subscribing here (rather than inside each page) re-runs `applySeo` when
+  // the language changes without remounting the page or its session state.
+  useLanguage();
   applySeo(route);
   const isHome = route === "/";
   return (

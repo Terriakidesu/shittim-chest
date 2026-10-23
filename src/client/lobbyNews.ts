@@ -1,21 +1,30 @@
+import { localeFor, getLanguage } from "./i18n";
 import type { Banner, Character, Server } from "./api";
 
+/**
+ * Raw news data. Localization happens at render time in `LobbyNews.tsx` so a
+ * language switch never needs to re-derive the items. `server` is the picture
+ * label, `students` the deduped featured students (with the per-banner rerun
+ * flag), and the timestamps carry the dates the formatter renders.
+ */
 export interface LobbyNewsItem {
+  /** Dedupe key (`GL`, `JP`, or `<kind>:<expectedMs>`), kept from the old shape. */
   key: string;
-  label: string;
-  names: string;
-  dates: string;
   kind: "live" | "upcoming" | "past" | "forecast" | "scheduled";
+  server: Server | null;
+  /** `scheduled` items only: announced officially vs. recorded on the wiki. */
+  official: boolean;
+  students: { student: Character; rerun: boolean }[];
+  /** Live / upcoming / past windows. */
+  startMs?: number;
+  endMs?: number;
+  /** Forecast / scheduled items. */
+  expectedMs?: number;
+  lowerMs?: number;
+  upperMs?: number;
 }
 export interface BannerHeads { server: Server; students: Character[]; }
 
-const dateFormat = () => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
-function dateRange(start: number, end: number) {
-  return dateFormat().formatRange(start, Math.max(start, end));
-}
-function studentNames(banners: Banner[]) {
-  return [...new Map(banners.flatMap((banner) => banner.characters.map((student) => [student.id, `${student.name}${banner.rerun ? " (rerun)" : ""}`] as const))).values()].join(" · ");
-}
 function usable(banner: Banner) {
   return !banner.evergreen && Number.isFinite(banner.startMs) && Number.isFinite(banner.endMs) && banner.characters.length > 0;
 }
@@ -31,7 +40,15 @@ export function latestBannerNews(banners: Banner[], nowMs = Date.now()): LobbyNe
     if (!Number.isFinite(start)) return [];
     const batch = candidates.filter((banner) => banner.startMs === start);
     const kind = live.length ? "live" : upcoming.length ? "upcoming" : "past";
-    return [{ key: server, label: `${server === "JP" ? "Japan" : "Global"} · ${kind === "live" ? "Live" : kind === "upcoming" ? "Upcoming" : "Latest recorded"}`, names: studentNames(batch), dates: dateRange(start, Math.max(...batch.map((banner) => banner.endMs))), kind }];
+    return [{
+      key: server,
+      kind,
+      server,
+      official: false,
+      students: dedupeStudents(batch),
+      startMs: start,
+      endMs: Math.max(...batch.map((banner) => banner.endMs)),
+    }];
   });
 }
 
@@ -47,10 +64,16 @@ export function forecastNews(banners: Banner[], nowMs = Date.now()): LobbyNewsIt
   return [...groups.entries()].sort(([, a], [, b]) => a[0].prediction!.expectedMs - b[0].prediction!.expectedMs).slice(0, 3).map(([key, batch]) => {
     const prediction = batch[0].prediction!;
     const scheduled = prediction.method === "scheduled";
-    const official = scheduled && prediction.source === "official";
-    const lower = Math.min(...batch.map((banner) => banner.prediction!.p05Ms));
-    const upper = Math.max(...batch.map((banner) => banner.prediction!.p95Ms));
-    return { key, label: `Global · ${official ? "Confirmed" : scheduled ? "Scheduled" : "Forecast"}`, names: studentNames(batch), dates: official ? `Confirmed ${dateFormat().format(prediction.expectedMs)}` : scheduled ? `Scheduled ${dateFormat().format(prediction.expectedMs)}` : `Expected ${dateFormat().format(prediction.expectedMs)} · Estimated range ${dateRange(lower, upper)}`, kind: scheduled ? "scheduled" : "forecast" };
+    return {
+      key,
+      kind: scheduled ? "scheduled" as const : "forecast" as const,
+      server: "JP" as Server,
+      official: scheduled && prediction.source === "official",
+      students: dedupeStudents(batch),
+      expectedMs: prediction.expectedMs,
+      lowerMs: Math.min(...batch.map((banner) => banner.prediction!.p05Ms)),
+      upperMs: Math.max(...batch.map((banner) => banner.prediction!.p95Ms)),
+    };
   });
 }
 
@@ -63,8 +86,28 @@ export function currentBannerHeads(banners: Banner[], nowMs = Date.now()): Banne
   }).filter((group) => group.students.length);
 }
 
+/** Snapshot export time as a localized string; null keeps the generic note. */
 export function newsUpdateLabel(updatedMs: number | null) {
   return updatedMs != null && Number.isFinite(updatedMs)
-    ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(updatedMs)
+    ? new Intl.DateTimeFormat(localeFor(getLanguage()), { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(updatedMs)
     : null;
+}
+
+/* Rendering-time formatters (locale follows the interface language). */
+
+const dateCase = () => new Intl.DateTimeFormat(localeFor(getLanguage()), { month: "short", day: "numeric", year: "numeric" });
+
+export function newsDateRange(startMs: number, endMs: number): string {
+  return dateCase().formatRange(startMs, Math.max(startMs, endMs));
+}
+
+export function newsDate(ms: number): string {
+  return dateCase().format(ms);
+}
+
+/** Featured students deduped by id, keeping each banner's rerun flag. */
+function dedupeStudents(batch: Banner[]) {
+  return [...new Map(
+    batch.flatMap((banner) => banner.characters.map((student) => [student.id, { student, rerun: banner.rerun }] as const)),
+  ).values()];
 }

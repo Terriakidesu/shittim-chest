@@ -1,3 +1,5 @@
+import { getLanguage, localeFor } from "./i18n";
+
 export type TimeZone = "local" | "Asia/Tokyo" | "UTC";
 
 export const ZONES: { id: TimeZone; label: string }[] = [
@@ -83,14 +85,20 @@ export function monthGrid(year: number, month: number): GridCell[] {
   return cells;
 }
 
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-export const MONTH_NAMES = MONTHS;
+/**
+ * Localized month heading, e.g. "October 2026" / "2026年10月" / "2026년 10월".
+ * Pure display: internal keys (`YYYY-MM-DD`) stay locale-independent.
+ */
+export function formatMonthHeading(year: number, month: number): string {
+  return new Intl.DateTimeFormat(localeFor(getLanguage()), {
+    timeZone: "UTC",
+    year: "numeric",
+    month: "long",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
 
 export function formatDay(ms: number, tz: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat(localeFor(getLanguage()), {
     timeZone: tz,
     day: "2-digit",
     month: "short",
@@ -99,7 +107,7 @@ export function formatDay(ms: number, tz: string): string {
 }
 
 export function formatShort(ms: number, tz: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat(localeFor(getLanguage()), {
     timeZone: tz,
     day: "2-digit",
     month: "short",
@@ -107,12 +115,10 @@ export function formatShort(ms: number, tz: string): string {
 }
 
 export function formatClock(ms: number, tz: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat(localeFor(getLanguage()), {
     timeZone: tz,
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   }).format(new Date(ms));
 }
-
-export const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];

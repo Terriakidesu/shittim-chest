@@ -1,8 +1,9 @@
 import { link } from "../route";
+import { t } from "../i18n";
 
 export function SiteFooter() {
   return <footer className="site-footer">
-    <nav aria-label="Site navigation"><a href={link.home}>Lobby</a><a href={link.calendar}>Calendar</a><a href={link.simulator}>Recruitment simulator</a><a href={link.about}>About, credits &amp; disclaimer</a></nav>
-    <p>Unofficial Blue Archive fan project. Game assets belong to their respective rights holders. Forecasts and simulated recruitment are not official game information.</p>
+    <nav aria-label={t("footer.navAria")}><a href={link.home}>{t("footer.home")}</a><a href={link.calendar}>{t("footer.calendar")}</a><a href={link.simulator}>{t("footer.simulator")}</a><a href={link.about}>{t("footer.about")}</a></nav>
+    <p>{t("footer.disclaimer")}</p>
   </footer>;
 }

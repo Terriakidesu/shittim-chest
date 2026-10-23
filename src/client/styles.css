@@ -212,6 +212,7 @@ a { color: var(--cyan); }
 .about-page a:focus-visible, .site-footer a:focus-visible, .about-link:focus-visible { outline: 2px solid var(--cyan); outline-offset: 4px; }
 .about-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 20px; padding-bottom: 25px; border-bottom: 3px solid var(--accent); }
 .about-header > div { flex: 1; min-width: min(100%, 260px); }
+.about-header-tools { display: flex; align-items: center; gap: 12px; }
 .about-header .back-link { display: block; margin-bottom: 18px; }
 .about-header .sim-kicker { display: block; margin-bottom: 8px; }
 .about-header h1 { margin: 0; font-size: clamp(28px, 4vw, 42px); }

@@ -36,7 +36,12 @@ function availabilityFor(raw: number | number[] | undefined): "permanent" | "lim
   return "permanent";
 }
 
-export function parseStudents(payload: unknown): Map<number, Character> {
+/**
+ * `localizedTo` marks server-localized dumps: the `jp`/`kr` payloads localize
+ * `Name`, so the localized spelling is captured separately instead of being
+ * treated as the English name (the `en` dump supplies that one).
+ */
+export function parseStudents(payload: unknown, localizedTo?: "jp" | "kr"): Map<number, Character> {
   const out = new Map<number, Character>();
   const entries = Array.isArray(payload)
     ? (payload as SchaleStudent[])
@@ -49,6 +54,8 @@ export function parseStudents(payload: unknown): Map<number, Character> {
       id: s.Id,
       pathName: s.PathName,
       nameEn: s.Name ?? s.PathName,
+      ...(localizedTo === "jp" && s.Name ? { nameJp: s.Name } : {}),
+      ...(localizedTo === "kr" && s.Name ? { nameKr: s.Name } : {}),
       school: s.School ?? "",
       club: s.Club ?? "",
       starGrade: s.StarGrade ?? 0,
@@ -74,7 +81,7 @@ export class SchaleDbSource {
         headers: { "User-Agent": CONFIG.userAgent },
       });
       if (!res.ok) continue;
-      const chars = parseStudents(await res.json());
+      const chars = parseStudents(await res.json(), server === "jp" || server === "kr" ? server : undefined);
       fetchedAtMs = Math.max(fetchedAtMs, Date.now());
 
       for (const [id, ch] of chars) {
@@ -84,10 +91,13 @@ export class SchaleDbSource {
           continue;
         }
         // The JP dump localises `Name` to Japanese, so an existing English
-        // record must win on naming while still absorbing release flags.
+        // record must win on naming while still absorbing release flags and
+        // the localized spellings from the other dumps.
         const preferIncoming = server === "en";
         merged.set(id, {
           ...(preferIncoming ? ch : prev),
+          nameJp: ch.nameJp ?? prev.nameJp,
+          nameKr: ch.nameKr ?? prev.nameKr,
           releasedOn: {
             jp: prev.releasedOn.jp || ch.releasedOn.jp,
             gl: prev.releasedOn.gl || ch.releasedOn.gl,

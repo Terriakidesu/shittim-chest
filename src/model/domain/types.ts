@@ -44,6 +44,9 @@ export interface Character {
   id: number;
   pathName: string;
   nameEn: string;
+  /** Server-localized names from the SchaleDB `jp`/`kr` dumps; optional. */
+  nameJp?: string;
+  nameKr?: string;
   school: string;
   club: string;
   starGrade: number;

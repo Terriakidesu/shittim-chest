@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { t, useLanguage } from "../i18n";
 import { IconCompress, IconExpand } from "./icons";
 
 /**
@@ -61,14 +62,15 @@ export function FullscreenButton({
   landscape?: boolean;
 }) {
   const { active, supported, toggle } = useFullscreen();
+  useLanguage();
   if (!supported) return null;
   return (
     <button
       type="button"
       className={className}
       aria-pressed={active}
-      aria-label={active ? "Exit fullscreen" : "Enter fullscreen"}
-      title={active ? "Exit fullscreen" : "Enter fullscreen"}
+      aria-label={active ? t("a11y.fullscreenExit") : t("a11y.fullscreenEnter")}
+      title={active ? t("a11y.fullscreenExit") : t("a11y.fullscreenEnter")}
       onClick={() => void toggle(landscape)}
     >
       {active ? <IconCompress /> : <IconExpand />}

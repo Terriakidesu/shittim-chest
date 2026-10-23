@@ -1,6 +1,7 @@
 import type { Banner, Status } from "../api";
 import { asset, schoolColor } from "../api";
 import { dayKey } from "../dates";
+import { bannerNames, t, typeLabel } from "../i18n";
 
 /**
  * Arona and Plana, kept strictly in their own voices.
@@ -35,16 +36,16 @@ export function pickAronaLine(
   live: number,
   inFlight: number,
 ): string {
-  if (!status) return "Opening the Shittim Chest〜…";
+  if (!status) return t("arona.opening");
   if (status.stale) {
-    return `Sensei, the data's gone stale. Should I refresh〜？`;
+    return t("arona.stale");
   }
   if (live > 0 && inFlight > 0) {
-    return `${live} banners running right now, and ${inFlight} still waiting on Global〜`;
+    return t("arona.liveFlight", { live, inFlight });
   }
-  if (live > 0) return `${live} banners live right now〜`;
-  if (inFlight > 0) return `${inFlight} banners still in flight〜`;
-  return "All caught up. Global and JP are in sync〜";
+  if (live > 0) return t("arona.live", { live });
+  if (inFlight > 0) return t("arona.flight", { inFlight });
+  return t("arona.synced");
 }
 
 export function pickPlanaLine(
@@ -54,13 +55,15 @@ export function pickPlanaLine(
 ): string {
   if (selected?.prediction) {
     const p = selected.prediction;
-    return `Global is expected around ${formatDate(
-      p.expectedMs,
-    )}, with a forecast range of ${formatDate(p.p05Ms)} to ${formatDate(p.p95Ms)}.`;
+    return t("plana.range", {
+      date: formatDate(p.expectedMs),
+      from: formatDate(p.p05Ms),
+      to: formatDate(p.p95Ms),
+    });
   }
-  if (selected) return selected.forecastStatus === "unresolved" ? "There is insufficient evidence to estimate this banner's Global arrival." : "That banner has a recorded Global date.";
-  if (!status?.model) return "Awaiting forecast data.";
-  return `The current JP-to-Global lag is ${status.model.currentLagDays} days. Forecast rows show the estimated 90% date range.`;
+  if (selected) return selected.forecastStatus === "unresolved" ? t("plana.unresolved") : t("plana.recorded");
+  if (!status?.model) return t("plana.awaiting");
+  return t("plana.lag", { days: status.model.currentLagDays ?? "?" });
 }
 
 /* ------------------------------------------------------------------ */
@@ -124,9 +127,7 @@ export function buildPredictionBuckets(
 }
 
 function label(b: Banner) {
-  return b.characters.length
-    ? b.characters.map((c) => c.name).join(", ")
-    : (b.code ?? "Banner");
+  return bannerNames(b);
 }
 
 export function BannerChip({
@@ -147,7 +148,7 @@ export function BannerChip({
       style={{ ["--chip" as string]: color }}
       onClick={onClick}
       aria-pressed={!!selected}
-      title={`${banner.server === "JP" ? "JP" : "Global"} · ${label(banner)} — ${banner.type}`}
+      title={`${banner.server === "JP" ? t("chip.server.jp") : t("chip.server.gl")} · ${label(banner)} — ${typeLabel(banner.type)}`}
     >
       {who && <img src={asset(who.avatar)} alt="" loading="lazy" />}
       <span className="chip-name">{label(banner)}</span>
@@ -177,11 +178,11 @@ export function PredictedChip({
       className={`chip chip-est ${selected ? "is-selected" : ""}`}
       onClick={onClick}
       aria-pressed={!!selected}
-       title={official ? "Confirmed by an official Blue Archive Global announcement" : p?.method === "scheduled" ? "Scheduled on the wiki" : confidence != null ? `Expected on Global — ${Math.round(confidence * 100)}% historical accuracy within ±7 days` : "Expected on Global — insufficient calibration"}
+      title={official ? t("chip.title.official") : p?.method === "scheduled" ? t("chip.title.scheduled") : confidence != null ? t("chip.title.confidence", { n: Math.round(confidence * 100) }) : t("chip.title.uncalibrated")}
     >
       {who && <img src={asset(who.avatar)} alt="" loading="lazy" />}
       <span className="chip-name">{label(banner)}</span>
-       <span className="chip-conf">{official ? "✓" : p?.method === "scheduled" ? "Wiki" : "~"}</span>
+      <span className="chip-conf">{official ? "✓" : p?.method === "scheduled" ? "Wiki" : "~"}</span>
     </button>
   );
 }

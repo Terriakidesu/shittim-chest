@@ -124,6 +124,8 @@ function toDto(banner: Banner, snap: Snapshot): BannerDto {
       .map((c) => ({
         id: c.id,
         name: c.nameEn,
+        nameJp: c.nameJp,
+        nameKr: c.nameKr,
         school: c.school,
         starGrade: c.starGrade,
         avatar: avatarPath(c.id),
@@ -477,6 +479,8 @@ if (!imagesOnly) {
     characters: snap.characters.getAll().map((c) => ({
       id: c.id,
       name: c.nameEn,
+      nameJp: c.nameJp,
+      nameKr: c.nameKr,
       pathName: c.pathName,
       school: c.school,
       club: c.club,

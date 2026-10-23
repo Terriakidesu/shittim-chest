@@ -20,6 +20,7 @@
  */
 
 import { asset } from "./api";
+import { getLanguage, message, type LangKey } from "./i18n";
 import type { Route } from "./route";
 
 export interface RouteMeta {
@@ -70,6 +71,35 @@ export const ROUTE_META: Record<Route, RouteMeta> = {
 
 const SITE_NAME = "Shittim Chest";
 
+/** Route document → dictionary key suffix (`seo.title.<suffix>` etc.). */
+const ROUTE_SEO_SUFFIX: Record<Route, string> = {
+  "/": "home",
+  "/calendar": "calendar",
+  "/simulator": "simulator",
+  "/about": "about",
+};
+
+/**
+ * Metadata actually applied to the live document. Structural fields
+ * (`share`, `image`) always come from `ROUTE_META` — the static English
+ * `og:image` there is duplicated on purpose, since the HTML shims cannot
+ * resolve absolute URLs — while the textual fields follow the interface
+ * language when it is not English. Crawlers still see the English static
+ * shims; this only changes what the running browser displays.
+ */
+function routeMeta(route: Route): RouteMeta {
+  const base = ROUTE_META[route];
+  const language = getLanguage();
+  if (language === "en") return base;
+  const suffix = ROUTE_SEO_SUFFIX[route];
+  return {
+    ...base,
+    title: message(language, `seo.title.${suffix}` as LangKey),
+    description: message(language, `seo.desc.${suffix}` as LangKey),
+    imageAlt: message(language, `seo.alt.${suffix}` as LangKey),
+  };
+}
+
 /**
  * Absolute URL for a site-relative `path`, given the current page's `href`.
  *
@@ -117,7 +147,7 @@ function link(rel: string, href: string) {
  * existing tags are updated in place rather than duplicated.
  */
 export function applySeo(route: Route) {
-  const m = ROUTE_META[route];
+  const m = routeMeta(route);
   const url = absolute(m.share);
   const image = absolute(asset(m.image));
 

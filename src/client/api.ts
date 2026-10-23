@@ -22,6 +22,9 @@ export const asset = (path: string) => {
 export interface Character {
   id: number;
   name: string;
+  /** Server-localized spellings when present in the export. */
+  nameJp?: string;
+  nameKr?: string;
   school: string;
   starGrade: number;
   /** Local bundled headshot path (relative). */
@@ -76,6 +79,9 @@ export interface StudentProfile {
 export interface CharacterRecord {
   id: number;
   name: string;
+  /** Server-localized spellings when present in the export. */
+  nameJp?: string;
+  nameKr?: string;
   pathName: string;
   school: string;
   club: string;

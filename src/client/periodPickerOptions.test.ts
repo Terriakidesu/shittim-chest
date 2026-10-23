@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
-import type { Banner } from "./api";
+import type { Banner, Character } from "./api";
+import { setLanguage } from "./i18n";
 import { buildRecruitmentPeriods } from "./gachaRules";
-import { filterPeriods, periodOption, periodSummary, type PeriodOption } from "./periodPickerOptions";
+import { filterPeriods, periodDates, periodDetail, periodNames, periodOption, periodSummary, type PeriodOption } from "./periodPickerOptions";
 
+const character = (id: number, name: string): Character => ({ id, name, school: "", starGrade: 3, avatar: "" });
 const options: PeriodOption[] = [
-  { value: "a", dates: "Oct 7, 2026 — Oct 21, 2026", shortDates: "Oct 7–21, 2026", year: 2026, names: "Tsumugi / Eri", detail: "2 banners · Japan", students: [{ id: 1, name: "Tsumugi" }, { id: 2, name: "Eri" }] },
-  { value: "b", dates: "Sep 1, 2025 — Sep 15, 2025", shortDates: "Sep 1–15, 2025", year: 2025, names: "Miyako (Swimsuit)", detail: "1 banner · Global", students: [{ id: 3, name: "Miyako (Swimsuit)" }] },
+  { value: "a", year: 2026, server: "JP", bannerCount: 2, startMs: Date.UTC(2026, 9, 7), endMs: Date.UTC(2026, 9, 21), students: [{ ...character(1, "Tsumugi"), nameJp: "ツムギ" }, character(2, "Eri")] },
+  { value: "b", year: 2025, server: "GL", bannerCount: 1, startMs: Date.UTC(2025, 8, 1), endMs: Date.UTC(2025, 8, 15), students: [character(3, "Miyako (Swimsuit)")] },
 ];
 
 test("archive filters combine year and case-insensitive search terms", () => {
@@ -19,7 +21,24 @@ test("archive filters combine year and case-insensitive search terms", () => {
 test("closed archive picker summarizes rather than listing every student", () => {
   expect(periodSummary(options[0])).toBe("Tsumugi +1 more");
   expect(periodSummary(options[1])).toBe("Miyako (Swimsuit)");
-  expect(periodSummary({ ...options[0], names: "Unnamed pick-up", students: [] })).toBe("Unnamed pick-up");
+  expect(periodSummary({ ...options[0], students: [] })).toBe(periodNames({ ...options[0], students: [] }));
+});
+
+test("derived strings carry names, dates and the server word in the active language", () => {
+  expect(periodNames(options[0])).toBe("Tsumugi / Eri");
+  expect(periodDetail(options[0])).toBe("2 banners · Japan");
+  expect(periodDates(options[0]).full).toContain("2026");
+  expect(periodDates(options[0]).short).toContain("Oct");
+  // A language switch must change the derived strings (then restore English,
+  // even on failure, so later tests don't inherit a switched language).
+  try {
+    setLanguage("ja");
+    expect(periodDetail(options[0])).toBe("2 バナー · 日本版");
+    expect(periodSummary(options[0])).toBe("ツムギ +他1人");
+  } finally {
+    setLanguage("en");
+  }
+  expect(periodDetail(options[0])).toBe("2 banners · Japan");
 });
 
 test("archive options deduplicate portraits and format cross-year periods", () => {
@@ -27,8 +46,9 @@ test("archive options deduplicate portraits and format cross-year periods", () =
   const period = buildRecruitmentPeriods([banner, { ...banner, id: 2 }], "JP")[0];
   const option = periodOption(period);
   expect(option.year).toBe(2025);
-  expect(option.shortDates).toContain("2025");
-  expect(option.shortDates).toContain("2026");
-  expect(option.students).toEqual([{ id: 1, name: "Tsumugi" }]);
-  expect(option.detail).toBe("2 banners · Japan");
+  expect(periodDates(option).short).toContain("2025");
+  expect(periodDates(option).short).toContain("2026");
+  expect(option.students).toEqual([{ id: 1, name: "Tsumugi", starGrade: 3, school: "Wildhunt", avatar: "" }]);
+  expect(periodDetail(option)).toContain("2 banner");
+  expect(periodDetail(option)).toContain("Japan");
 });
