@@ -68,6 +68,23 @@ export function studentName(character: LocalizedName): string {
   return character.name;
 }
 
+export interface LocalizedDialogue {
+  recruitmentDialogue?: string;
+  dialogueJp?: string;
+  dialogueKr?: string;
+}
+
+/** Recruitment line for the current language. Japanese comes from the wiki's
+    own lang="ja" cell and Korean from SchaleDB's transcription of the same
+    clip; anything missing falls back to the English wiki text. */
+export function studentDialogue(profile: LocalizedDialogue | undefined): string {
+  if (!profile) return "";
+  const language = getLanguage();
+  if (language === "ja") return profile.dialogueJp || profile.recruitmentDialogue || "";
+  if (language === "ko") return profile.dialogueKr || profile.recruitmentDialogue || "";
+  return profile.recruitmentDialogue || "";
+}
+
 /** Banner label: localized featured names joined, falling back to banner code. */
 export function bannerNames(
   banner: { characters?: readonly LocalizedName[]; code?: string | null },

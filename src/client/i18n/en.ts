@@ -530,7 +530,7 @@ export const en = {
   "about.assets.cards.link2": "CC0 asset notice",
   "about.assets.cards.dd2": ".",
   "about.assets.profiles.dt": "Student admission profiles & dialogue",
-  "about.assets.profiles.dd": "Combat class, weapon type, birthday and voice-actor credit come from Blue Archive Wiki character infoboxes; recruitment dialogue comes from the English Gachaget rows of each student’s audio page. These are exported offline, joined by numeric student ID and bundled locally. Missing translations are omitted, not substituted with invented lines. Wiki text retains its CC BY-SA 4.0 terms.",
+  "about.assets.profiles.dd": "Combat class, weapon type, birthday and voice-actor credit come from Blue Archive Wiki character infoboxes, and the recruitment dialogue from each student’s audio page: the English Gachaget row is shown as-is, the Japanese line is the table’s own lang=\"ja\" cell, and the Korean line is SchaleDB’s localized transcription of the same obtained clip. These are exported offline, joined by numeric student ID and bundled locally. Missing translations are omitted, not substituted with invented lines. Wiki text retains its CC BY-SA 4.0 terms.",
   "about.assets.animation.dt": "Animation reference — Adelheid GG",
   "about.assets.animation.link": "“Blue Archive Summoning Animation”",
   "about.assets.animation.dd": " informed the signing, rarity reveal, and envelope-spread timing and visual direction. The video is a reference, not an embedded recording or a shipped audio asset. The recruitment simulator remains a custom 2D approximation; the lobby uses static artwork.",

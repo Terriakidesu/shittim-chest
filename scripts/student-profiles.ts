@@ -1,4 +1,4 @@
-import { CONFIG, WIKI_API } from "../src/model/config";
+import { CONFIG, SCHALEDB_BASE, WIKI_API } from "../src/model/config";
 import { RECRUITMENT_TRANSLATIONS } from "./recruitment-translations";
 
 // Export-only enrichment: never imported by the browser or vendored model.
@@ -9,6 +9,10 @@ export interface StudentProfileDto {
   birthday: string;
   voiceActor: string;
   recruitmentDialogue: string;
+  /** Japanese recruitment line(s): the wiki table's own lang="ja" cells. */
+  dialogueJp?: string;
+  /** Korean recruitment line: SchaleDB's localized transcription of the same clip. */
+  dialogueKr?: string;
 }
 
 interface WikiPage {
@@ -46,25 +50,50 @@ export function parseStudentProfile(wikitext: string): { id: number; profile: St
   } };
 }
 
-export function parseRecruitmentDialogue(wikitext: string) {
-  const lines: string[] = [];
+/** One language pair for each Gachaget row: the Japanese source line the wiki
+    table ships next to the English one. */
+export interface GachaDialogue {
+  en: string;
+  ja: string;
+}
+
+export function parseGachaDialogue(wikitext: string): GachaDialogue {
+  const enLines: string[] = [];
+  const jaLines: string[] = [];
   for (const row of wikitext.split(/(?:^|\n)\|-\s*\n/)) {
     if (!/^\|\s*Gachaget(?:_\d+)?\s*\n/i.test(row)) continue;
     const cells = row.split(/\n\|\s*/);
+    if (cells.length < 4) continue;
+    const japanese = cells.find((cell) => /^lang="ja"\s*\|/i.test(cell));
+    const source = plainWikiText((japanese ?? "").replace(/^lang="ja"\s*\|\s*/i, ""));
+    if (source && !/\{\{/i.test(source)) jaLines.push(source);
     // Prefer wiki English; otherwise use a reviewed translation of this exact
     // Japanese recruitment line, never an unrelated voice line.
     const english = cells[cells.length - 1];
-    if (cells.length < 4) continue;
     const text = plainWikiText(english.replace(/^lang="en"\s*\|\s*/i, ""));
-    if (text && !/[\u3041-\u3096\u30a1-\u30fa\u3400-\u9fff]/u.test(text) && !/translation needed|untranslated|\{\{/i.test(text)) lines.push(text);
+    if (text && !/[\u3041-\u3096\u30a1-\u30fa\u3400-\u9fff]/u.test(text) && !/translation needed|untranslated|\{\{/i.test(text)) enLines.push(text);
     else {
-      const japanese = cells.find((cell) => /^lang="ja"\s*\|/i.test(cell));
-      const source = plainWikiText((japanese ?? "").replace(/^lang="ja"\s*\|\s*/i, ""));
       const translated = RECRUITMENT_TRANSLATIONS[source];
-      if (translated) lines.push(translated);
+      if (translated && !enLines.includes(translated)) enLines.push(translated);
     }
   }
-  return lines.join(" ");
+  return { en: enLines.join(" "), ja: jaLines.join(" ") };
+}
+
+/** SchaleDB carries localized transcriptions of each character's obtained-clip
+    (`CharacterGetIdle1` — the same voice line as the wiki's Gachaget row). The
+    `kr` dump is the only source for the Korean line; `en`/`jp` have wiki text. */
+async function fetchSchaleTranslations(): Promise<Map<number, string>> {
+  const res = await fetch(`${SCHALEDB_BASE}/kr/voice.min.json`, { headers: { "User-Agent": CONFIG.userAgent } });
+  if (!res.ok) throw new Error(`Student profiles: SchaleDB kr voice returned ${res.status}`);
+  const payload = await res.json() as Record<string, { Normal?: { Group?: string; Transcription?: string }[] }>;
+  const lines = new Map<number, string>();
+  for (const [id, entry] of Object.entries(payload)) {
+    const line = entry?.Normal?.find((clip) => clip.Group === "CharacterGetIdle1" && clip.Transcription?.trim())?.Transcription?.trim();
+    if (line) lines.set(Number(id), line);
+  }
+  if (!lines.size) throw new Error("Student profiles: SchaleDB kr voice had no usable transcriptions");
+  return lines;
 }
 
 async function query(params: Record<string, string>) {
@@ -103,22 +132,44 @@ export async function fetchStudentProfiles() {
     }
   }
   if (!records.size) throw new Error("No usable student profile infoboxes found");
+
+  // The Korean line has no wiki table; SchaleDB's localized transcription of
+  // the same obtained clip fills it. A failure must not lose the wiki text.
+  let schaleLines = new Map<number, string>();
+  try {
+    schaleLines = await fetchSchaleTranslations();
+  } catch (err) {
+    console.warn(`Korean recruitment dialogue unavailable (${err}); Korean falls back to English`);
+  }
+
   const audioTitles = [...idsByTitle.keys()];
   for (let i = 0; i < audioTitles.length; i += 50) {
     for (const page of await pages(audioTitles.slice(i, i + 50))) {
       const id = idsByTitle.get(page.title);
       if (id === undefined) continue;
-      const dialogue = parseRecruitmentDialogue(page.revisions?.[0]?.slots?.main?.content ?? "");
+      const dialogue = parseGachaDialogue(page.revisions?.[0]?.slots?.main?.content ?? "");
       // Alternate forms can share an ID and have no separate audio page.
-      if (dialogue) records.get(id)!.recruitmentDialogue = dialogue;
+      if (dialogue.en) {
+        const profile = records.get(id)!;
+        profile.recruitmentDialogue = dialogue.en;
+        if (dialogue.ja) profile.dialogueJp = dialogue.ja;
+        if (schaleLines.has(id)) profile.dialogueKr = schaleLines.get(id);
+      }
     }
   }
   // Combat/age-switch forms share their base form's recruitment voice line.
   for (const [form, base] of [[10099, 10098], [10144, 10143]]) {
     const profile = records.get(form);
-    if (profile && !profile.recruitmentDialogue) profile.recruitmentDialogue = records.get(base)?.recruitmentDialogue ?? "";
+    const source = records.get(base);
+    if (profile && source) {
+      if (!profile.recruitmentDialogue) profile.recruitmentDialogue = source.recruitmentDialogue ?? "";
+      if (source.dialogueJp && !profile.dialogueJp) profile.dialogueJp = source.dialogueJp;
+      if (source.dialogueKr && !profile.dialogueKr) profile.dialogueKr = source.dialogueKr;
+    }
   }
-  console.log(`student profiles: ${records.size}; recruitment dialogue: ${[...records.values()].filter((p) => p.recruitmentDialogue).length}/${records.size}`);
+  const values = [...records.values()];
+  const count = (key: keyof StudentProfileDto) => values.filter((p) => p[key]).length;
+  console.log(`student profiles: ${records.size}; recruitment dialogue: ${count("recruitmentDialogue")}/${records.size} (ja ${count("dialogueJp")}, kr ${count("dialogueKr")})`);
   return records;
 }
 

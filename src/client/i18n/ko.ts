@@ -509,7 +509,7 @@ export const ko: Record<keyof typeof en, string> = {
   "about.assets.cards.link2": "CC0 자산 고지",
   "about.assets.cards.dd2": "를 참고하세요.",
   "about.assets.profiles.dt": "입학 도장 프로필 & 대사",
-  "about.assets.profiles.dd": "전투 직군, 무기 유형, 생일, 성우 크레딧은 Blue Archive Wiki 캐릭터 인포박스에서, 모집 대사는 각 학생 음성 페이지의 영어 Gachaget 행에서 가져왔습니다. 이 정보는 오프라인으로 내보내져 학생 숫자 ID로 연결되어 로컬에 번들됩니다. 누락된 번역은 지어내지 않고 생략합니다. 위키 글자는 CC BY-SA 4.0 조항을 유지합니다.",
+  "about.assets.profiles.dd": "전투 직군, 무기 유형, 생일, 성우 크레딧은 Blue Archive Wiki 캐릭터 인포박스에서 가져오고, 모집 대사는 각 학생 음성 페이지에서 가져옵니다. 영어는 Gachaget 행을 그대로, 일본어는 같은 표의 lang=\"ja\" 셀을, 한국어는 같은 음성 클립에 대한 SchaleDB의 언어별 받아쓰기를 표시합니다. 이 정보는 오프라인으로 내보내져 학생 숫자 ID로 연결되어 로컬에 번들됩니다. 누락된 번역은 지어내지 않고 생략합니다. 위키 글자는 CC BY-SA 4.0 조항을 유지합니다.",
   "about.assets.animation.dt": "연출 참고 — Adelheid GG",
   "about.assets.animation.link": "‘블루 아카이브 소환 연출 영상’",
   "about.assets.animation.dd": " 는 서명함, 등급 공개, 봉투가 펼쳐지는 타이밍과 시각적 방향의 참고 자료였습니다. 영상은 참고용이며, 삽입 녹화나 배포 오디오 자산이 아닙니다. 모집 시뮬레이터는 자체 2D 재현이며, 로비는 정적 아트워크를 사용합니다.",

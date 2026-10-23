@@ -74,6 +74,10 @@ export interface StudentProfile {
   birthday: string;
   voiceActor: string;
   recruitmentDialogue: string;
+  /** Japanese line(s): the wiki table's own lang="ja" cells for this clip. */
+  dialogueJp?: string;
+  /** Korean line: SchaleDB's localized transcription of the same clip. */
+  dialogueKr?: string;
 }
 
 export interface CharacterRecord {

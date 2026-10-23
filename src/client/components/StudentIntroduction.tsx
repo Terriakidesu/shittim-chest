@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { asset, emblemUrl } from "../api";
 import type { PullResult } from "../gachaRules";
 import { portraitEntranceMs } from "../recruitmentTiming";
-import { clubName, schoolName, studentName, t, useLanguage } from "../i18n";
+import { clubName, schoolName, studentDialogue, studentName, t, useLanguage } from "../i18n";
 import { useFitText } from "../useFitText";
 
 /** The reveal-nameplate scene. Document-paper headings and stamps stay in
@@ -11,6 +11,7 @@ export function StudentIntroduction({ result, ready, onNext }: { result: PullRes
   useLanguage();
   const { student, rarity, duplicate, featured } = result;
   const name = studentName(student);
+  const dialogue = studentDialogue(student.profile);
   const profile = student.profile;
   const emblem = emblemUrl(student.school);
   const continueRef = useRef<HTMLButtonElement>(null);
@@ -36,7 +37,7 @@ export function StudentIntroduction({ result, ready, onNext }: { result: PullRes
     <div className="student-intro-identity">
       {!duplicate && <span className="student-intro-status">{t("intro.new")}{featured ? t("intro.pickup") : ""}</span>}
       <div className="student-intro-nameplate"><span className="student-intro-stars" aria-label={t("sim.starsAriaMany", { n: rarity })}>{Array.from({ length: rarity }, (_, index) => <img key={index} src={asset("ba-cards/Star.webp")} alt="" />)}</span><h2 ref={nameRef} title={name}><span>{name}</span></h2>{profile?.voiceActor && <span className="student-intro-voice" title={t("intro.cvTitle", { name: profile.voiceActor })}>{t("intro.cv", { name: profile.voiceActor })}</span>}</div>
-      {profile?.recruitmentDialogue && <div className="student-intro-message"><span>{profile.recruitmentDialogue}</span><small>{t("intro.message")}</small></div>}
+      {dialogue && <div className="student-intro-message"><span>{dialogue}</span><small>{t("intro.message")}</small></div>}
     </div>
     <button ref={continueRef} className="student-intro-continue" disabled={!ready} onClick={onNext} aria-label={t("intro.continueAria", { name })}><span>{ready ? t("intro.continue") : ""}</span></button>
   </section>;

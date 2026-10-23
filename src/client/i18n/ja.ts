@@ -509,7 +509,7 @@ export const ja: Record<keyof typeof en, string> = {
   "about.assets.cards.link2": "CC0素材の告知",
   "about.assets.cards.dd2": "。",
   "about.assets.profiles.dt": "入学申込書のプロフィールとボイス",
-  "about.assets.profiles.dd": "戦闘職種、武器、誕生日、CVの表記はBlue Archive WikiのキャラクターInfoboxから、募集ボイスは各生徒の音声ページの英語Gachaget行から取得しています。これらはオフラインで書き出し、生徒の数値IDで結び付けてローカルに同梱しています。翻訳が存在しない行は捏造せず省略しています。Wiki文章はCC BY-SA 4.0の規約を維持します。",
+  "about.assets.profiles.dd": "戦闘職種、武器、誕生日、CVの表記はBlue Archive WikiのキャラクターInfoboxから取得し、募集ボイスは各生徒の音声ページから取得しています。英字はGachaget行をそのまま、日本語は同じ表内のlang=\"ja\"セルを、韓国語は同じ音声クリップに対するSchaleDBの各言語書き起こしを表示します。これらはオフラインで書き出し、生徒の数値IDで結び付けてローカルに同梱しています。翻訳が存在しない行は捏造せず省略しています。Wiki文章はCC BY-SA 4.0の規約を維持します。",
   "about.assets.animation.dt": "演出の参照 — Adelheid GG",
   "about.assets.animation.link": "ブルーアーカイブ 召喚アニメーション",
   "about.assets.animation.dd": " の署名・レアリティ演出・封筒展開のタイミングと方向性の参考にしました。動画は参照であり、埋め込みでも同梱音声でもありません。募集シミュレーターは独自の2D近似で、ロビーは静止画です。",
