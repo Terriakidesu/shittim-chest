@@ -31,3 +31,6 @@ export function subscribeTheme(listener: () => void) {
   return () => window.removeEventListener("shittim-theme-change", listener);
 }
 export function getTheme() { return preference; }
+export function getResolvedTheme(): "light" | "dark" {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}

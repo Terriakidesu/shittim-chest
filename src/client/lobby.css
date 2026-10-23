@@ -35,6 +35,28 @@
 :root[data-theme="dark"] .lobby-news-heading > a { color: #6dd9f8; }
 :root[data-theme="dark"] :is(.lobby-news-heading > span, .lobby-news-dates, .lobby-news-controls > span, .lobby-news-empty) { color: #b9cfdf; }
 :root[data-theme="dark"] .lobby-news-controls button { background: #254d65; color: #b8eaff; }
+:root[data-theme="dark"] .lobby { color: #e8f6fc; }
+:root[data-theme="dark"] .lobby-topbar { background: #102d41e8; border-bottom: 1px solid #83d7eb4d; box-shadow: 0 3px 9px #061a2acc; }
+:root[data-theme="dark"] .lobby-brand { color: #eefaff; }
+:root[data-theme="dark"] .lobby-brand img { filter: brightness(0) invert(1); opacity: .9; }
+:root[data-theme="dark"] .lobby-project-label { color: #a9cbd8; }
+:root[data-theme="dark"] .lobby-toolbar .theme-switch { color: #b8d6e3; }
+:root[data-theme="dark"] .lobby-toolbar .theme-switch select { color: #eefaff; border-color: #5d8da2; background: #173a50; }
+:root[data-theme="dark"] .lobby-info { border-color: #82d9f0; color: #82d9f0; background: #16384dcc; }
+:root[data-theme="dark"] .lobby-news-badge { background: #20566d; color: #c8f2ff; }
+:root[data-theme="dark"] .news-forecast .lobby-news-badge { background: #59466d; color: #f0d9ff; }
+:root[data-theme="dark"] .news-upcoming .lobby-news-badge,
+:root[data-theme="dark"] .news-scheduled .lobby-news-badge { background: #68582a; color: #ffe9a2; }
+:root[data-theme="dark"] .lobby-news :focus-visible { outline-color: #72e1ff; }
+:root[data-theme="dark"] .lobby-tile { background: #102d41; color: #effaff; box-shadow: 0 5px 10px #061b2a99; }
+:root[data-theme="dark"] .lobby-tile-caption { z-index: 2; background: linear-gradient(transparent, #102d41f2 37%, #102d41 100%); }
+:root[data-theme="dark"] .lobby-tile-caption > span { color: #b6d5e2; }
+:root[data-theme="dark"] .lobby-tile-arrow { z-index: 3; color: #82e2ff; background: #173e55e8; box-shadow: 0 1px 6px #061a2a66; }
+:root[data-theme="dark"] .lobby-head-group img { border-color: #d9f5ff; background: #17384c; }
+:root[data-theme="dark"] .lobby-secondary-panel { background: #12354bcc; border-color: #9ae7fa3d; }
+:root[data-theme="dark"] .lobby-disclaimer { color: #d6eaf2; }
+:root[data-theme="dark"] .lobby-footer { background: #071c2bb8; color: #d7edf5; }
+:root[data-theme="dark"] .lobby-footer a { color: #bcefff; }
 @keyframes lobby-news-enter { from { opacity: 0; transform: translateY(-100%); } to { opacity: 1; transform: translateY(0); } }
 .lobby-scene { position: relative; display: flex; align-items: flex-start; flex: 1; min-height: 650px; }
 .lobby-characters { position: absolute; left: 1%; bottom: -34%; width: 48%; height: 118%; pointer-events: none; }

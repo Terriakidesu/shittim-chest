@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { ThemeSwitch } from "./components/ThemeSwitch";
 import { DecoShapes, IconPlay } from "./components/icons";
 import { api, asset } from "./api";
 import { link } from "./route";
+import { getResolvedTheme, subscribeTheme } from "./theme";
 import { LobbyNews } from "./components/LobbyNews";
 import { currentBannerHeads, forecastNews, latestBannerNews, type BannerHeads, type LobbyNewsItem } from "./lobbyNews";
 import "./lobby.css";
@@ -14,10 +15,11 @@ const destinations = [
 ] as const;
 
 export function Home() {
-  // One random matching scene per page load: daytime with Arona,
-  // or nighttime with Plana. Picked once, never re-rolled mid-visit.
+  // Keep the character random, independent of the selected theme. Changing
+  // Light/Dark should change the room without swapping the lobby companion.
   const [variant] = useState<"day" | "night">(() => (Math.random() < 0.5 ? "day" : "night"));
   const isDay = variant === "day";
+  const theme = useSyncExternalStore(subscribeTheme, getResolvedTheme, () => "light");
   // Forecast snapshot date, so the lobby shows the site's last update.
   const [updatedMs, setUpdatedMs] = useState<number | null>(null);
   const [news, setNews] = useState<LobbyNewsItem[]>([]);
@@ -45,7 +47,7 @@ export function Home() {
       : null;
   // Background via inline style so the URL stays base-relative: an absolute
   // `/ba-lobby/...` reference in CSS would break under a repository subpath.
-  const background = asset(isDay ? "ba-lobby/classroom-day.webp" : "ba-lobby/classroom-night.webp");
+  const background = asset(theme === "dark" ? "ba-lobby/classroom-night.webp" : "ba-lobby/classroom-day.webp");
   return <main className={`lobby lobby-${variant}`} style={{ backgroundImage: `url("${background}")` }}>
     <header className="lobby-topbar">
       <a className="lobby-brand" href={link.home} aria-label="Shittim Chest home"><img src={asset("shittim-chest.svg")} width="34" height="42" alt="" /><h1>Shittim Chest</h1></a>
