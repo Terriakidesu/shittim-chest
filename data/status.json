@@ -5,24 +5,24 @@
   "dueForRefresh": false,
   "refreshIntervalDays": 7,
   "dataAgeDays": 0,
-  "exportedAtMs": 1791988630096,
+  "exportedAtMs": 1792741088163,
   "sources": [
     {
       "key": "bluearchive.wiki",
       "label": "Blue Archive Wiki",
-      "fetchedAtMs": 1791988623844,
+      "fetchedAtMs": 1792741074487,
       "lastModified": "Sun, 05 Oct 2025 02:27:12 GMT"
     },
     {
       "key": "schaledb.com",
       "label": "SchaleDB",
-      "fetchedAtMs": 1791988620735,
+      "fetchedAtMs": 1792741054893,
       "lastModified": null
     },
     {
       "key": "bluearchive.wiki/clubs",
       "label": "Blue Archive Wiki — student clubs",
-      "fetchedAtMs": 1791988629174,
+      "fetchedAtMs": 1792741070637,
       "lastModified": null
     }
   ],
@@ -44,8 +44,8 @@
     },
     "inFlight": 38,
     "unresolved": 1,
-    "scheduled": 0,
-    "calibrationRecords": 3630,
+    "scheduled": 5,
+    "calibrationRecords": 3543,
     "preferredWeekdays": [
       2
     ]
