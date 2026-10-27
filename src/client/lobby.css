@@ -109,7 +109,10 @@
 }
 @media (max-width: 1000px) and (min-width: 701px) { .lobby-destinations { width: 48%; margin-right: 4%; gap: 17px 12px; } .lobby-characters { left: -7%; width: 48%; height: 105%; bottom: -24%; } .lobby-secondary-panel { gap: 6px; padding: 12px; } }
 @media (max-width: 700px) {
-  .lobby { background-position: 30% top; background-size: auto 100svh; background-attachment: scroll; }
+  /* `auto 100svh` tied the art to the viewport, but the stacked lobby is taller
+     than the viewport, so the last ~200 px fell back to the flat page colour.
+     `cover` fills the whole element and keeps the 30 % framing of the room. */
+  .lobby { background-position: 30% top; background-size: cover; background-attachment: scroll; }
   .lobby-topbar { width: calc(100% - 20px); min-height: 58px; padding: 7px 12px; gap: 10px; }
   .lobby-news { width: calc(100% - 20px); margin-top: 7px; }
   .lobby-news-heading { padding: 6px 10px; }
