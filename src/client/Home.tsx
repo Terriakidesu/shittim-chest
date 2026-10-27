@@ -10,6 +10,20 @@ import { announcedNews, currentBannerHeads, forecastNews, latestBannerNews, topU
 import { LobbyNews } from "./components/LobbyNews";
 import "./lobby.css";
 
+/**
+ * Live banner heads on the gacha tile: one group per server. Desktop stacks the
+ * server code over every portrait; a phone tile turns the group into a pill with
+ * a single lead face beside the code. The updates strip above already carries
+ * the rest of each banner's pool, so the tile only has to be legible.
+ */
+function LiveBannerHeads({ heads }: { heads: BannerHeads[] }) {
+  return <div className="lobby-banner-heads">{heads.map((group) =>
+    <div className={`lobby-head-group heads-${group.server.toLowerCase()}`} key={group.server}>
+      <span className="lobby-head-server">{group.server}</span>
+      <div>{group.students.map((student) => <img key={student.id} src={asset(student.avatar)} alt={studentName(student)} title={t(group.server === "GL" ? "lobby.headLive.global" : "lobby.headLive.japan", { name: studentName(student) })} width="64" height="64" />)}</div>
+    </div>)}</div>;
+}
+
 const destinations: { href: string; nameKey: LangKey; detailKey: LangKey; image: string; className: string }[] = [
   { href: link.calendar, nameKey: "lobby.name.calendar", detailKey: "lobby.detail.calendar", image: "calendar", className: "lobby-tile-calendar" },
   { href: link.simulator, nameKey: "lobby.name.gacha", detailKey: "lobby.detail.gacha", image: "gacha", className: "lobby-tile-gacha" },
@@ -68,7 +82,7 @@ export function Home() {
 
       <nav className="lobby-destinations" aria-label={t("lobby.destinationsAria")}>
         {destinations.slice(0, 2).map(item => <a key={item.href} className={`lobby-tile ${item.className}`} href={item.href}>
-          <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" />{item.image === "gacha" && heads.length > 0 && <div className="lobby-banner-heads">{heads.map((group) => <div className={`lobby-head-group heads-${group.server.toLowerCase()}`} key={group.server}><span>{group.server}</span><div>{group.students.map((student) => <img key={student.id} src={asset(student.avatar)} alt={studentName(student)} title={t(group.server === "GL" ? "lobby.headLive.global" : "lobby.headLive.japan", { name: studentName(student) })} width="64" height="64" />)}</div></div>)}</div>}<div className="lobby-tile-caption"><strong>{t(item.nameKey)}</strong><span>{t(item.detailKey)}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
+          <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" />{item.image === "gacha" && heads.length > 0 && <LiveBannerHeads heads={heads} />}<div className="lobby-tile-caption"><strong>{t(item.nameKey)}</strong><span>{t(item.detailKey)}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
         </a>)}
         <div className="lobby-secondary-panel">
           <div className="lobby-panel-decoration" aria-hidden="true"><span /><DecoShapes /></div>
