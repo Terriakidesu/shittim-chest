@@ -31,6 +31,36 @@ pass.
 
 `public/data/*.json` and `public/img/` are committed build artifacts. Regenerate with `bun run export`, or refresh only the profile+dialogue fields with `bun run scripts/student-profiles.ts`. Hand-editing them is pointless since the next export overwrites them.
 
+## Announced-only banners
+
+A new pickup is announced on the JP news feed hours before the wiki or SchaleDB
+has the student, so `scripts/announced-banners.ts` keeps a small hand-written
+table of those rows and `scripts/export.ts` merges them into `banners.json` with
+`provisional: true`. They are the only banners in that file that do not come
+from the wiki.
+
+- **Negative ids.** Announcement rows and their characters use ids like `-1`;
+  SchaleDB ids are positive, so a placeholder can never collide with a real
+  student.
+- **Headshots** live in `public/img/announced/`, cropped from the official
+  promo art (© NEXON Games & Yostar). Delete those files once SchaleDB
+  publishes the real artwork; nothing else references them.
+- **They never reach the simulator** (`Simulator.tsx` filters `provisional`) or
+  `forecast.json` (the DTO merge happens after the snapshot, so the alignment
+  model never sees them). A provisional banner has no resolved student pool, so
+  a period for it would have an empty roster and no spark exchange.
+- **Dedupe is start-day proximity, not code matching** (`pendingAnnouncedBanners`):
+  any wiki banner on the same server starting within 36 h retires the row. The
+  announced start comes from a maintenance window and the wiki usually records
+  the batch a few hours apart, and the wiki's code for a brand-new student is
+  itself a guess until SchaleDB publishes it.
+- The export log prints `announced : N provisional, M superseded or expired` —
+  a row that never clears means the dedupe drifted or the wiki spelled the
+  student differently (check the `unresolved rate-ups` line below it).
+- `cal.tag.announced` / `cal.disclaimer.announced` / `chip.title.announced` are
+  the localized strings; the detail panel hides the simulator deep link for
+  these rows because no period exists to open.
+
 ## Data sources and joins
 
 Three upstream sources across two hosts, assembled in `buildSnapshot()`

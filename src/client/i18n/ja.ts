@@ -160,6 +160,7 @@ export const ja: Record<keyof typeof en, string> = {
   "cal.detailSheetAria": "バナー詳細",
   "cal.tag.rerun": "復刻",
   "cal.tag.limited": "限定",
+  "cal.tag.announced": "告知",
   "cal.tag.jp": "JP",
   "cal.tag.global": "GLOBAL",
   "cal.jpWindow": "JP期間",
@@ -181,6 +182,7 @@ export const ja: Record<keyof typeof en, string> = {
   "cal.evidence.insufficient": "調整データ不足",
   "cal.disclaimer.estimate": "予想であり、公式告知ではありません。",
   "cal.disclaimer.unresolved": "信頼できる対応バナーや日付の推定はありません。",
+  "cal.disclaimer.announced": "日本サーバーで2026年10月27日に告知されました。日時はメンテナンスのお知らせによるもので、生徒データとバナー画像は次回のデータ更新で反映されます。",
   "cal.openPeriod": "この期間を募集シミュレーターで開く",
   "cal.guide.prefix": "バナー履歴：",
   "cal.guide.wikiLink": "Blue Archive Wiki",
@@ -204,6 +206,7 @@ export const ja: Record<keyof typeof en, string> = {
   "chip.title.scheduled": "Wikiに登録済み",
   "chip.title.confidence": "GL到着予想 — 過去7日以内の実績精度 {n}%",
   "chip.title.uncalibrated": "GL到着予想 — 調整データ不足",
+  "chip.title.announced": "日本サーバーで告知済み — 生徒データは未反映",
 
   "type.PickupGacha": "ピックアップ",
   "type.LimitedGacha": "限定",

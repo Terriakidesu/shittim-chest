@@ -107,6 +107,8 @@ select, .search { height: 44px; min-width: 0; padding: 8px 12px; border: 1px sol
 .chip-gl { border-left-style: double; border-left-width: 4px; background: var(--surface-alt); }
 .chip-est { background: var(--pink-soft); border-left: 3px dashed var(--pink); }
 .chip-conf, .chip-flag { color: var(--pink); margin-left: auto; flex: none; font-size: 10px; font-weight: 800; }
+.chip-provisional { border-left-style: dashed; }
+.chip-provisional .chip-flag { color: var(--cyan); margin-left: 0; }
 .chip:hover { filter: brightness(.95); }
 .chip.is-selected { outline: 2px solid var(--cyan); outline-offset: 1px; }
 .est-group { border-top: 1px dashed var(--pink); padding-top: 5px; }
@@ -163,6 +165,7 @@ select, .search { height: 44px; min-width: 0; padding: 8px 12px; border: 1px sol
 .tag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 750; padding: 3px 5px; background: var(--navy); color: #fff; border-radius: 2px; }
 .tag.limit, .tag.gl { background: var(--pink); color: var(--surface); }
 .tag.school { background: var(--surface-alt); color: var(--text); }
+.tag.announced { background: var(--surface-alt); color: var(--text); border: 1px dashed var(--cyan); }
 .school-emblem { object-fit: contain; }
 .school-dot { display: inline-block; border-radius: 50%; }
 .detail-grid { margin: 0; display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 9px 12px; font-size: 13px; line-height: 1.6; }

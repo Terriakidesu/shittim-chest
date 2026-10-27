@@ -65,6 +65,12 @@ export interface Banner {
   confirmedGlStartMs: number | null;
   prediction: Prediction | null;
   forecastStatus: "arrived" | "scheduled" | "estimated" | "unresolved";
+  /**
+   * Hand-kept from an official announcement because the wiki and SchaleDB do
+   * not carry the banner yet. Provisional rows are shown on the calendar but
+   * never in the simulator or the forecast.
+   */
+  provisional?: boolean;
 }
 
 /** Exported by scripts/student-profiles.ts from wiki infoboxes and audio tables. */

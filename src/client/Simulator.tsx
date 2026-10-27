@@ -191,7 +191,9 @@ export function Simulator() {
       api.characters(),
     ]).then(([bannerResponse, characterResponse]) => {
       if (!live) return;
-      setBanners(bannerResponse.banners);
+      // Announced-only banners have no resolved student pool, so they cannot
+      // back a period (empty roster, no spark exchange). Calendar only.
+      setBanners(bannerResponse.banners.filter((banner) => !banner.provisional));
       setCharacters(characterResponse.characters);
       setLoading(false);
     }).catch((e) => {

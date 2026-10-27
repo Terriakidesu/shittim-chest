@@ -41,6 +41,11 @@ import { verifiedTruth } from "../src/model/domain/evaluation";
 import { fetchStudentProfiles, type StudentProfileDto } from "./student-profiles";
 import { reuseRerunBannerImages } from "./banner-art";
 import { applyOfficialGlobalSchedules } from "./official-schedules";
+import {
+  ANNOUNCED_BANNERS,
+  type AnnouncedBanner,
+  pendingAnnouncedBanners,
+} from "./announced-banners";
 
 /* ------------------------------------------------------------------ */
 /* Local (relative) artwork paths. No leading slash: the built site may */
@@ -73,6 +78,11 @@ interface BannerDto {
   confirmedGlStartMs: number | null;
   prediction: Prediction | null;
   forecastStatus: "arrived" | "scheduled" | "estimated" | "unresolved";
+  /**
+   * Hand-kept from an official announcement because neither upstream source
+   * has the banner yet. Excluded from the simulator and the forecast model.
+   */
+  provisional?: boolean;
 }
 
 interface Snapshot {
@@ -145,6 +155,27 @@ function toDto(banner: Banner, snap: Snapshot): BannerDto {
               ? "scheduled"
               : "arrived"
             : "unresolved",
+  };
+}
+
+/** Announced-only banner: a real announcement, but no upstream record yet. */
+function announcedDto(row: AnnouncedBanner): BannerDto {
+  return {
+    id: row.id,
+    server: row.server,
+    type: row.type,
+    code: row.code,
+    rerun: false,
+    limited: row.limited,
+    evergreen: false,
+    startMs: row.startMs,
+    endMs: row.endMs,
+    characters: row.characters,
+    imageUrl: null,
+    confirmedGlStartMs: null,
+    prediction: null,
+    forecastStatus: "unresolved",
+    provisional: true,
   };
 }
 
@@ -418,6 +449,9 @@ if (!imagesOnly) {
   const byId = new Map(snap.banners.map((b) => [b.id, b]));
   const dto = (b: Banner) => toDto(b, snap);
 
+  // Announced-only rows: merged into banners.json, kept out of the forecast.
+  const announced = pendingAnnouncedBanners(snap.banners, snap.fetchedAtMs).map(announcedDto);
+
   const forecastRows = [...snap.predictions.values()]
     .filter((p) => byId.has(p.bannerId))
     .sort((a, b) => a.expectedMs - b.expectedMs)
@@ -457,8 +491,8 @@ if (!imagesOnly) {
   const banners = {
     from: 0,
     to: Date.UTC(2100, 0, 1),
-    count: snap.banners.length,
-    banners: snap.banners.map(dto),
+    count: snap.banners.length + announced.length,
+    banners: [...snap.banners.map(dto), ...announced],
   };
 
   const forecast = {
@@ -510,6 +544,12 @@ if (!imagesOnly) {
   console.log(`GL batches   : ${snap.batchIndex.GL.length}`);
   console.log(`current lag  : ${snap.lagDays} days`);
   console.log(`predictions  : ${snap.predictions.size} JP banners in flight`);
+
+  // Announced-only rows disappear the moment the wiki records the banner, so
+  // print both halves: a row that never clears means the dedupe drifted.
+  console.log(
+    `announced    : ${announced.length} provisional, ${ANNOUNCED_BANNERS.length - announced.length} superseded or expired`,
+  );
 
   // Rate-up names that link to no student (not even by alias). New variant
   // spellings appear regularly; surface them here instead of silently

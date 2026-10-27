@@ -170,6 +170,7 @@ export const en = {
   "cal.detailSheetAria": "Banner details",
   "cal.tag.rerun": "RERUN",
   "cal.tag.limited": "LIMITED",
+  "cal.tag.announced": "ANNOUNCED",
   "cal.tag.jp": "JP",
   "cal.tag.global": "GLOBAL",
   "cal.jpWindow": "JP window",
@@ -191,6 +192,7 @@ export const en = {
   "cal.evidence.insufficient": "Insufficient calibration",
   "cal.disclaimer.estimate": "Estimate only, not an announcement.",
   "cal.disclaimer.unresolved": "No reliable Global correspondence or date estimate is available.",
+  "cal.disclaimer.announced": "Announced by the Japanese server on 27 Oct 2026. The dates come from the maintenance notice; the character records and banner art arrive with the next data refresh.",
   "cal.openPeriod": "Open this period in the recruitment simulator",
   "cal.guide.prefix": "Banner history from the ",
   "cal.guide.wikiLink": "Blue Archive Wiki",
@@ -216,6 +218,7 @@ export const en = {
   "chip.title.scheduled": "Scheduled on the wiki",
   "chip.title.confidence": "Expected on Global — {n}% historical accuracy within ±7 days",
   "chip.title.uncalibrated": "Expected on Global — insufficient calibration",
+  "chip.title.announced": "Announced by the Japanese server — character data pending",
 
   /* Banner type short labels ------------------------------------------------- */
   "type.PickupGacha": "Pick-up",

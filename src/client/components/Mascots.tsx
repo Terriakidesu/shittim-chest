@@ -144,16 +144,17 @@ export function BannerChip({
   return (
     <button
       type="button"
-      className={`chip chip-${banner.server.toLowerCase()} ${selected ? "is-selected" : ""}`}
+      className={`chip chip-${banner.server.toLowerCase()} ${banner.provisional ? "chip-provisional" : ""} ${selected ? "is-selected" : ""}`}
       style={{ ["--chip" as string]: color }}
       onClick={onClick}
       aria-pressed={!!selected}
-      title={`${banner.server === "JP" ? t("chip.server.jp") : t("chip.server.gl")} · ${label(banner)} — ${typeLabel(banner.type)}`}
+      title={`${banner.server === "JP" ? t("chip.server.jp") : t("chip.server.gl")} · ${label(banner)} — ${typeLabel(banner.type)}${banner.provisional ? ` · ${t("chip.title.announced")}` : ""}`}
     >
       {who && <img src={asset(who.avatar)} alt="" loading="lazy" />}
       <span className="chip-name">{label(banner)}</span>
       <span className="chip-server">{banner.server === "JP" ? "JP" : "GL"}</span>
       {banner.prediction && <span className="chip-flag">~</span>}
+      {banner.provisional && <span className="chip-flag" aria-label={t("cal.tag.announced")}>!</span>}
     </button>
   );
 }
