@@ -33,10 +33,8 @@ export const en = {
   "zone.local": "Your time",
   "zone.jst": "JST",
   "zone.utc": "UTC",
-  "cal.zone.jst": "Japan time (JST)",
 
   /* Lobby -------------------------------------------------------------- */
-  "lobby.projects": "UNOFFICIAL FAN PROJECT",
   "lobby.infoAria": "About and credits",
   "lobby.homeAria": "Shittim Chest home",
   "lobby.name.calendar": "Calendar",
@@ -49,11 +47,6 @@ export const en = {
   "lobby.aria.night": "Plana in the Shittim Chest classroom",
   "lobby.sceneAria": "S.C.H.A.L.E. classroom",
   "lobby.destinationsAria": "Main navigation",
-  "lobby.disclaimer.forecasts": "Forecasts are estimates.",
-  "lobby.disclaimer.noCurrency": "Simulated recruitment uses no real currency.",
-  "lobby.disclaimer.updated": "Forecast data updated {date}.",
-  "lobby.disclaimer.weekly": "Forecast data refreshes weekly.",
-  "lobby.footer.projects": "Blue Archive fan project · Game assets © their respective rights holders.",
   "lobby.footer.credits": "Credits & disclaimer",
   "lobby.headLive.global": "Global live pick-up: {name}",
   "lobby.headLive.japan": "Japan live pick-up: {name}",
@@ -85,8 +78,6 @@ export const en = {
   /* Calendar --------------------------------------------------------------- */
   "cal.subtitle": "Gacha Calendar",
   "cal.tagline": "Live on the Japanese server, and when Global is expected to catch up.",
-  "cal.openSim": "Open recruitment simulator",
-  "cal.aboutLink": "About & credits",
   "cal.lag": "JP → GL lag",
   "cal.lagTitle": "Median lag at the frontier",
   "cal.awaiting": "Awaiting Global",
@@ -98,7 +89,6 @@ export const en = {
   "cal.connecting": "Connecting…",
   "cal.updatedToday": "Updated today",
   "cal.updatedAgo": "Updated {n}d ago",
-  "cal.syncCadence": " · forecasts refresh weekly",
   "cal.reload": "Reload",
   "cal.reloading": "Reloading…",
   "cal.loadError": "Could not load the forecast data: {error}",
@@ -117,8 +107,6 @@ export const en = {
   "cal.prevMonth": "Previous month",
   "cal.nextMonth": "Next month",
   "cal.today": "Today",
-  "cal.schedule": "Recruitment schedule",
-  "cal.zone.local": "Your local time",
   "cal.view.agenda": "Agenda",
   "cal.view.month": "Month",
   "cal.viewAria": "Calendar view",
@@ -136,7 +124,6 @@ export const en = {
   "cal.legend.est": "Expected Global",
   "cal.legend.color": "Colour = school",
   "cal.side.forecast": "Global forecast",
-  "cal.side.estimates": "Estimates",
   "cal.side.empty": "Nothing in flight right now.",
   "cal.row.official": "Official announcement",
   "cal.row.wiki": "Scheduled on wiki",
@@ -165,7 +152,6 @@ export const en = {
   "cal.detail": "Banner detail",
   "cal.select": "Select a banner",
   "cal.close": "Close",
-  "cal.details": "Details",
   "cal.detailHint": "Pick a banner from the calendar to see its window, school and the predicted Global arrival.",
   "cal.detailSheetAria": "Banner details",
   "cal.tag.rerun": "RERUN",
@@ -199,7 +185,6 @@ export const en = {
   "cal.guide.middle": "; portraits from ",
   "cal.guide.schaleLink": "SchaleDB",
   "cal.guide.suffix": ".",
-  "cal.estNote": "Estimates use JP history. Wiki schedules are labeled separately; neither replaces official announcements.",
 
   /* Prediction explanations (exported strings) ------------------------------ */
   "cal.explanation.full": "{method}, snapped to the projected Global maintenance schedule. {range}",
@@ -242,12 +227,10 @@ export const en = {
   "plana.lag": "The current JP-to-Global lag is {days} days. Forecast rows show the estimated 90% date range.",
 
   /* Simulator --------------------------------------------------------------------- */
-  "sim.back": "Calendar",
   "sim.title": "Recruitment",
   "sim.stage.results": "Recruitment Results",
   "sim.subtitle": "Historical recruitment simulator",
   "sim.note": "No real currency · results are local",
-  "sim.aboutLink": "About & credits",
   "sim.soundOn": "Enable sound",
   "sim.soundOff": "Mute sound",
   "sim.loading": "Loading historical recruitment periods…",
@@ -466,11 +449,6 @@ export const en = {
   "role.Special": "Special",
 
   /* Footer ---------------------------------------------------------------------------------------- */
-  "footer.navAria": "Site navigation",
-  "footer.home": "Lobby",
-  "footer.calendar": "Calendar",
-  "footer.simulator": "Recruitment simulator",
-  "footer.about": "About, credits & disclaimer",
   "footer.disclaimer": "Unofficial Blue Archive fan project. Game assets belong to their respective rights holders. Forecasts and simulated recruitment are not official game information.",
 
   /* About page --------------------------------------------------------------------------------------- */

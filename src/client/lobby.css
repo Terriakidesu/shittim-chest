@@ -6,7 +6,6 @@
 .lobby-brand img { width: 30px; height: 39px; object-fit: contain; filter: brightness(0); opacity: .75; }
 .lobby-brand h1 { font-size: clamp(22px, 2.5vw, 36px); letter-spacing: -.045em; font-weight: 750; white-space: nowrap; }
 .lobby-toolbar { display: flex; align-items: center; gap: 24px; }
-.lobby-project-label { color: #5b788d; font-size: 10px; letter-spacing: .08em; font-weight: 700; }
 .lobby-toolbar .theme-switch { color: #44647d; }
 .lobby-toolbar .theme-switch select { height: 36px; min-height: 36px; color: #29445a; border-color: #b7d8e6; background: #fff; }
 .lobby-info { display: grid; place-items: center; width: 33px; height: 33px; border: 2px solid #53759b; color: #53759b; border-radius: 50%; font-size: 21px; font-weight: 750; text-decoration: none; }
@@ -39,7 +38,6 @@
 :root[data-theme="dark"] .lobby-topbar { background: #102d41e8; border-bottom: 1px solid #83d7eb4d; box-shadow: 0 3px 9px #061a2acc; }
 :root[data-theme="dark"] .lobby-brand { color: #eefaff; }
 :root[data-theme="dark"] .lobby-brand img { filter: brightness(0) invert(1); opacity: .9; }
-:root[data-theme="dark"] .lobby-project-label { color: #a9cbd8; }
 :root[data-theme="dark"] .lobby-toolbar .theme-switch { color: #b8d6e3; }
 :root[data-theme="dark"] .lobby-toolbar .theme-switch select { color: #eefaff; border-color: #5d8da2; background: #173a50; }
 :root[data-theme="dark"] .lobby-info { border-color: #82d9f0; color: #82d9f0; background: #16384dcc; }
@@ -54,7 +52,6 @@
 :root[data-theme="dark"] .lobby-tile-arrow { z-index: 3; color: #82e2ff; background: #173e55e8; box-shadow: 0 1px 6px #061a2a66; }
 :root[data-theme="dark"] .lobby-head-group img { border-color: #d9f5ff; background: #17384c; }
 :root[data-theme="dark"] .lobby-secondary-panel { background: #12354bcc; border-color: #9ae7fa3d; }
-:root[data-theme="dark"] .lobby-disclaimer { color: #d6eaf2; }
 :root[data-theme="dark"] .lobby-footer { background: #071c2bb8; color: #d7edf5; }
 :root[data-theme="dark"] .lobby-footer a { color: #bcefff; }
 @keyframes lobby-news-enter { from { opacity: 0; transform: translateY(-100%); } to { opacity: 1; transform: translateY(0); } }
@@ -81,17 +78,15 @@
 .lobby-tile-caption strong { font-size: clamp(26px, 2.7vw, 42px); line-height: 1.05; letter-spacing: -.055em; font-weight: 800; }
 .lobby-tile-caption > span { color: #4c5d6f; font-size: clamp(11px, 1vw, 16px); line-height: 1.4; }
 .lobby-tile-arrow { position: absolute; right: 13%; bottom: 20px; display: grid; place-items: center; width: 38px; height: 38px; padding-left: 3px; border-radius: 50%; color: #6d8aa4; background: white; font-size: 17px; box-shadow: 0 1px 5px #7098ad1f; }
-.lobby-secondary-panel { grid-column: 1 / -1; display: grid; grid-template-columns: 1.12fr 1fr; align-items: center; gap: 15px; padding: 13px 18px 19px; background: #e0edf899; border: 1px solid #e8f6ff77; border-radius: 19px; transform: skewX(-10deg); }
+.lobby-secondary-panel { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr; align-items: center; gap: 15px; padding: 13px 18px 19px; background: #e0edf899; border: 1px solid #e8f6ff77; border-radius: 19px; transform: skewX(-10deg); }
 .lobby-panel-decoration { grid-column: 1/-1; display: flex; align-items: center; gap: 10px; color: #ffffffb8; font-size: 12px; letter-spacing: .13em; }
 .lobby-panel-decoration > span { height: 2px; flex: 1; background: #ffffff75; }
 .lobby-secondary-panel .lobby-tile { transform: none; height: clamp(180px,25vh,265px); }
 .lobby-secondary-panel .lobby-tile-inner { transform: skewX(10deg); }
-.lobby-disclaimer { transform: skewX(10deg); color: #254b68; margin: 0; padding: 15px; font-size: 12px; line-height: 1.8; }
 .lobby-footer { position: relative; z-index: 3; display: flex; justify-content: space-between; gap: 15px; padding: 9px 4%; color: white; background: #123d647d; font-size: 10px; line-height: 1.5; }
 .lobby-footer a { color: white; text-underline-offset: 3px; }
 .lobby-characters .lobby-solo { left: 8%; height: 100%; }
 :root[data-theme="dark"] .lobby-secondary-panel { background: #6386b393; }
-:root[data-theme="dark"] .lobby-disclaimer { color: #fff; }
 @media (min-aspect-ratio: 2/1) { .lobby-scene { min-height: 540px; } .lobby-characters { height: 130%; bottom: -42%; } }
 /* The news card sits above the original one-screen composition. On shorter
    desktop viewports (including browser zoom), let the scene use the space
@@ -102,9 +97,8 @@
   .lobby-tile { height: clamp(145px, 24vh, 230px); }
   .lobby-secondary-panel { gap: 8px; padding: 8px 12px 12px; }
   .lobby-secondary-panel .lobby-tile { height: clamp(145px, 24vh, 230px); }
-  .lobby-disclaimer { padding: 8px; font-size: 11px; line-height: 1.5; }
 }
-@media (max-width: 1000px) and (min-width: 701px) { .lobby-destinations { width: 48%; margin-right: 4%; gap: 17px 12px; } .lobby-project-label { display: none; } .lobby-characters { left: -7%; width: 48%; height: 105%; bottom: -24%; } .lobby-secondary-panel { gap: 6px; padding: 12px; } .lobby-disclaimer { font-size: 10px; padding: 8px; } }
+@media (max-width: 1000px) and (min-width: 701px) { .lobby-destinations { width: 48%; margin-right: 4%; gap: 17px 12px; } .lobby-characters { left: -7%; width: 48%; height: 105%; bottom: -24%; } .lobby-secondary-panel { gap: 6px; padding: 12px; } }
 @media (max-width: 700px) {
   .lobby { background-position: 30% top; background-size: auto 100svh; background-attachment: scroll; }
   .lobby-topbar { width: calc(100% - 20px); min-height: 58px; padding: 7px 12px; gap: 10px; }
@@ -119,7 +113,7 @@
   .lobby-head-group img { width: clamp(25px, 7.3vw, 44px); height: clamp(25px, 7.3vw, 44px); border-width: 1px; }
   .lobby-head-group > span { padding: 1px 6px; font-size: 9px; }
   .lobby-brand { gap: 6px; } .lobby-brand img { width: 22px; height: 30px; } .lobby-brand h1 { font-size: 21px; }
-  .lobby-toolbar { gap: 8px; } .lobby-project-label, .lobby-info { display: none; }
+  .lobby-toolbar { gap: 8px; } .lobby-info { display: none; }
   .lobby-toolbar .theme-switch { font-size: 0; gap: 0; } .lobby-toolbar .theme-switch select { width: 88px; font-size: 12px; }
   .lobby-scene { flex-direction: column; min-height: 0; }
   .lobby-characters { position: relative; left: 0; bottom: auto; width: 100%; height: 360px; overflow: hidden; }
@@ -133,8 +127,7 @@
   .lobby-tile-arrow { width: 25px; height: 25px; bottom: 14px; right: 11%; font-size: 11px; }
   .lobby-secondary-panel { padding: 10px 12px 13px; gap: 9px; border-radius: 12px; }
   .lobby-secondary-panel .lobby-tile { height: 155px; }
-  .lobby-disclaimer { padding: 5px 2px; font-size: 10px; }
-  .lobby-footer { font-size: 9px; gap: 10px; }
+  .lobby-footer { flex-direction: column; align-items: flex-start; gap: 3px; padding: 8px 5%; font-size: 9px; }
 }
 @media (prefers-reduced-motion: reduce) { .lobby-tile { transition: none; } .lobby-tile:hover { translate: none; } }
 @media (prefers-reduced-motion: reduce) {

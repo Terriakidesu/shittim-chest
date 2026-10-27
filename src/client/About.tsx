@@ -1,7 +1,5 @@
 import { ThemeSwitch } from "./components/ThemeSwitch";
-import { IconChevronLeft } from "./components/icons";
 import { asset } from "./api";
-import { link } from "./route";
 import { t, useLanguage, type LangKey } from "./i18n";
 import { LanguageSwitch } from "./components/LanguageSwitch";
 import { SiteNav } from "./components/SiteNav";
@@ -29,7 +27,7 @@ export function About() {
   return <main className="about-page">
     <SiteNav active="about" />
     <header className="about-header">
-      <div><a className="back-link" href={link.calendar}><IconChevronLeft /> {t("nav.calendar")}</a><span className="sim-kicker">Shittim Chest</span><h1>{t("about.title")}</h1><p>{t("about.sub")}</p></div>
+      <div><span className="sim-kicker">Shittim Chest</span><h1>{t("about.title")}</h1><p>{t("about.sub")}</p></div>
       <div className="about-header-tools"><LanguageSwitch /><ThemeSwitch /></div>
     </header>
 

@@ -5,7 +5,7 @@ import { DecoShapes, IconPlay } from "./components/icons";
 import { api, asset } from "./api";
 import { link } from "./route";
 import { getResolvedTheme, subscribeTheme } from "./theme";
-import { t, useLanguage, localeFor, studentName, type LangKey } from "./i18n";
+import { t, useLanguage, studentName, type LangKey } from "./i18n";
 import { currentBannerHeads, forecastNews, latestBannerNews, type BannerHeads, type LobbyNewsItem } from "./lobbyNews";
 import { LobbyNews } from "./components/LobbyNews";
 import "./lobby.css";
@@ -45,17 +45,13 @@ export function Home() {
     );
     return () => { live = false; };
   }, []);
-  const updatedLabel =
-    updatedMs != null
-      ? new Intl.DateTimeFormat(localeFor(), { month: "short", day: "numeric", year: "numeric" }).format(updatedMs)
-      : null;
   // Background via inline style so the URL stays base-relative: an absolute
   // `/ba-lobby/...` reference in CSS would break under a repository subpath.
   const background = asset(theme === "dark" ? "ba-lobby/classroom-night.webp" : "ba-lobby/classroom-day.webp");
   return <main className={`lobby lobby-${variant}`} style={{ backgroundImage: `url("${background}")` }}>
     <header className="lobby-topbar">
       <a className="lobby-brand" href={link.home} aria-label={t("lobby.homeAria")}><img src={asset("shittim-chest.svg")} width="34" height="42" alt="" /><h1>Shittim Chest</h1></a>
-      <div className="lobby-toolbar"><span className="lobby-project-label">{t("lobby.projects")}</span><LanguageSwitch /><ThemeSwitch /><a className="lobby-info" href={link.about} aria-label={t("lobby.infoAria")}>?</a></div>
+      <div className="lobby-toolbar"><LanguageSwitch /><ThemeSwitch /><a className="lobby-info" href={link.about} aria-label={t("lobby.infoAria")}>?</a></div>
     </header>
     <LobbyNews updatedMs={updatedMs} items={news} />
 
@@ -75,10 +71,9 @@ export function Home() {
           {destinations.slice(2).map(item => <a key={item.href} className={`lobby-tile ${item.className}`} href={item.href}>
             <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" /><div className="lobby-tile-caption"><strong>{t(item.nameKey)}</strong><span>{t(item.detailKey)}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
           </a>)}
-          <p className="lobby-disclaimer">{t("lobby.disclaimer.forecasts")}<br />{t("lobby.disclaimer.noCurrency")}<br />{updatedLabel ? t("lobby.disclaimer.updated", { date: updatedLabel }) : t("lobby.disclaimer.weekly")}</p>
         </div>
       </nav>
     </section>
-    <footer className="lobby-footer"><span>{t("lobby.footer.projects")}</span><a href={link.about}>{t("lobby.footer.credits")}</a></footer>
+    <footer className="lobby-footer"><span>{t("footer.disclaimer")}</span><a href={link.about}>{t("lobby.footer.credits")}</a></footer>
   </main>;
 }

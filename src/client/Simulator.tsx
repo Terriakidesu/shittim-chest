@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { api, asset, type Banner, type CharacterRecord, type Server } from "./api";
 import { nextUnseenPurple } from "./recruitmentSequence";
 import { readSelection, saveSelection } from "./simulatorSelection";
-import { IconChevronLeft, IconClose, IconRotate, IconSound, IconStar, Stars } from "./components/icons";
-import { link, query } from "./route";
+import { IconClose, IconRotate, IconSound, IconStar, Stars } from "./components/icons";
+import { query } from "./route";
 import { REQUEST_REVEAL_PEAK_MS, useRecruitmentAudio, type RecruitmentPlayback, type RecruitmentSound } from "./recruitmentAudio";
 import { CARD_FLIP_MS, CARD_SPREAD_MS, DISPATCH_DEPARTURE_MS, RESULTS_SETTLE_MS, cardImpactMs, portraitEntranceMs } from "./recruitmentTiming";
 import { bannerNames, getLanguage, localeFor, studentName, t, translateModelString, useLanguage } from "./i18n";
@@ -434,13 +434,12 @@ export function Simulator() {
       <SiteNav active="simulator" />
       <header className="sim-topbar">
         <div className="sim-brand">
-          <a className="back-link" href={link.calendar}><IconChevronLeft /> {t("sim.back")}</a>
           <div className="sim-title-line">
             <img src={asset("ba-icons/schale.png")} alt="" width="38" height="44" />
             <div><h1>{t("sim.title")}</h1><p>{t("sim.subtitle")}</p></div>
           </div>
         </div>
-        <div className="sim-top-note"><span>{t("sim.note")}</span><a className="about-link" href={link.about}>{t("sim.aboutLink")}</a><LanguageSwitch /><ThemeSwitch /><button className="sim-sound-toggle sim-secondary" aria-label={muted ? t("sim.soundOn") : t("sim.soundOff")} title={muted ? t("sim.soundOn") : t("sim.soundOff")} aria-pressed={!muted} onClick={toggleSound}><IconSound muted={muted} /></button><FullscreenButton className="sim-sound-toggle sim-secondary" landscape /></div>
+        <div className="sim-top-note"><span>{t("sim.note")}</span><LanguageSwitch /><ThemeSwitch /><button className="sim-sound-toggle sim-secondary" aria-label={muted ? t("sim.soundOn") : t("sim.soundOff")} title={muted ? t("sim.soundOn") : t("sim.soundOff")} aria-pressed={!muted} onClick={toggleSound}><IconSound muted={muted} /></button><FullscreenButton className="sim-sound-toggle sim-secondary" landscape /></div>
       </header>
 
       {/* Model errors are English strings from gachaRules; translating at render

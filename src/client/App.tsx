@@ -65,11 +65,6 @@ const ZONE_KEYS: Record<TimeZone, LangKey> = {
   "Asia/Tokyo": "zone.jst",
   UTC: "zone.utc",
 };
-const META_ZONE_KEYS: Record<TimeZone, LangKey> = {
-  local: "cal.zone.local",
-  "Asia/Tokyo": "cal.zone.jst",
-  UTC: "zone.utc",
-};
 
 const PAGE_SIZE = 6;
 const CHIP_LIMIT = 3;
@@ -283,8 +278,7 @@ export function App() {
           <p className="tagline">
             {t("cal.tagline")}
           </p>
-          <a className="simulator-link" href={link.simulator}>{t("cal.openSim")} <IconExternal /></a>
-          <div className="calendar-theme"><LanguageSwitch /><ThemeSwitch /><a className="about-link" href={link.about}>{t("cal.aboutLink")}</a></div>
+          <div className="calendar-theme"><LanguageSwitch /><ThemeSwitch /></div>
         </div>
         <div className="pills">
           <div className="pill accent" title={t("cal.lagTitle")}>
@@ -306,16 +300,6 @@ export function App() {
             </span>
           </div>
         </div>
-      </div>
-
-      <div className={`syncbar ${isStale ? "is-stale" : ""}`} role="status">
-        <span className="dot" />
-        {dataAgeDays == null
-          ? t("cal.connecting")
-          : `${dataAgeDays < 1 ? t("cal.updatedToday") : t("cal.updatedAgo", { n: Math.round(dataAgeDays) })}${t("cal.syncCadence")}`}
-        <button className="btn" onClick={onRefresh} disabled={refreshing}>
-          <span>{refreshing ? t("cal.reloading") : t("cal.reload")}</span>
-        </button>
       </div>
 
       {error && <div className="alert" role="alert">{t("cal.loadError", { error })}</div>}
@@ -367,11 +351,20 @@ export function App() {
               <span>{t("cal.today")}</span>
             </button>
           </div>
-          <div className="calendar-meta">
-            <span><i className="live-dot" /> {t("cal.schedule")} <span className="zone-label">· {t(META_ZONE_KEYS[zone])}</span></span>
-            <div className="view-switch" role="group" aria-label={t("cal.viewAria")}>
-              <button aria-pressed={mobileView === "agenda"} onClick={() => setMobileView("agenda")}>{t("cal.view.agenda")}</button>
-              <button aria-pressed={mobileView === "month"} onClick={() => setMobileView("month")}>{t("cal.view.month")}</button>
+          <div className={`calendar-meta ${isStale ? "is-stale" : ""}`}>
+            <span role="status"><i className="live-dot" /> {dataAgeDays == null
+              ? t("cal.connecting")
+              : dataAgeDays < 1
+                ? t("cal.updatedToday")
+                : t("cal.updatedAgo", { n: Math.round(dataAgeDays) })}</span>
+            <div className="calendar-meta-tools">
+              <button className="btn ghost" onClick={onRefresh} disabled={refreshing}>
+                <span>{refreshing ? t("cal.reloading") : t("cal.reload")}</span>
+              </button>
+              <div className="view-switch" role="group" aria-label={t("cal.viewAria")}>
+                <button aria-pressed={mobileView === "agenda"} onClick={() => setMobileView("agenda")}>{t("cal.view.agenda")}</button>
+                <button aria-pressed={mobileView === "month"} onClick={() => setMobileView("month")}>{t("cal.view.month")}</button>
+              </div>
             </div>
           </div>
           <div className="weekdays">
@@ -477,13 +470,13 @@ export function App() {
         <aside className="side">
           <Detail banner={selected} tz={tz} onClose={() => setSelected(null)} />
 
-          <section className="panel">
-            <div className="phead pink">
+          <details className="panel flight">
+            <summary className="phead pink">
               <span className="lead" />
               {t("cal.side.forecast")}
-              <span className="section-note">{t("cal.side.estimates")}</span>
-            </div>
-            <div className="pbody rows">
+              <span className="section-note">{flightRows.length}</span>
+            </summary>
+            <div className="rows">
               {pageRows.length === 0 ? (
                 <div className="empty">{t("cal.side.empty")}</div>
               ) : (
@@ -522,7 +515,7 @@ export function App() {
             {pages > 1 && (
               <Pager page={page} pages={pages} onChange={setPage} />
             )}
-          </section>
+          </details>
 
           <details className="panel projections">
             <summary className="phead cyan">
@@ -570,9 +563,6 @@ export function App() {
           </a>
           {t("cal.guide.middle")}{" "}
           <a href="https://schaledb.com" target="_blank" rel="noreferrer">{t("cal.guide.schaleLink")}</a>{t("cal.guide.suffix")}
-          <span className="est-note">
-            {t("cal.estNote")}
-          </span>
         </div>
         <Plana line={planaLine} />
       </section>
@@ -671,9 +661,7 @@ function Detail({
           <button className="nav" onClick={onClose} aria-label={t("cal.close")} style={{ marginLeft: "auto" }}>
             <IconClose />
           </button>
-        ) : (
-          <span className="section-note">{t("cal.details")}</span>
-        )}
+        ) : null}
       </div>
       <div className="pbody">
         {!banner && (
