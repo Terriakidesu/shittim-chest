@@ -48,7 +48,9 @@ from the wiki.
 - **They never reach the simulator** (`Simulator.tsx` filters `provisional`) or
   `forecast.json` (the DTO merge happens after the snapshot, so the alignment
   model never sees them). A provisional banner has no resolved student pool, so
-  a period for it would have an empty roster and no spark exchange.
+  a period for it would have an empty roster and no spark exchange. They *do*
+  lead the lobby strip: `announcedNews()` in `lobbyNews.ts` reads the flag and
+  `topUpdates()` ranks an announcement above a running period.
 - **Dedupe is start-day proximity, not code matching** (`pendingAnnouncedBanners`):
   any wiki banner on the same server starting within 36 h retires the row. The
   announced start comes from a maintenance window and the wiki usually records

@@ -6,7 +6,7 @@ import { api, asset } from "./api";
 import { link } from "./route";
 import { getResolvedTheme, subscribeTheme } from "./theme";
 import { t, useLanguage, studentName, type LangKey } from "./i18n";
-import { currentBannerHeads, forecastNews, latestBannerNews, type BannerHeads, type LobbyNewsItem } from "./lobbyNews";
+import { announcedNews, currentBannerHeads, forecastNews, latestBannerNews, topUpdates, type BannerHeads, type LobbyNewsItem } from "./lobbyNews";
 import { LobbyNews } from "./components/LobbyNews";
 import "./lobby.css";
 
@@ -38,7 +38,11 @@ export function Home() {
       ([snapshot, forecast]) => {
         if (!live) return;
         const now = Date.now();
-        setNews([...latestBannerNews(snapshot.banners, now), ...forecastNews(forecast.banners, now)]);
+        setNews(topUpdates([
+          ...announcedNews(snapshot.banners, now),
+          ...latestBannerNews(snapshot.banners, now),
+          ...forecastNews(forecast.banners, now),
+        ]));
         setHeads(currentBannerHeads(snapshot.banners, now));
       },
       () => { /* A missing news snapshot must not block the lobby. */ },

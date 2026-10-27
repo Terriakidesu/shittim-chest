@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Banner } from "./api";
-import { currentBannerHeads, forecastNews, latestBannerNews, newsUpdateLabel } from "./lobbyNews";
+import { currentBannerHeads, announcedNews, forecastNews, latestBannerNews, newsUpdateLabel, topUpdates } from "./lobbyNews";
 
 const NOW = Date.UTC(2026, 9, 23);
 function banner(id: number, server: "JP" | "GL", startMs: number, over: Partial<Banner> = {}): Banner {
@@ -72,4 +72,29 @@ test("forecast cards group expected updates and retain estimate ranges", () => {
   expect(cards[1].official).toBe(true);
   expect(cards[1].expectedMs).toBe(NOW + 5000);
   expect(forecastNews([{ ...a, prediction: { ...prediction, expectedMs: NOW } }], NOW)).toEqual([]);
+});
+
+test("a hand-kept announcement leads the strip while the server is still running a period", () => {
+  const live = banner(1, "JP", NOW - 100);
+  const announced = banner(-1, "JP", NOW + 100, { provisional: true });
+  const items = topUpdates([...announcedNews([live, announced], NOW), ...latestBannerNews([live, announced], NOW)], 3);
+  expect(items).toHaveLength(2);
+  expect(items[0].announced).toBe(true);
+  expect(items[0].kind).toBe("upcoming");
+  expect(items[0].students.map(({ student }) => student.id)).toEqual([-1]);
+  expect(items[1].kind).toBe("live");
+  expect(items[1].students.map(({ student }) => student.id)).toEqual([1]);
+  // Wiki rows and announcements whose window already closed stay out.
+  expect(announcedNews([banner(2, "JP", NOW + 100)], NOW)).toEqual([]);
+  expect(announcedNews([{ ...announced, endMs: NOW - 1 }], NOW)).toEqual([]);
+});
+
+test("the strip holds three updates and keeps projections behind real windows", () => {
+  const prediction = { bannerId: 4, expectedMs: NOW + 900, p05Ms: NOW + 800, p95Ms: NOW + 1000, confidence: null, confidenceToleranceDays: 7, intervalCoverage: .9, calibrationSamples: 20, method: "recent-lag" as const, explanation: "", glBatchIndex: 1, glBatchStartMs: NOW + 900 };
+  const jp = latestBannerNews([banner(1, "JP", NOW - 100)], NOW);
+  const gl = latestBannerNews([banner(3, "GL", NOW - 100)], NOW);
+  const forecast = forecastNews([banner(4, "JP", NOW - 100, { prediction })], NOW);
+  const items = topUpdates([...forecast, ...jp, ...gl]);
+  expect(items.map(({ kind }) => kind)).toEqual(["live", "live", "forecast"]);
+  expect(topUpdates([...jp, ...gl], 1)).toHaveLength(1);
 });

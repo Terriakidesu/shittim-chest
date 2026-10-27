@@ -22,6 +22,11 @@ export interface LobbyNewsItem {
   expectedMs?: number;
   lowerMs?: number;
   upperMs?: number;
+  /**
+   * Every banner in the batch is a hand-kept announcement the wiki has not
+   * recorded yet. Shape stays `upcoming` so the window formatter applies.
+   */
+  announced?: boolean;
 }
 export interface BannerHeads { server: Server; students: Character[]; }
 
@@ -45,6 +50,7 @@ export function latestBannerNews(banners: Banner[], nowMs = Date.now()): LobbyNe
       kind,
       server,
       official: false,
+      announced: batch.every((banner) => banner.provisional === true),
       students: dedupeStudents(batch),
       startMs: start,
       endMs: Math.max(...batch.map((banner) => banner.endMs)),
@@ -75,6 +81,48 @@ export function forecastNews(banners: Banner[], nowMs = Date.now()): LobbyNewsIt
       upperMs: Math.max(...batch.map((banner) => banner.prediction!.p95Ms)),
     };
   });
+}
+
+/**
+ * Hand-kept announcements the snapshot already carries, one item per JP start
+ * day. `latestBannerNews` deliberately prefers what is *running*, so a pickup
+ * announced for tomorrow would otherwise never reach the strip.
+ */
+export function announcedNews(banners: Banner[], nowMs = Date.now()): LobbyNewsItem[] {
+  const groups = new Map<string, Banner[]>();
+  for (const banner of banners) {
+    if (banner.provisional !== true || !usable(banner) || banner.endMs <= nowMs) continue;
+    const key = `announced:${banner.server}:${banner.startMs}`;
+    groups.set(key, [...(groups.get(key) ?? []), banner]);
+  }
+  return [...groups.entries()]
+    .sort(([, a], [, b]) => a[0].startMs - b[0].startMs)
+    .map(([key, batch]) => ({
+      key,
+      kind: "upcoming" as const,
+      server: batch[0].server,
+      official: false,
+      announced: true,
+      students: dedupeStudents(batch),
+      startMs: batch[0].startMs,
+      endMs: Math.max(...batch.map((banner) => banner.endMs)),
+    }));
+}
+
+/* Strip order: a fresh announcement outranks a running period, and a concrete
+   window always outranks a projection. */
+const KIND_RANK: Record<LobbyNewsItem["kind"], number> = { upcoming: 1, live: 2, scheduled: 3, forecast: 4, past: 5 };
+
+/** The three updates the lobby shows: announcement, what runs, what is expected. */
+export function topUpdates(items: LobbyNewsItem[], limit = 3): LobbyNewsItem[] {
+  return [...items]
+    .sort((a, b) => (a.announced ? 0 : KIND_RANK[a.kind]) - (b.announced ? 0 : KIND_RANK[b.kind]) || when(a) - when(b))
+    .slice(0, limit);
+}
+
+/** Soonest first: a live period by when it ends, everything else by its date. */
+function when(item: LobbyNewsItem) {
+  return (item.kind === "live" ? item.endMs : item.expectedMs ?? item.startMs) ?? 0;
 }
 
 export function currentBannerHeads(banners: Banner[], nowMs = Date.now()): BannerHeads[] {
