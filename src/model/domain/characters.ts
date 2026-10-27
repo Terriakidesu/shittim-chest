@@ -39,13 +39,15 @@ export function splitRateup(raw: string | null): string[] {
  * Aliases are a FALLBACK: exact SchaleDB keys always win, so a future
  * upstream rename silently takes precedence over this table.
  *
- * Deliberately absent: `shun_kid` (no SchaleDB counterpart — `shun_small`
- * is a different variant until proven otherwise). Hoshino (Battle) is the
- * recruitable tank style; the linked dealer style is not a separate banner
- * recruit, so `hoshino_battle` is mapped explicitly to `hoshino_battle_tank`.
+ * The wiki's `Shun (Kid)` page carries Id 10025 — the same student as
+ * SchaleDB's `shun_small` — so the word difference is display-only.
+ * Hoshino (Battle) is the recruitable tank style; the linked dealer style is
+ * not a separate banner recruit, so `hoshino_battle` is mapped explicitly to
+ * `hoshino_battle_tank`.
  */
 const VARIANT_ALIASES: [RegExp, string][] = [
   [/^hoshino_battle$/, "hoshino_battle_tank"],
+  [/^shun_kid$/, "shun_small"],
   [/_bunny_girl$/, "_bunnygirl"],
   [/_school_uniform$/, "_uniform"],
   [/_sportswear$/, "_track"],
