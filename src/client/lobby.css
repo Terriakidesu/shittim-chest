@@ -115,13 +115,20 @@
   .lobby-news-heading { padding: 6px 10px; }
   .lobby-news-heading > span { font-size: 10px; }
   .lobby-news-body { grid-template-columns: 1fr; }
-  .lobby-news-item { padding: 7px 10px; }
+  /* Phones stack the three updates, so each one gets two lines instead of
+     three: the face column, then the name across the full width with the
+     badge and dates on a second line. Keeps the strip short enough that the
+     characters and the tiles stay above the fold without truncating every
+     name to a couple of words. */
+  .lobby-news-item { grid-template-columns: auto minmax(0, auto) minmax(0, 1fr); grid-template-areas: "faces names names" "faces tags dates"; align-items: center; column-gap: 6px; row-gap: 1px; padding: 5px 10px; }
   .lobby-news-item + .lobby-news-item { border-left: 0; border-top: 1px solid #a1bfce40; }
+  .lobby-news-tags { margin-bottom: 0; }
   .lobby-news-faces img, .lobby-news-more, .lobby-news-item.is-lead .lobby-news-faces img, .lobby-news-item.is-lead .lobby-news-more { width: 30px; height: 30px; }
   .lobby-news-names, .lobby-news-item.is-lead .lobby-news-names { font-size: 12px; -webkit-line-clamp: 1; }
-  .lobby-banner-heads { inset: 7px 12% auto; gap: 6px; }
-  .lobby-head-group img { width: clamp(25px, 7.3vw, 44px); height: clamp(25px, 7.3vw, 44px); border-width: 1px; }
-  .lobby-head-group > span { padding: 1px 6px; font-size: 9px; }
+  .lobby-news-dates { font-size: 9.5px; }
+  .lobby-banner-heads { inset: 7px 8% auto; gap: 10px; }
+  .lobby-head-group img { width: clamp(26px, 5.6vw, 42px); height: clamp(26px, 5.6vw, 42px); border-width: 1.5px; }
+  .lobby-head-group > span { padding: 1px 6px; font-size: 9.5px; }
   .lobby-brand { gap: 6px; } .lobby-brand img { width: 22px; height: 30px; } .lobby-brand h1 { font-size: 21px; }
   .lobby-toolbar { gap: 8px; } .lobby-info { display: none; }
   .lobby-toolbar .theme-switch { font-size: 0; gap: 0; } .lobby-toolbar .theme-switch select { width: 88px; font-size: 12px; }
@@ -138,5 +145,15 @@
   .lobby-secondary-panel { padding: 10px 12px 13px; gap: 9px; border-radius: 12px; }
   .lobby-secondary-panel .lobby-tile { height: 155px; }
   .lobby-footer { flex-direction: column; align-items: flex-start; gap: 3px; padding: 8px 5%; font-size: 9px; }
+}
+/* A phone-sized tile cannot hold four portraits legibly: show each banner's
+   lead student at a size that reads, and let the updates strip directly above
+   carry the rest of the pool. */
+@media (max-width: 480px) {
+  .lobby-banner-heads { inset: 8px 6% auto; gap: 14px; }
+  .lobby-head-group { gap: 4px; }
+  .lobby-head-group > div img:nth-child(n + 2) { display: none; }
+  .lobby-head-group img { width: clamp(32px, 9vw, 40px); height: clamp(32px, 9vw, 40px); border-width: 2px; }
+  .lobby-head-group > span { padding: 1px 7px; font-size: 10px; }
 }
 @media (prefers-reduced-motion: reduce) { .lobby-tile { transition: none; } .lobby-tile:hover { translate: none; } }
