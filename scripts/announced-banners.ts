@@ -34,8 +34,9 @@
  * Character ids are negative on purpose: SchaleDB ids are positive, so a
  * placeholder can never collide with — or be mistaken for — a real student.
  * Their artwork lives under `public/img/announced/`: a 120px head crop from the
- * student's `Student_Portrait_*` bust, plus the full racing illustration from
- * the `TankRacing_LobbyChar_*` texture, both in the JP client (see
+ * student's `Student_Portrait_*` bust, plus the standing full-body sprite
+ * composed from the student's own Spine character set
+ * (`assets-_mx-spinecharacters-*`), both in the JP client (see
  * `AVATAR_SOURCE`). Delete those files once SchaleDB publishes the student;
  * nothing else references them.
  */
@@ -47,7 +48,7 @@ const DEDUPE_TOLERANCE_MS = 36 * 60 * 60 * 1000;
 
 /** Where the placeholder artwork came from, for attribution in the UI docs. */
 export const AVATAR_SOURCE =
-  "Cropped from the student's own racing illustration in the Blue Archive Japan " +
+  "Cropped and composed from the student's own artwork in the Blue Archive Japan " +
   "client (© NEXON Games & Yostar); replaced by SchaleDB artwork once published.";
 
 export interface AnnouncedCharacter {
@@ -60,9 +61,9 @@ export interface AnnouncedCharacter {
   /** Relative path under `public/`, like the exported avatars. */
   avatar: string;
   /**
-   * Full illustration, also relative. The client bust as cropped from the same
-   * `TankRacing_LobbyChar_*` texture as the headshot; there is no numeric id to
-   * build an `img/portrait/<id>.webp` path from.
+   * Full illustration, also relative. The student's Spine character sprite
+   * (`assets-_mx-spinecharacters-<set>_spr`), rendered at its setup pose; there
+   * is no numeric id to build an `img/portrait/<id>.webp` path from.
    */
   portrait: string;
   availability: "permanent" | "limited" | "event";
@@ -97,10 +98,10 @@ export interface AnnouncedBanner {
  * `CH0379` (ヒフミ, Hifumi) and `CH0380` (アズサ, Azusa) in the Addressables
  * catalog, so the headshots are cropped from
  * `uis-01_common-01_character-*_textures-2026-09-30_*.bundle` →
- * `Student_Portrait_CH0379` / `Student_Portrait_CH0380`, and the full racing
- * illustrations from
- * `uis-01_common-34_minigame-tankracing-_mxload-textures-2026-09-30_*.bundle`
- * → `TankRacing_LobbyChar_1` (Hifumi) / `TankRacing_LobbyChar_2` (Azusa).
+ * `Student_Portrait_CH0379` / `Student_Portrait_CH0380`, and the standing
+ * illustrations from the matching Spine sets,
+ * `assets-_mx-spinecharacters-ch0379_spr-*` / `ch0380_spr-*`, composed with the
+ * Spine 4.2 runtime.
  */
 export const ANNOUNCED_BANNERS: AnnouncedBanner[] = [
   {

@@ -7,6 +7,7 @@ import {
   asset,
   emblemUrl,
   isAnnouncedOnly,
+  portrait,
   schoolColor,
   type Banner,
   type ForecastResponse,
@@ -686,10 +687,28 @@ function DetailBody({ banner, tz }: { banner: Banner; tz: string }) {
     <>
       {banner.imageUrl && <img className="detail-art" src={asset(banner.imageUrl)} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />}
 
-      {/* Identity, tags and school on one line — the art already shows the
-          character, so a second avatar block is wasted height. */}
+      {/* Identity, tags and school on one line — a real banner graphic already
+          shows the character, so a second avatar block is wasted height. A
+          placeholder row has no SchaleDB portrait and only a Japanese banner
+          strip, so it shows the composed sprite instead of the 42px face. */}
       <div className="detail-id">
-        {who && <img src={asset(who.avatar)} alt="" className="detail-face" />}
+        {who && (
+          <img
+            src={asset(who.portrait ? portrait(who) : who.avatar)}
+            alt=""
+            className={who.portrait ? "detail-face detail-figure" : "detail-face"}
+            onError={(event) => {
+              const image = event.currentTarget;
+              if (image.dataset.fallback) {
+                image.style.display = "none";
+                return;
+              }
+              image.dataset.fallback = "true";
+              image.classList.remove("detail-figure");
+              image.src = asset(who.avatar);
+            }}
+          />
+        )}
         <div className="detail-idtext">
           <div className="detail-name">{whoName}</div>
           <div className="detail-tags">

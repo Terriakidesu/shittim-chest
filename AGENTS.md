@@ -76,10 +76,17 @@ table of those rows and `scripts/export.ts` merges them into `banners.json` with
   filed under the costume's `CH####` id rather than a name — the 10/28 Racing
   forms are `CH0379` (ヒフミ) and `CH0380` (アズサ), whose portraits sit in
   `uis-01_common-01_character-*_textures-*.bundle` next to the named students'.
-  The full illustrations come from the event bundle instead, one texture per
-  outfit (`uis-01_common-34_minigame-tankracing-*`: `TankRacing_LobbyChar_1` is
-  Hifumi, `TankRacing_LobbyChar_2` is Azusa). Delete those files once SchaleDB
-  publishes the real artwork; nothing else references them.
+  The full illustrations come from the same outfit's Spine character set
+  instead (`assets-_mx-spinecharacters-ch0379_spr-*` / `ch0380_spr-*`). An atlas
+  is 2048² of loose body parts, so it is not a texture you can just unpack: the
+  skeleton is Spine 4.2.33 binary, and the standing figure has to be composed by
+  running it through the Spine 4.2 runtime at its setup pose and trimming to the
+  alpha bounds. That is what SchaleDB's own `img/portrait/<id>.webp` files are
+  made of, so the result lines up with the other 278 instead of being a waist-up
+  crop. Do not reach for `uis-01_common-34_minigame-tankracing-*`
+  (`TankRacing_LobbyChar_*`) — those are lobby CGs, character plus background.
+  Delete these files once SchaleDB publishes the real artwork; nothing else
+  references them.
 - **Every image path goes through a helper**, because an announced student has no
   numeric id to build one from. `headshot(student)` returns the 120px crop for
   negative ids and `img/avatar/<id>.webp` otherwise; `portrait(student)` returns

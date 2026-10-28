@@ -31,8 +31,9 @@ export interface Character {
   avatar: string;
   /**
    * Local bundled full illustration, when it cannot be derived from the id:
-   * an announced placeholder carries the client bust crop under `img/announced/`
-   * instead of `img/portrait/<id>.webp`. Resolve through `portrait()`.
+   * an announced placeholder carries the standing sprite composed from the
+   * client's own Spine set under `img/announced/` instead of
+   * `img/portrait/<id>.webp`. Resolve through `portrait()`.
    */
   portrait?: string;
   availability?: CharacterAvailability;
