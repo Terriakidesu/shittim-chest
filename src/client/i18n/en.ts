@@ -175,7 +175,7 @@ export const en = {
   "cal.disclaimer.estimate": "Estimate only, not an announcement.",
   "cal.disclaimer.unresolved": "No reliable Global correspondence or date estimate is available.",
   "cal.disclaimer.announced": "Announced by the Japanese server before the wiki recorded the batch. The dates come from the maintenance notice; the banner art and the student's portrait follow with the next data refresh.",
-  "cal.disclaimer.pending": "Live on the Japanese server. The banner and the featured student come from the game itself; their stats, birthday and voice lines are not in the student snapshot yet, so only the name and the artwork are shown.",
+  "cal.disclaimer.pending": "Live on the Japanese server. The banner and the featured student come from the game itself; the club, role, weapon, birthday and voice line come from the game's own records until the student snapshot catches up.",
   "cal.openPeriod": "Open this period in the recruitment simulator",
   "cal.guide.prefix": "Banner history from the ",
   "cal.guide.wikiLink": "Blue Archive Wiki",

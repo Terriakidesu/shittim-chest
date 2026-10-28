@@ -5,6 +5,7 @@ import {
   pendingAnnouncedBanners,
   type AnnouncedBanner,
 } from "./announced-banners";
+import { RECRUITMENT_TRANSLATIONS } from "./recruitment-translations";
 
 const HOUR = 3_600_000;
 const start = Date.UTC(2026, 9, 28, 10, 0);
@@ -93,4 +94,22 @@ test("a rate-up that resolves upstream is left alone", () => {
 test("a shared banner keeps every placeholder it names", () => {
   const both = announcedPlaceholderCharacters("Hifumi (Racing),Azusa (Racing)");
   expect(both.map((c) => c.name)).toEqual(["Hifumi (Racing)", "Azusa (Racing)"]);
+});
+
+test("every placeholder carries the details the roster join would supply", () => {
+  const characters = ANNOUNCED_BANNERS.flatMap((b) => b.characters);
+  expect(characters.length).toBeGreaterThan(0);
+  for (const character of characters) {
+    expect(character.club).not.toBe("");
+    expect(character.profile.tacticalRole).not.toBe("");
+    expect(character.profile.weaponType).not.toBe("");
+    expect(character.profile.birthday).not.toBe("");
+    expect(character.profile.voiceActor).not.toBe("");
+    // The English line must be the reviewed translation of *this* Japanese
+    // line, never a stand-in borrowed from another student.
+    const japanese = character.profile.dialogueJp;
+    expect(japanese).toBeTruthy();
+    expect(RECRUITMENT_TRANSLATIONS[japanese!]).toBe(character.profile.recruitmentDialogue);
+    expect(character.profile.recruitmentDialogue).not.toBe("");
+  }
 });

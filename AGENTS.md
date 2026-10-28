@@ -60,8 +60,9 @@ table of those rows and `scripts/export.ts` merges them into `banners.json` with
   nothing in it.
 - **`provisional` is two different situations, split by the banner id**
   (`isAnnouncedOnly(banner) = provisional && id < 0`). A *grafted* row keeps the
-  wiki's positive id: it is live and scheduled, only the per-student profile is
-  missing, so it gets `cal.tag.pending` ("NEW"), `cal.disclaimer.pending` and a
+  wiki's positive id: it is live and scheduled, and its student comes from the
+  announced table until the roster join catches up, so it gets
+  `cal.tag.pending` ("NEW"), `cal.disclaimer.pending` and a
   solid badge. A *hand-kept* row has a negative id: the wiki has not recorded it
   at all, so it gets `cal.tag.announced` ("ANNOUNCED"), `cal.disclaimer.announced`
   and a dashed badge. The disclaimers differ on purpose — one explains that the
@@ -69,6 +70,20 @@ table of those rows and `scripts/export.ts` merges them into `banners.json` with
 - **Negative ids.** Announcement rows and their characters use ids like `-1`;
   SchaleDB ids are positive, so a placeholder can never collide with a real
   student.
+- **The placeholder carries the details the roster join would have supplied.**
+  `AnnouncedCharacter` has `club` and a `profile` shaped like `StudentProfile`
+  (role, weapon, birthday, CV, recruitment line), so the reveal card is not
+  blank for the first day. For the 10/28 pair they come from the wiki's
+  `{{Character}}` infobox plus each `.../audio` page's `Gachaget` row — the same
+  values the in-game screens show — with the English line a reviewed entry in
+  `scripts/recruitment-translations.ts` keyed on the exact Japanese text.
+  `dialogueKr` stays empty until SchaleDB's `kr/voice.min.json` carries the clip,
+  so Korean falls back to English rather than inventing a translation. The wiki
+  now knows both ids (`10153`, `20063`), but the rows stay negative: the roster
+  that feeds names and artwork still lacks them, and a positive id would send
+  `portrait()` to a nonexistent `img/portrait/10153.webp`. `gachaRules` keeps
+  `club`/`profile` when it synthesizes the pool entry, because there is no
+  roster record to join.
 - **Headshots** live in `public/img/announced/`, cropped from the student's own
   `Student_Portrait_*` bust in the JP client (© NEXON Games & Yostar). The client
   is the fastest real source: SchaleDB can trail an update by a day, but the

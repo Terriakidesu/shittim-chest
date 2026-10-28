@@ -308,7 +308,9 @@ export function buildStudentPool(all: CharacterRecord[], banners: Banner[], peri
       ...student,
       id: recruitmentStudentId(student.id),
       pathName: "",
-      club: "",
+      // Announced placeholders ship the club and profile the roster join would
+      // have supplied; a bare banner character still falls back to empty.
+      club: student.club ?? "",
     }))
     .filter((student) => student.availability !== "event" && availableAt(student, period, firstSeen));
   const byId = new Map(pool.map((student) => [student.id, student]));

@@ -70,11 +70,17 @@ interface BannerDto {
   characters: {
     id: number;
     name: string;
+    nameJp?: string;
+    nameKr?: string;
     school: string;
     starGrade: number;
+    /** Present on announced placeholders; roster students join it from the roster. */
+    club?: string;
     avatar: string;
     /** Present on announced placeholders; roster students derive it from the id. */
     portrait?: string;
+    /** Present on announced placeholders; roster students join it from the roster. */
+    profile?: StudentProfileDto;
     availability: "permanent" | "limited" | "event";
   }[];
   imageUrl: string | null;

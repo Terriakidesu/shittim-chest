@@ -165,7 +165,7 @@ export const ko: Record<keyof typeof en, string> = {
   "cal.disclaimer.estimate": "추정일 뿐, 공식 발표가 아닙니다.",
   "cal.disclaimer.unresolved": "신뢰할 수 있는 글로벌 대응이나 날짜 추정이 없습니다.",
   "cal.disclaimer.announced": "Wiki에 기록되기 전에 일본 서버에서 공지된 배너입니다. 일정은 점검 공지에 따른 것이며, 배너 이미지와 학생 일러스트는 다음 데이터 갱신에서 반영됩니다.",
-  "cal.disclaimer.pending": "일본 서버에서 진행 중입니다. 배너와 픽업 학생은 게임 본체의 데이터를 따르며, 능력치·생일·보이스는 아직 학생 데이터에 수록되지 않아 이름과 일러스트만 표시합니다.",
+  "cal.disclaimer.pending": "일본 서버에서 진행 중입니다. 배너와 픽업 학생은 게임 본체의 데이터를 따르며, 부활동·역할·무기·생일·보이스는 학생 데이터에 수록될 때까지 게임 본편의 정보를 바탕으로 표시합니다.",
   "cal.openPeriod": "이 기간을 모집 시뮬레이터에서 열기",
   "cal.guide.prefix": "배너 기록: ",
   "cal.guide.wikiLink": "Blue Archive Wiki",

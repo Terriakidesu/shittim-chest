@@ -165,7 +165,7 @@ export const ja: Record<keyof typeof en, string> = {
   "cal.disclaimer.estimate": "予想であり、公式告知ではありません。",
   "cal.disclaimer.unresolved": "信頼できる対応バナーや日付の推定はありません。",
   "cal.disclaimer.announced": "Wiki への記録前に日本サーバーで告知されたバナーです。日時はメンテナンスのお知らせによるもので、バナー画像と生徒の立ち絵は次回のデータ更新で反映されます。",
-  "cal.disclaimer.pending": "日本サーバーで開催中です。バナーとピックアップ生徒はゲーム本体のデータによるもので、ステータス・誕生日・ボイスは生徒データにまだ収録されていないため、名前と立ち絵のみを表示しています。",
+  "cal.disclaimer.pending": "日本サーバーで開催中です。バナーとピックアップ生徒はゲーム本体のデータによるもので、部活・役割・武器・誕生日・ボイスは生徒データに収録されるまでゲーム本編の情報をもとに表示しています。",
   "cal.openPeriod": "この期間を募集シミュレーターで開く",
   "cal.guide.prefix": "バナー履歴：",
   "cal.guide.wikiLink": "Blue Archive Wiki",

@@ -27,6 +27,11 @@ export interface Character {
   nameKr?: string;
   school: string;
   starGrade: number;
+  /**
+   * English club name. Roster students get it from `characters.json`; a
+   * placeholder carries it because there is no roster record to join.
+   */
+  club?: string;
   /** Local bundled headshot path (relative). */
   avatar: string;
   /**
@@ -36,6 +41,12 @@ export interface Character {
    * `img/portrait/<id>.webp`. Resolve through `portrait()`.
    */
   portrait?: string;
+  /**
+   * Role, weapon, birthday, CV and recruitment line. Roster students get it by
+   * joining `characters.json`; a placeholder ships it in `banners.json` so the
+   * reveal card is not blank while the roster lags.
+   */
+  profile?: StudentProfile;
   availability?: CharacterAvailability;
 }
 

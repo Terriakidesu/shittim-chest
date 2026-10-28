@@ -33,6 +33,8 @@
  *
  * Character ids are negative on purpose: SchaleDB ids are positive, so a
  * placeholder can never collide with — or be mistaken for — a real student.
+ * They carry the details the roster join would have added (club, role, weapon,
+ * birthday, CV, recruitment line) so the reveal card is not blank for a week.
  * Their artwork lives under `public/img/announced/`: a 120px head crop from the
  * student's `Student_Portrait_*` bust, plus the standing full-body sprite
  * composed from the student's own Spine character set
@@ -42,9 +44,35 @@
  */
 
 import { normalizeCharName, splitRateup } from "../src/model/domain/characters";
+import { RECRUITMENT_TRANSLATIONS } from "./recruitment-translations";
+import type { StudentProfileDto } from "./student-profiles";
 
 /** Widest gap between an announced start and the wiki's recorded one. */
 const DEDUPE_TOLERANCE_MS = 36 * 60 * 60 * 1000;
+
+/**
+ * The 10/28 recruitment lines, taken from the students' own `.../audio` pages
+ * exactly as the exporter normalises them (`<br>` becomes a space). English is
+ * the reviewed translation of that same line; SchaleDB's `kr` voice dump is the
+ * only Korean source and has not published these clips yet, so Korean falls
+ * back to English like any other missing line rather than inventing one.
+ */
+const RACING_DIALOGUE = {
+  hifumi: "え？この衣装ですか？ 支給品のユニフォームですよ？ えへへっ……よろしくお願いします！",
+  azusa: "白洲アズサ、 補習授業部チームに合流した。 ターゲットを見つけたら教えてほしい。",
+} as const;
+
+/** A placeholder's details, shaped like the roster profile the join would add. */
+function announcedProfile(
+  dialogueJp: string,
+  details: Omit<StudentProfileDto, "recruitmentDialogue" | "dialogueJp">,
+): StudentProfileDto {
+  return {
+    ...details,
+    recruitmentDialogue: RECRUITMENT_TRANSLATIONS[dialogueJp] ?? "",
+    dialogueJp,
+  };
+}
 
 /** Where the placeholder artwork came from, for attribution in the UI docs. */
 export const AVATAR_SOURCE =
@@ -58,6 +86,8 @@ export interface AnnouncedCharacter {
   nameKr: string;
   school: string;
   starGrade: number;
+  /** English club name, as `WikiClubSource` supplies it for roster students. */
+  club: string;
   /** Relative path under `public/`, like the exported avatars. */
   avatar: string;
   /**
@@ -66,6 +96,13 @@ export interface AnnouncedCharacter {
    * is no numeric id to build an `img/portrait/<id>.webp` path from.
    */
   portrait: string;
+  /**
+   * What the roster join would have supplied: role, weapon, birthday, CV and
+   * the recruitment line. Hand-kept from the student's wiki infobox and audio
+   * page until SchaleDB — the only source of roster ids, artwork and the Korean
+   * voice transcription — publishes the student.
+   */
+  profile: StudentProfileDto;
   availability: "permanent" | "limited" | "event";
 }
 
@@ -102,6 +139,14 @@ export interface AnnouncedBanner {
  * illustrations from the matching Spine sets,
  * `assets-_mx-spinecharacters-ch0379_spr-*` / `ch0380_spr-*`, composed with the
  * Spine 4.2 runtime.
+ *
+ * The wiki recorded both students a day after the batch (`Id = 10153` and
+ * `Id = 20063`), which supplies the club, role, weapon, birthday, CV and the
+ * recruitment line below. Those ids are deliberately not used here: the roster
+ * `SchaleDB` feeds has not published the pair, so nothing would supply the
+ * artwork, and a positive id would send the image helpers looking for
+ * `img/portrait/10153.webp`. The rows switch to the normal join by themselves
+ * once the roster catches up.
  */
 export const ANNOUNCED_BANNERS: AnnouncedBanner[] = [
   {
@@ -121,8 +166,15 @@ export const ANNOUNCED_BANNERS: AnnouncedBanner[] = [
         nameKr: "히후미(레이싱)",
         school: "Trinity",
         starGrade: 3,
+        club: "Make-Up Work Club",
         avatar: "img/announced/hifumi-racing.webp",
         portrait: "img/announced/hifumi-racing-portrait.webp",
+        profile: announcedProfile(RACING_DIALOGUE.hifumi, {
+          tacticalRole: "Striker",
+          weaponType: "AR",
+          birthday: "November 27",
+          voiceActor: "Hondo Kaede",
+        }),
         availability: "limited",
       },
     ],
@@ -144,8 +196,15 @@ export const ANNOUNCED_BANNERS: AnnouncedBanner[] = [
         nameKr: "아즈사(레이싱)",
         school: "Trinity",
         starGrade: 3,
+        club: "Make-Up Work Club",
         avatar: "img/announced/azusa-racing.webp",
         portrait: "img/announced/azusa-racing-portrait.webp",
+        profile: announcedProfile(RACING_DIALOGUE.azusa, {
+          tacticalRole: "Special",
+          weaponType: "AR",
+          birthday: "December 26",
+          voiceActor: "Risa Taneda",
+        }),
         availability: "limited",
       },
     ],

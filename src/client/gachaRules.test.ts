@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Banner, CharacterRecord } from "./api";
+import type { Banner, Character, CharacterRecord } from "./api";
 import {
   buildRecruitmentPeriods,
   buildRecruitmentPool,
@@ -217,5 +217,35 @@ describe("historical recruitment pools", () => {
     expect(outcome.results.slice(0, 9).every((result) => result.rarity === 1)).toBe(true);
     expect(outcome.results[9].rarity).toBeGreaterThanOrEqual(2);
     expect(outcome.results[9].forced).toBe("two-star");
+  });
+
+  test("an announced placeholder keeps the details the roster has not carried yet", () => {
+    // The roster does not contain a negative id, so the banner character itself
+    // is the only source for the reveal card's club and profile.
+    const profile = {
+      tacticalRole: "Special",
+      weaponType: "AR",
+      birthday: "December 26",
+      voiceActor: "Risa Taneda",
+      recruitmentDialogue: "A reviewed line.",
+    };
+    const placeholder: Character = {
+      id: -2,
+      name: "Azusa (Racing)",
+      school: "Trinity",
+      starGrade: 3,
+      club: "Make-Up Work Club",
+      avatar: "img/announced/azusa-racing.webp",
+      portrait: "img/announced/azusa-racing-portrait.webp",
+      profile,
+      availability: "limited",
+    };
+    const racing = banner(9, T0, { type: "LimitedGacha", characters: [placeholder] });
+    const period = buildRecruitmentPeriods([racing], "JP", T0 + DAY)[0];
+    const pool = buildRecruitmentPool([], [racing], period, racing.id);
+
+    const featured = pool.students.find((candidate) => candidate.id === -2)!;
+    expect(featured.profile).toEqual(profile);
+    expect(featured.club).toBe("Make-Up Work Club");
   });
 });

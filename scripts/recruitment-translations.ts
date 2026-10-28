@@ -1,5 +1,6 @@
 // Unofficial English translations of Japanese Gachaget rows from
-// https://bluearchive.wiki/wiki/<student>/audio (retrieved 2026-10-17).
+// https://bluearchive.wiki/wiki/<student>/audio (retrieved 2026-10-17; the
+// 10/28 Racing pair 2026-10-28).
 // Key by exact source text: changed upstream dialogue must be reviewed anew.
 export const RECRUITMENT_TRANSLATIONS: Record<string, string> = {
   "こんな時間に呼び出すなんて……も、もちろん全然大丈夫ですけど！今日の件は、後日ちゃんと埋め合わせしてもらいますから、覚悟しててくださいね？": "Calling me over at this hour... O-of course, it's perfectly fine! But I'll expect you to make it up to me another day, so be ready, okay?",
@@ -16,4 +17,6 @@ export const RECRUITMENT_TRANSLATIONS: Record<string, string> = {
   "183号特別クラスの学級委員長、仁木アンナです。 ごめんなさいね、サインはまた今度。": "I'm Anna, class president of Special Class 183. Sorry, autographs will have to wait until next time.",
   "どもども～！183号特別クラス、二木エリナで～す。 えー、本日はお日柄もよく――…… あれ、なんて言うんだっけ？": "Hey, hey! I'm Erina from Special Class 183. Ahem, on this fine and auspicious day... Huh? How does it go again?",
   "ワイルドハント芸術学院、オカルト研究会の 椎名ツムギです。ええ、ギターは持っていますよ―― 「ラブ・アンド・ピース」。……は大事ですから。": "I'm Shiina Tsumugi from the Occult Investigation Society at Wildhunt Art Academy. Yes, I have my guitar with me—because love and peace... are important.",
+  "え？この衣装ですか？ 支給品のユニフォームですよ？ えへへっ……よろしくお願いします！": "Huh? This outfit? It's the uniform they issued us, you know? Ehehe... I'll be counting on you!",
+  "白洲アズサ、 補習授業部チームに合流した。 ターゲットを見つけたら教えてほしい。": "Shirasu Azusa, joining the Make-Up Work Club team. If you spot the target, let me know.",
 };
