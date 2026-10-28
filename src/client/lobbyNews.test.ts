@@ -100,6 +100,17 @@ test("a batch whose pool is still a placeholder turns live, not announced", () =
   expect(item.students.map(({ student }) => student.id)).toEqual([1080]);
 });
 
+test("a wiki-recorded batch is upcoming even before it opens, not announced", () => {
+  // The wiki has the row (positive id, for the 10/28 Racing pickups), so the
+  // batch is a normal scheduled period; only a hand-kept row (negative id) is
+  // an announcement.
+  const grafted = banner(1080, "JP", NOW + 100, { provisional: true });
+  expect(announcedNews([grafted], NOW)).toEqual([]);
+  const [item] = latestBannerNews([grafted], NOW);
+  expect(item.kind).toBe("upcoming");
+  expect(item.announced).toBe(false);
+});
+
 test("the strip holds three updates and keeps projections behind real windows", () => {
   const prediction = { bannerId: 4, expectedMs: NOW + 900, p05Ms: NOW + 800, p95Ms: NOW + 1000, confidence: null, confidenceToleranceDays: 7, intervalCoverage: .9, calibrationSamples: 20, method: "recent-lag" as const, explanation: "", glBatchIndex: 1, glBatchStartMs: NOW + 900 };
   const jp = latestBannerNews([banner(1, "JP", NOW - 100)], NOW);

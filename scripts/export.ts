@@ -73,6 +73,8 @@ interface BannerDto {
     school: string;
     starGrade: number;
     avatar: string;
+    /** Present on announced placeholders; roster students derive it from the id. */
+    portrait?: string;
     availability: "permanent" | "limited" | "event";
   }[];
   imageUrl: string | null;

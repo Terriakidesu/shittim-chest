@@ -175,6 +175,7 @@ select, .search { height: 44px; min-width: 0; padding: 8px 12px; border: 1px sol
 .tag.limit, .tag.gl { background: var(--pink); color: var(--surface); }
 .tag.school { background: var(--surface-alt); color: var(--text); }
 .tag.announced { background: var(--surface-alt); color: var(--text); border: 1px dashed var(--cyan); }
+.tag.pending { background: var(--surface-alt); color: var(--cyan); border: 1px solid var(--cyan); }
 .school-emblem { object-fit: contain; }
 .school-dot { display: inline-block; border-radius: 50%; }
 .detail-grid { margin: 0; display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 9px 12px; font-size: 13px; line-height: 1.6; }

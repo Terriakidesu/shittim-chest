@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { asset, emblemUrl } from "../api";
+import { asset, emblemUrl, headshot, portrait } from "../api";
 import type { PullResult } from "../gachaRules";
 import { portraitEntranceMs } from "../recruitmentTiming";
 import { clubName, schoolName, studentDialogue, studentName, t, useLanguage } from "../i18n";
@@ -20,7 +20,7 @@ export function StudentIntroduction({ result, ready, onNext }: { result: PullRes
   useEffect(() => { if (ready) continueRef.current?.focus({ preventScroll: true }); }, [ready]);
   return <section className={`student-introduction rarity-${rarity}`} style={{ animationDelay: `${portraitEntranceMs(rarity)}ms` }} aria-label={t(duplicate ? "intro.aria.duplicate" : "intro.aria.new", { name, stars: rarity })}>
     <div className="student-intro-backdrop" aria-hidden="true" />
-    <img className="student-intro-portrait" src={asset(`img/portrait/${student.id}.webp`)} alt="" onError={(event) => { const image = event.currentTarget; if (image.dataset.fallback) image.style.display = "none"; else { image.dataset.fallback = "true"; image.src = asset(`img/avatar/${student.id}.webp`); } }} />
+    <img className="student-intro-portrait" src={asset(portrait(student))} alt="" onError={(event) => { const image = event.currentTarget; if (image.dataset.fallback) image.style.display = "none"; else { image.dataset.fallback = "true"; image.src = asset(headshot(student)); } }} />
     <div className="student-intro-application">
       <div className="student-application-paper">
         <p className="student-application-heading">S.C.H.A.L.E. <span>Admission application</span></p>

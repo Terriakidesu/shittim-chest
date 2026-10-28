@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { api, asset, type Banner, type CharacterRecord, type Server } from "./api";
+import { api, asset, headshot, portrait, type Banner, type CharacterRecord, type Server } from "./api";
 import { nextUnseenPurple } from "./recruitmentSequence";
 import { readSelection, saveSelection } from "./simulatorSelection";
 import { IconClose, IconRotate, IconSound, IconStar, Stars } from "./components/icons";
@@ -191,9 +191,11 @@ export function Simulator() {
       api.characters(),
     ]).then(([bannerResponse, characterResponse]) => {
       if (!live) return;
-      // Announced-only banners have no resolved student pool, so they cannot
-      // back a period (empty roster, no spark exchange). Calendar only.
-      setBanners(bannerResponse.banners.filter((banner) => !banner.provisional));
+      // A banner with no rate-ups cannot back a period: empty roster, no spark
+      // exchange, and an empty entry in the picker is worse than no entry. A
+      // provisional row whose pool *is* known (the game shipped the students and
+      // the announced table names them) is simulable like any other banner.
+      setBanners(bannerResponse.banners.filter((banner) => banner.characters.length > 0));
       setCharacters(characterResponse.characters);
       setLoading(false);
     }).catch((e) => {
@@ -226,9 +228,9 @@ export function Simulator() {
     // Warm headshots behind the signing screen so the flip never waits on art.
     for (const result of results) {
       const image = new Image();
-      image.src = asset(`img/avatar/${result.student.id}.webp`);
-      const portrait = new Image();
-      portrait.src = asset(`img/portrait/${result.student.id}.webp`);
+      image.src = asset(headshot(result.student));
+      const illustration = new Image();
+      illustration.src = asset(portrait(result.student));
     }
   }, [results]);
 
@@ -462,7 +464,7 @@ export function Simulator() {
 
           <main className="sim-main">
             {phase === "idle" && <section className="sim-hero">
-              <div className="sim-hero-art">{selectedBanner.characters[0] ? <img key={selectedBanner.characters[0].id} className="sim-featured-portrait" src={asset(`img/portrait/${selectedBanner.characters[0].id}.webp`)} alt={studentName(selectedBanner.characters[0])} onLoad={(event) => { const image = event.currentTarget; image.classList.toggle("sim-featured-portrait-wide", image.naturalWidth > image.naturalHeight); }} onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <div className="sim-art-placeholder"><span>SHITTIM CHEST</span></div>}{selectedBanner.imageUrl && <img className="sim-featured-banner" src={asset(selectedBanner.imageUrl)} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />}</div>
+              <div className="sim-hero-art">{selectedBanner.characters[0] ? <img key={selectedBanner.characters[0].id} className="sim-featured-portrait" src={asset(portrait(selectedBanner.characters[0]))} alt={studentName(selectedBanner.characters[0])} onLoad={(event) => { const image = event.currentTarget; image.classList.toggle("sim-featured-portrait-wide", image.naturalWidth > image.naturalHeight); }} onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <div className="sim-art-placeholder"><span>SHITTIM CHEST</span></div>}{selectedBanner.imageUrl && <img className="sim-featured-banner" src={asset(selectedBanner.imageUrl)} alt="" onError={(event) => { event.currentTarget.style.display = "none"; }} />}</div>
               <div className="sim-hero-copy">
                 <div className="sim-period-banners" role="group" aria-label={t("sim.bannersAria")}>
                   {period.banners.map((banner) => <button key={banner.id} aria-pressed={selectedBanner.id === banner.id} aria-label={`${bannerNames(banner, " / ")} · ${banner.rerun ? t("sim.tab.rerun") : t("sim.tab.pickup")}${banner.limited ? t("sim.tab.limitedSuffix") : ""}`} title={`${bannerNames(banner, " / ")} · ${banner.rerun ? t("sim.tab.rerun") : t("sim.tab.pickup")}${banner.limited ? t("sim.tab.limitedSuffix") : ""}`} className={`sim-banner-tab ${selectedBanner.id === banner.id ? "on" : ""}`} onClick={() => chooseBanner(banner.id)}>
@@ -558,7 +560,7 @@ function SparkSelection({ period, points, onExchange, onClose }: { period: Recru
     <LandscapeGuard />
     <header><h2 id="spark-selection-title">{t("sim.selectStudent")}</h2><button className="sim-secondary" aria-label={t("sim.sparkClose")} onClick={onClose}><IconClose /></button></header>
     <p>{t("sim.spark.intro")}</p><div className="sim-spark-balance"><GameIcon name="recruitment-points" /><strong>{t("sim.spark.balance", { n: points.toLocaleString() })}</strong></div>
-    <div className="sim-spark-roster">{students.map((student) => <article key={student.id}><img src={asset(`img/avatar/${student.id}.webp`)} alt="" /><strong>{studentName(student)}</strong><span><Stars n={student.starGrade} /></span><button className="sim-primary" disabled={points < 200} onClick={() => onExchange(student.id)}>{t("sim.spark.exchange")}</button></article>)}</div>
+    <div className="sim-spark-roster">{students.map((student) => <article key={student.id}><img src={asset(headshot(student))} alt="" /><strong>{studentName(student)}</strong><span><Stars n={student.starGrade} /></span><button className="sim-primary" disabled={points < 200} onClick={() => onExchange(student.id)}>{t("sim.spark.exchange")}</button></article>)}</div>
     {points < 200 && <small>{t("sim.spark.needMore", { n: 200 - points })}</small>}<button className="sim-secondary" onClick={onClose}>{t("sim.cancel")}</button>
   </dialog>;
 }
@@ -608,7 +610,7 @@ function BannerPoolDialog({ banner, period, pool, onClose }: { banner: Banner; p
             if (!entries.length) return null;
             return <div className={`sim-pool-rarity rarity-${rarity}`} key={rarity}>
               <h4><Stars n={rarity} /><span>{t("sim.pool.rarityCount", { n: rarity, star: "★" })}</span><small>{entries.length}</small></h4>
-              <ul>{entries.map((entry) => <li key={entry.student.id}><img src={asset(`img/avatar/${entry.student.id}.webp`)} alt="" loading="lazy" /><span>{studentName(entry.student)}</span><b>{formatPoolRate(entry.rate)}%</b></li>)}</ul>
+              <ul>{entries.map((entry) => <li key={entry.student.id}><img src={asset(headshot(entry.student))} alt="" loading="lazy" /><span>{studentName(entry.student)}</span><b>{formatPoolRate(entry.rate)}%</b></li>)}</ul>
             </div>;
           })}
         </section>;
@@ -666,7 +668,7 @@ function ChargeProgress({ banner, charge }: { banner: Banner; charge: number }) 
     <div className="sim-charge-track">
       <strong className="sim-charge-total">{t("sim.charge.total", { n: charge })}</strong>
       <div className="sim-charge-reward at-100"><div className="sim-charge-card random-student"><img src={asset("ba-cards/Gacha-Purple.webp")} alt="" /><b>?</b><small>×1</small></div></div>
-      <div className="sim-charge-reward at-200"><div className="sim-charge-card"><img src={asset(`img/avatar/${banner.characters[0]?.id}.webp`)} alt={banner.characters[0] ? studentName(banner.characters[0]) : t("sim.featured")} /><small>×1</small></div></div>
+      <div className="sim-charge-reward at-200"><div className="sim-charge-card">{banner.characters[0] && <img src={asset(headshot(banner.characters[0]))} alt={studentName(banner.characters[0])} />}<small>×1</small></div></div>
       <div className="sim-charge-meter" role="progressbar" aria-label={t("sim.charge.meterAria")} aria-valuenow={charge} aria-valuemin={0} aria-valuemax={200}><span style={{ width: `${Math.min(charge, 200) / 2}%` }} /></div>
       <span className="sim-charge-marker at-100">100</span><span className="sim-charge-marker at-200">200</span>
     </div>
@@ -714,7 +716,7 @@ function ResultCard({ result, hidden, index }: { result: PullResult; hidden: boo
   const status = result.featured ? (result.duplicate ? t("sim.card.status.pickup") : t("sim.card.status.newPickup")) : result.duplicate ? t("sim.card.status.duplicate") : t("sim.card.status.new");
   return <article className={`result-card recruitment-result rarity-${result.rarity} ${result.featured ? "featured" : ""}`} data-index={index?.toString().padStart(2, "0")} aria-label={t("sim.card.aria", { name: studentName(result.student), stars: result.rarity, status })} title={studentName(result.student)}>
     <div className="recruitment-result-inner">
-      <div className="result-card-art"><img src={asset(`img/avatar/${result.student.id}.webp`)} alt="" /></div>
+      <div className="result-card-art"><img src={asset(headshot(result.student))} alt="" /></div>
       <span className={`result-rarity-strip rarity-${result.rarity}`} aria-hidden="true">{Array.from({ length: result.rarity }, (_, star) => <img key={star} src={asset("ba-cards/Star.webp")} alt="" />)}</span>
     </div>
     {result.featured ? <span className="result-pickup-label">{result.duplicate ? <b>Pick Up!</b> : <>New<br /><b>Pick Up!</b></>}</span> : !result.duplicate && <span className="result-new-label">New</span>}

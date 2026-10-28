@@ -29,6 +29,12 @@ export interface Character {
   starGrade: number;
   /** Local bundled headshot path (relative). */
   avatar: string;
+  /**
+   * Local bundled full illustration, when it cannot be derived from the id:
+   * an announced placeholder carries the client bust crop under `img/announced/`
+   * instead of `img/portrait/<id>.webp`. Resolve through `portrait()`.
+   */
+  portrait?: string;
   availability?: CharacterAvailability;
 }
 
@@ -66,13 +72,38 @@ export interface Banner {
   prediction: Prediction | null;
   forecastStatus: "arrived" | "scheduled" | "estimated" | "unresolved";
   /**
-   * The featured student is still the announced placeholder: the wiki has the
-   * banner (id, dates, art) but SchaleDB has not published the student, so the
-   * pool, names and portraits come from `scripts/announced-banners.ts` under
-   * negative ids. Shown on the calendar with an announcement badge and kept out
-   * of the simulator, which cannot build a roster or a spark exchange for it.
+   * The pool is not from the exported student roster: the game already ships the
+   * students, but the snapshot that joins names, stats and ids onto banners has
+   * not caught up, so the rate-ups come from `scripts/announced-banners.ts`.
+   *
+   * Two cases, distinguished by `id`: a *grafted* row (`id > 0`, the wiki's own
+   * banner) is live and carries the game's costume art, only the per-student
+   * profile is missing; a *hand-kept* row (`id < 0`, not on the wiki yet) is an
+   * announcement. Both are simulable as long as the pool is complete — the
+   * simulator only refuses a banner with no rate-ups at all.
    */
   provisional?: boolean;
+}
+
+/** 120px headshot path: roster students keep one beside their portrait, the
+    announced pool carries the crop itself under `img/announced/`. */
+export function headshot(student: { id: number; avatar: string }) {
+  return student.id < 0 ? student.avatar : `img/avatar/${student.id}.webp`;
+}
+
+/** Full-body illustration path; the announced pool ships its own crop because
+    there is no numeric id to build an `img/portrait/<id>.webp` from. */
+export function portrait(student: { id: number; portrait?: string }) {
+  return student.portrait ?? `img/portrait/${student.id}.webp`;
+}
+
+/**
+ * The game has the student, the exported roster has not caught up, and the wiki
+ * has not recorded the banner either: a hand-kept announcement. A provisional
+ * row with a positive id is the wiki's own banner, which is simply running.
+ */
+export function isAnnouncedOnly(banner: Banner) {
+  return banner.provisional === true && banner.id < 0;
 }
 
 /** Exported by scripts/student-profiles.ts from wiki infoboxes and audio tables. */

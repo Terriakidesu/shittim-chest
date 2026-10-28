@@ -38,6 +38,16 @@ has the student, so `scripts/announced-banners.ts` keeps a small hand-written
 table of those rows and `scripts/export.ts` merges them into `banners.json` with
 `provisional: true`.
 
+- **The game is the authority; SchaleDB is a mirror.** Both upstream sources lag
+  the JP client: the wiki needs someone to transcribe the news post, and
+  SchaleDB's roster is machine-mirrored from data it can only publish once it
+  has it. When the client already ships the student — live pickups, real
+  artwork — neither lag is evidence that anything is "announced", and the copy
+  must not say so. The one thing the client cannot supply is the numeric student
+  id: those live in `TableBundles`, which are all encrypted (6,523 files, no
+  `UnityFS` header), while the Addressables artwork and the costume ids
+  (`CH####`) are plain bundles. So art and existence come from the game; ids,
+  stats, birthdays and clubs still join through SchaleDB.
 - **The two upstream sources do not arrive together.** The wiki usually records
   the batch within hours; SchaleDB — the only source of numeric ids, downloaded
   artwork and localized names — can trail it by a day. In that window the wiki
@@ -48,6 +58,14 @@ table of those rows and `scripts/export.ts` merges them into `banners.json` with
   Otherwise the banner ships with an empty roster: the calendar prints the raw
   code, the lobby card has no faces, and the simulator lists a period with
   nothing in it.
+- **`provisional` is two different situations, split by the banner id**
+  (`isAnnouncedOnly(banner) = provisional && id < 0`). A *grafted* row keeps the
+  wiki's positive id: it is live and scheduled, only the per-student profile is
+  missing, so it gets `cal.tag.pending` ("NEW"), `cal.disclaimer.pending` and a
+  solid badge. A *hand-kept* row has a negative id: the wiki has not recorded it
+  at all, so it gets `cal.tag.announced` ("ANNOUNCED"), `cal.disclaimer.announced`
+  and a dashed badge. The disclaimers differ on purpose — one explains that the
+  game shipped the student, the other that dates come from a maintenance notice.
 - **Negative ids.** Announcement rows and their characters use ids like `-1`;
   SchaleDB ids are positive, so a placeholder can never collide with a real
   student.
@@ -58,21 +76,31 @@ table of those rows and `scripts/export.ts` merges them into `banners.json` with
   filed under the costume's `CH####` id rather than a name — the 10/28 Racing
   forms are `CH0379` (ヒフミ) and `CH0380` (アズサ), whose portraits sit in
   `uis-01_common-01_character-*_textures-*.bundle` next to the named students'.
-  Delete those files once SchaleDB publishes the real artwork; nothing else
-  references them.
-- **They never reach the simulator** (`Simulator.tsx` filters `provisional`): a
-  banner whose pool is a placeholder cannot support a spark exchange, and an
-  empty period in the picker is worse than no period. A *hand-kept* row (one the
-  wiki has not recorded yet) also stays out of `forecast.json` — it has no
-  JP→GL prediction, and letting a date read off a news post into the alignment
-  model would shift real forecasts. A *grafted* row does carry a prediction,
-  because its date is upstream's by then, so it appears in the forecast like any
-  other wiki banner.
-- **The lobby strip** shows a provisional batch as `announced` only before it
-  opens: `announcedNews()` skips rows whose `startMs` has passed, since
-  `latestBannerNews()` already reports them as `live`, and `topUpdates()` ranks a
-  pending announcement above a running period. Once the batch starts, the card
-  reads "live" with the placeholder faces instead of duplicating itself.
+  The full illustrations come from the event bundle instead, one texture per
+  outfit (`uis-01_common-34_minigame-tankracing-*`: `TankRacing_LobbyChar_1` is
+  Hifumi, `TankRacing_LobbyChar_2` is Azusa). Delete those files once SchaleDB
+  publishes the real artwork; nothing else references them.
+- **Every image path goes through a helper**, because an announced student has no
+  numeric id to build one from. `headshot(student)` returns the 120px crop for
+  negative ids and `img/avatar/<id>.webp` otherwise; `portrait(student)` returns
+  the DTO's own `characters[].portrait` when present and `img/portrait/<id>.webp`
+  otherwise. Building either path inline by hand 404s silently for these rows.
+- **The simulator admits any banner with a non-empty pool**
+  (`Simulator.tsx` filters on `characters.length`), so a grafted row is
+  simulable like any other: the pool is complete — the game shipped the student
+  and the announced table names the rate-up — even though the profile is not.
+  An *empty* pool still stays out; a period with nothing in it cannot back a
+  spark exchange. A *hand-kept* row (negative id) also stays out of
+  `forecast.json` — it has no JP→GL prediction, and letting a date read off a
+  news post into the alignment model would shift real forecasts. A *grafted* row
+  does carry a prediction, because its date is upstream's by then, so it appears
+  in the forecast like any other wiki banner.
+- **The lobby strip** shows a provisional batch as `announced` only when it is
+  hand-kept *and* has not opened: `announcedNews()` needs
+  `isAnnouncedOnly(banner)` and skips rows whose `startMs` has passed, since
+  `latestBannerNews()` already reports them as `live`. A wiki-recorded batch is a
+  normal upcoming/live period from the start — its pool merely comes from the
+  announced table — so it is never labelled an announcement.
 - **Dedupe is start-day proximity, not code matching** (`pendingAnnouncedBanners`):
   any wiki banner on the same server starting within 36 h retires the row. The
   announced start comes from a maintenance window and the wiki usually records
@@ -83,9 +111,10 @@ table of those rows and `scripts/export.ts` merges them into `banners.json` with
   clears means the dedupe drifted or the wiki spelled the student differently
   (check the `unresolved rate-ups` line below it), and a `placeholder` count that
   stays at 1 after SchaleDB catches up means the name stopped matching.
-- `cal.tag.announced` / `cal.disclaimer.announced` / `chip.title.announced` are
-  the localized strings; the detail panel hides the simulator deep link for
-  these rows because no period exists to open.
+- `cal.tag.announced` / `cal.tag.pending` / `cal.disclaimer.*` / `chip.title.*`
+  are the localized strings (en/ja/ko); the detail panel hides the simulator
+  deep link only when the pool is empty, since a banner with no rate-ups has no
+  period to open.
 
 ## Data sources and joins
 
@@ -99,6 +128,9 @@ Three upstream sources across two hosts, assembled in `buildSnapshot()`
 - **SchaleDB** (`{jp,en,kr}/students.min.json`) — `SchaleDbSource` supplies
   the student roster, IDs, schools and artwork; the `jp`/`kr` dumps add
   localized `Name` spellings (`nameJp`/`nameKr`) onto every character record.
+  It is a mirror, not the authority: a student the game already ships can be
+  missing here for a day, which is the announced-placeholder case above — those
+  rows take their artwork from the JP client instead.
 
 Everything joins on the **shared numeric student `Id`**. Two traps:
 

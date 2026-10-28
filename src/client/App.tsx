@@ -6,6 +6,7 @@ import {
   api,
   asset,
   emblemUrl,
+  isAnnouncedOnly,
   schoolColor,
   type Banner,
   type ForecastResponse,
@@ -696,7 +697,11 @@ function DetailBody({ banner, tz }: { banner: Banner; tz: string }) {
               {banner.server === "JP" ? t("cal.tag.jp") : t("cal.tag.global")}
             </span>
             <span className="tag soft">{label}</span>
-            {banner.provisional && <span className="tag announced">{t("cal.tag.announced")}</span>}
+            {banner.provisional && (
+              <span className={`tag ${isAnnouncedOnly(banner) ? "announced" : "pending"}`}>
+                {t(isAnnouncedOnly(banner) ? "cal.tag.announced" : "cal.tag.pending")}
+              </span>
+            )}
             {banner.rerun && <span className="tag rerun">{t("cal.tag.rerun")}</span>}
             {banner.limited && <span className="tag limit">{t("cal.tag.limited")}</span>}
             {who && (
@@ -747,13 +752,13 @@ function DetailBody({ banner, tz }: { banner: Banner; tz: string }) {
       </dl>
 
       {p && <p className="disclaimer">{translateModelString(p.explanation)}{p.method !== "scheduled" && ` ${t("cal.disclaimer.estimate")}`}</p>}
-      {banner.provisional && <p className="disclaimer">{t("cal.disclaimer.announced")}</p>}
+      {banner.provisional && <p className="disclaimer">{t(isAnnouncedOnly(banner) ? "cal.disclaimer.announced" : "cal.disclaimer.pending")}</p>}
       {!banner.provisional && !p && banner.forecastStatus === "unresolved" && <p className="disclaimer">{t("cal.disclaimer.unresolved")}</p>}
       {/* Path-based link (not a legacy `#/...` fragment): a fragment-only change
           never triggers a navigation, so the deep-link params were silent.
-          Provisional banners have no simulator period, so the link would only
-          land on the newest unrelated batch. */}
-      {!banner.provisional && (
+          A banner with no rate-ups has no simulator period to open, so the link
+          would only land on the newest unrelated batch. */}
+      {banner.characters.length > 0 && (
         <a className="sim-detail-link" href={`${link.simulator}?server=${banner.server}&period=${encodeURIComponent(`${banner.server}:${banner.startMs}`)}&banner=${banner.id}`}>{t("cal.openPeriod")} <IconExternal /></a>
       )}
     </>

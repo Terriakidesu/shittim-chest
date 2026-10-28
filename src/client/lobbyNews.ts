@@ -1,5 +1,5 @@
 import { localeFor, getLanguage } from "./i18n";
-import type { Banner, Character, Server } from "./api";
+import { isAnnouncedOnly, type Banner, type Character, type Server } from "./api";
 
 /**
  * Raw news data. Localization happens at render time in `LobbyNews.tsx` so a
@@ -50,10 +50,11 @@ export function latestBannerNews(banners: Banner[], nowMs = Date.now()): LobbyNe
       kind,
       server,
       official: false,
-      // Only an announcement that has not opened yet is *announced*. Once the
-      // batch starts the card is live, even while its pool is still a
-      // placeholder from the announced table.
-      announced: start > nowMs && batch.every((banner) => banner.provisional === true),
+      // Only a hand-kept announcement that has not opened yet is *announced*.
+      // Once the batch starts the card is live, and a batch the wiki has already
+      // recorded is a normal upcoming period even while its pool comes from the
+      // announced table.
+      announced: start > nowMs && batch.every((banner) => isAnnouncedOnly(banner)),
       students: dedupeStudents(batch),
       startMs: start,
       endMs: Math.max(...batch.map((banner) => banner.endMs)),
@@ -92,15 +93,14 @@ export function forecastNews(banners: Banner[], nowMs = Date.now()): LobbyNewsIt
  * announced for tomorrow would otherwise never reach the strip.
  *
  * Rows that have already opened are skipped: `latestBannerNews` reports them as
- * live, and a second card for the same batch would just repeat it. That case is
- * routine now that the wiki records a batch hours before SchaleDB publishes the
- * student — the banner is real and running while its pool is still a
- * placeholder.
+ * live, and a second card for the same batch would just repeat it. A batch the
+ * wiki has recorded is skipped too — it is a normal upcoming period whose pool
+ * merely comes from the announced table.
  */
 export function announcedNews(banners: Banner[], nowMs = Date.now()): LobbyNewsItem[] {
   const groups = new Map<string, Banner[]>();
   for (const banner of banners) {
-    if (banner.provisional !== true || !usable(banner) || banner.startMs <= nowMs || banner.endMs <= nowMs) continue;
+    if (!isAnnouncedOnly(banner) || !usable(banner) || banner.startMs <= nowMs || banner.endMs <= nowMs) continue;
     const key = `announced:${banner.server}:${banner.startMs}`;
     groups.set(key, [...(groups.get(key) ?? []), banner]);
   }

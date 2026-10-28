@@ -33,10 +33,11 @@
  *
  * Character ids are negative on purpose: SchaleDB ids are positive, so a
  * placeholder can never collide with — or be mistaken for — a real student.
- * Their artwork lives under `public/img/announced/`, cropped from the student's
- * own `Student_Portrait_*` bust in the JP client (see `AVATAR_SOURCE`). Delete
- * those files once SchaleDB publishes the student; nothing else references
- * them.
+ * Their artwork lives under `public/img/announced/`: a 120px head crop from the
+ * student's `Student_Portrait_*` bust, plus the full racing illustration from
+ * the `TankRacing_LobbyChar_*` texture, both in the JP client (see
+ * `AVATAR_SOURCE`). Delete those files once SchaleDB publishes the student;
+ * nothing else references them.
  */
 
 import { normalizeCharName, splitRateup } from "../src/model/domain/characters";
@@ -44,9 +45,9 @@ import { normalizeCharName, splitRateup } from "../src/model/domain/characters";
 /** Widest gap between an announced start and the wiki's recorded one. */
 const DEDUPE_TOLERANCE_MS = 36 * 60 * 60 * 1000;
 
-/** Where the placeholder headshots came from, for attribution in the UI docs. */
+/** Where the placeholder artwork came from, for attribution in the UI docs. */
 export const AVATAR_SOURCE =
-  "Cropped from the student's own Student_Portrait bust in the Blue Archive Japan " +
+  "Cropped from the student's own racing illustration in the Blue Archive Japan " +
   "client (© NEXON Games & Yostar); replaced by SchaleDB artwork once published.";
 
 export interface AnnouncedCharacter {
@@ -58,6 +59,12 @@ export interface AnnouncedCharacter {
   starGrade: number;
   /** Relative path under `public/`, like the exported avatars. */
   avatar: string;
+  /**
+   * Full illustration, also relative. The client bust as cropped from the same
+   * `TankRacing_LobbyChar_*` texture as the headshot; there is no numeric id to
+   * build an `img/portrait/<id>.webp` path from.
+   */
+  portrait: string;
   availability: "permanent" | "limited" | "event";
 }
 
@@ -90,7 +97,10 @@ export interface AnnouncedBanner {
  * `CH0379` (ヒフミ, Hifumi) and `CH0380` (アズサ, Azusa) in the Addressables
  * catalog, so the headshots are cropped from
  * `uis-01_common-01_character-*_textures-2026-09-30_*.bundle` →
- * `Student_Portrait_CH0379` / `Student_Portrait_CH0380`.
+ * `Student_Portrait_CH0379` / `Student_Portrait_CH0380`, and the full racing
+ * illustrations from
+ * `uis-01_common-34_minigame-tankracing-_mxload-textures-2026-09-30_*.bundle`
+ * → `TankRacing_LobbyChar_1` (Hifumi) / `TankRacing_LobbyChar_2` (Azusa).
  */
 export const ANNOUNCED_BANNERS: AnnouncedBanner[] = [
   {
@@ -111,6 +121,7 @@ export const ANNOUNCED_BANNERS: AnnouncedBanner[] = [
         school: "Trinity",
         starGrade: 3,
         avatar: "img/announced/hifumi-racing.webp",
+        portrait: "img/announced/hifumi-racing-portrait.webp",
         availability: "limited",
       },
     ],
@@ -133,6 +144,7 @@ export const ANNOUNCED_BANNERS: AnnouncedBanner[] = [
         school: "Trinity",
         starGrade: 3,
         avatar: "img/announced/azusa-racing.webp",
+        portrait: "img/announced/azusa-racing-portrait.webp",
         availability: "limited",
       },
     ],

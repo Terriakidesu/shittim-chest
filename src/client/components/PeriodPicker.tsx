@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
-import { asset } from "../api";
+import { asset, headshot } from "../api";
 import { filterPeriods, periodDates, periodDetail, periodNames, periodSummary, type PeriodOption } from "../periodPickerOptions";
 import { t, useLanguage } from "../i18n";
 import { IconCheck, IconChevronDown, IconClose } from "./icons";
@@ -115,7 +115,7 @@ export function PeriodPicker({ options, value, disabled, onChange }: { options: 
         {filtered.map((option, index) => {
           const optionDates = periodDates(option);
           return <div role="option" id={`${id}-option-${index}`} aria-label={`${optionDates.full}, ${periodNames(option)}, ${periodDetail(option)}`} aria-selected={option.value === value} className={`period-picker-option ${index === activeIndex ? "is-active" : ""}`} key={option.value} title={periodNames(option)} onPointerDown={(event) => { if (event.pointerType === "mouse") event.preventDefault(); }} onClick={() => choose(option)}>
-          <div className="period-picker-portraits" aria-hidden="true">{option.students.slice(0, 2).map((student) => <img key={student.id} src={asset(`img/avatar/${student.id}.webp`)} alt="" loading="lazy" />)}</div>
+          <div className="period-picker-portraits" aria-hidden="true">{option.students.slice(0, 2).map((student) => <img key={student.id} src={asset(headshot(student))} alt="" loading="lazy" />)}</div>
           <div className="period-picker-option-copy"><strong>{optionDates.short}</strong><span>{periodNames(option).replaceAll(" / ", " · ")}</span><small>{periodDetail(option)}</small></div>
           {option.value === value && <b aria-label={t("period.selectedAria")}><IconCheck /></b>}
         </div>;

@@ -1,5 +1,5 @@
 import type { Banner, Status } from "../api";
-import { asset, schoolColor } from "../api";
+import { asset, isAnnouncedOnly, schoolColor } from "../api";
 import { dayKey } from "../dates";
 import { bannerNames, t, typeLabel } from "../i18n";
 
@@ -141,6 +141,7 @@ export function BannerChip({
 }) {
   const who = banner.characters[0];
   const color = who ? schoolColor(who.school) : "#8e9aa8";
+  const announcedOnly = isAnnouncedOnly(banner);
   return (
     <button
       type="button"
@@ -148,13 +149,13 @@ export function BannerChip({
       style={{ ["--chip" as string]: color }}
       onClick={onClick}
       aria-pressed={!!selected}
-      title={`${banner.server === "JP" ? t("chip.server.jp") : t("chip.server.gl")} · ${label(banner)} — ${typeLabel(banner.type)}${banner.provisional ? ` · ${t("chip.title.announced")}` : ""}`}
+      title={`${banner.server === "JP" ? t("chip.server.jp") : t("chip.server.gl")} · ${label(banner)} — ${typeLabel(banner.type)}${banner.provisional ? ` · ${t(announcedOnly ? "chip.title.announced" : "chip.title.pending")}` : ""}`}
     >
       {who && <img src={asset(who.avatar)} alt="" loading="lazy" />}
       <span className="chip-name">{label(banner)}</span>
       <span className="chip-server">{banner.server === "JP" ? "JP" : "GL"}</span>
       {banner.prediction && <span className="chip-flag">~</span>}
-      {banner.provisional && <span className="chip-flag" aria-label={t("cal.tag.announced")}>!</span>}
+      {banner.provisional && <span className="chip-flag" aria-label={t(announcedOnly ? "cal.tag.announced" : "cal.tag.pending")}>!</span>}
     </button>
   );
 }
