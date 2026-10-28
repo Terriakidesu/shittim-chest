@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { BlendMode, BoneData, Physics, RegionAttachment, Skeleton, SkeletonData, SlotData } from "@esotericsoftware/spine-core";
-import { authoredViewport, fitScene, sceneBounds } from "./spineCamera";
+import { authoredViewport, fitScene, interactionBounds, interactionHit, sceneBounds } from "./spineCamera";
 import { SpineRenderer } from "./spineRuntime";
 
 function scene() {
@@ -183,6 +183,46 @@ describe("Spine scene framing", () => {
     expect(viewport.y + viewport.height).toBeLessThan(2031);
   });
 
+  test("keeps backdrops out of the game interaction hit region", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const layer = new BoneData(1, "All_Layer", root);
+    data.bones.push(root, layer);
+    data.slots.push(new SlotData(0, "background", layer), new SlotData(1, "character", layer));
+    const skeleton = new Skeleton(data);
+    const background = new RegionAttachment("background", "background");
+    background.offset = [-1000, -500, -1000, 500, 1000, 500, 1000, -500];
+    const character = new RegionAttachment("character", "character");
+    character.offset = [-100, -200, -100, 200, 100, 200, 100, -200];
+    skeleton.slots[0]!.setAttachment(background);
+    skeleton.slots[1]!.setAttachment(character);
+    skeleton.updateWorldTransform(Physics.update);
+    const bounds = interactionBounds(skeleton)!;
+    expect(bounds.x).toBeCloseTo(-100);
+    expect(bounds.y).toBeCloseTo(-200);
+    expect(bounds.width).toBeCloseTo(200);
+    expect(bounds.height).toBeCloseTo(400);
+  });
+
+  test("limits interaction hits to the authored character subtree", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const character = new BoneData(1, "PC", root);
+    const prop = new BoneData(2, "Umbrella", root);
+    data.bones.push(root, character, prop);
+    data.slots.push(new SlotData(0, "character", character), new SlotData(1, "prop", prop));
+    const skeleton = new Skeleton(data);
+    const characterAttachment = new RegionAttachment("character", "character");
+    characterAttachment.offset = [-100, -100, -100, 100, 100, 100, 100, -100];
+    const propAttachment = new RegionAttachment("prop", "prop");
+    propAttachment.offset = [300, -100, 300, 100, 500, 100, 500, -100];
+    skeleton.slots[0]!.setAttachment(characterAttachment);
+    skeleton.slots[1]!.setAttachment(propAttachment);
+    skeleton.updateWorldTransform(Physics.update);
+    expect(interactionHit(skeleton, 0, 0)).toBe(true);
+    expect(interactionHit(skeleton, 400, 0)).toBe(false);
+  });
+
   test("renderer refits on fullscreen resize while preserving manual zoom", () => {
     const bounds = { x: 0, y: 0, width: 200, height: 100 };
     const fit = fitScene(bounds, 800, 450);
@@ -201,5 +241,19 @@ describe("Spine scene framing", () => {
     expect(camera.zoom).toBeCloseTo(fitScene(bounds, 1920, 1080).zoom / 2);
     expect(camera.position.x).toBe(110);
     expect(camera.position.y).toBe(45);
+  });
+
+  test("only interaction mode locks the camera to the authored game view", () => {
+    const renderer = Object.assign(Object.create(SpineRenderer.prototype), {
+      cameraMode: "game",
+      interactionMode: "free",
+      pendingFit: false,
+    }) as SpineRenderer;
+    const state = renderer as unknown as { cameraMode: string; interactionMode: string };
+    renderer.setCameraMode("fit");
+    expect(state.cameraMode).toBe("fit");
+    state.interactionMode = "interaction";
+    renderer.setCameraMode("fill");
+    expect(state.cameraMode).toBe("fit");
   });
 });

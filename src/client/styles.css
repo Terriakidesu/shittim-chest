@@ -418,6 +418,7 @@ a { color: var(--cyan); }
 .spine-layout:fullscreen .spine-options-open .spine-control-row { display: flex; }
 .spine-layout:fullscreen .spine-control-row .spine-action-button:last-child { display: none; }
 .spine-layout:fullscreen .spine-animation-field { flex: 1 1 140px; }
+.spine-layout:fullscreen .spine-mode-field { flex: 0 1 100px; }
 .spine-layout:fullscreen .spine-camera-field { flex: 0 1 120px; }
 .spine-layout:fullscreen .spine-speed-field { flex: 0 1 65px; }
 .spine-layout:fullscreen .spine-field > span,
@@ -456,12 +457,17 @@ a { color: var(--cyan); }
 .spine-time { min-width: 96px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
 .spine-control-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 10px; }
 .spine-animation-field { flex: 1 1 200px; }
+.spine-mode-field { flex: 0 1 135px; }
 .spine-camera-field { flex: 0 1 160px; }
 .spine-speed-field { flex: 0 1 110px; }
 .spine-effects-field { flex: 0 1 210px; }
 .spine-effects-field input { min-width: 60px; width: 100%; accent-color: var(--cyan); }
 .spine-effects-field output { min-width: 32px; font-variant-numeric: tabular-nums; }
 .spine-layout:fullscreen .spine-effects-field > span { display: inline; }
+.spine-interaction-action { display: inline-flex; align-items: center; gap: 6px; }
+.spine-interaction-action small { min-width: 16px; color: var(--muted); font-size: 10px; }
+.spine-stage-interaction canvas { cursor: crosshair; }
+.spine-stage-interaction canvas:active { cursor: pointer; }
 .spine-check { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; color: var(--text); font-size: 12px; font-weight: 700; white-space: nowrap; }
 .spine-check input { accent-color: var(--cyan); }
 .spine-action-button { min-height: 34px; padding: 5px 10px; border-radius: 5px; font-size: 11px; white-space: nowrap; transform: none; }
@@ -490,7 +496,8 @@ a { color: var(--cyan); }
   .spine-controls { padding: 11px 10px 12px; }
   .spine-time { min-width: 82px; font-size: 10px; }
   .spine-control-row { align-items: stretch; gap: 8px; }
-   .spine-animation-field { flex-basis: 100%; }
+  .spine-animation-field { flex-basis: 100%; }
+  .spine-mode-field { flex: 1 1 120px; }
    .spine-camera-field { flex: 1 1 120px; }
    .spine-speed-field { flex: 1 1 120px; }
   .spine-action-button { flex: 1 1 110px; }

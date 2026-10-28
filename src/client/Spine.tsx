@@ -9,6 +9,7 @@ import {
   SpineRenderer,
   type SpineCameraMode,
   type SpineFiles,
+  type SpineInteractionMode,
   type SpineMeta,
   type SpineProgress,
 } from "./spine/spineRuntime";
@@ -110,6 +111,8 @@ export interface SpineViewportHandle {
   setSpeed: (speed: number) => void;
   setLoop: (loop: boolean) => void;
   setCameraMode: (mode: SpineCameraMode) => void;
+  setInteractionMode: (mode: SpineInteractionMode) => void;
+  triggerTalk: () => void;
   replayIntro: () => void;
   restartPlayback: () => void;
   seek: (time: number) => void;
@@ -123,6 +126,7 @@ interface SpineViewportProps {
   speed: number;
   loop: boolean;
   cameraMode: SpineCameraMode;
+  interactionMode: SpineInteractionMode;
   effectsStrength: number;
   onMeta: (meta: SpineMeta | null) => void;
   onProgress: (progress: SpineProgress) => void;
@@ -139,6 +143,7 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   speed,
   loop,
   cameraMode,
+  interactionMode,
   effectsStrength,
   onMeta,
   onProgress,
@@ -159,7 +164,6 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
       const renderer = new SpineRenderer(canvas, {
         onMeta: (meta) => {
           callbacks.current.onMeta(meta);
-          if (meta) callbacks.current.onCameraMode(meta.hasGameCamera ? "game" : "fill");
         },
         onProgress: (progress) => callbacks.current.onProgress(progress),
         onLoading: (loading) => callbacks.current.onLoading(loading),
@@ -188,6 +192,7 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   useEffect(() => rendererRef.current?.setSpeed(speed), [speed]);
   useEffect(() => rendererRef.current?.setLoop(loop), [loop]);
   useEffect(() => rendererRef.current?.setCameraMode(cameraMode), [cameraMode]);
+  useEffect(() => rendererRef.current?.setInteractionMode(interactionMode), [interactionMode]);
   useEffect(() => rendererRef.current?.setEffectsStrength(effectsStrength), [effectsStrength]);
 
   useImperativeHandle(ref, () => ({
@@ -201,12 +206,14 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
     setSpeed: (value) => rendererRef.current?.setSpeed(value),
     setLoop: (value) => rendererRef.current?.setLoop(value),
     setCameraMode: (value) => rendererRef.current?.setCameraMode(value),
+    setInteractionMode: (value) => rendererRef.current?.setInteractionMode(value),
+    triggerTalk: () => rendererRef.current?.triggerTalk(),
     replayIntro: () => rendererRef.current?.replayIntro(),
     restartPlayback: () => rendererRef.current?.restartPlayback(),
     seek: (value) => rendererRef.current?.seek(value),
   }), []);
 
-  return <div ref={stageRef} className="spine-stage">
+  return <div ref={stageRef} className={`spine-stage${interactionMode === "interaction" ? " spine-stage-interaction" : ""}`}>
     <canvas ref={canvasRef} aria-label={t("spine.stageAria")} />
   </div>;
 });
@@ -232,6 +239,7 @@ export function Spine() {
   const [playing, setPlaying] = useState(true);
   const [loop, setLoop] = useState(true);
   const [cameraMode, setCameraMode] = useState<SpineCameraMode>("fill");
+  const [interactionMode, setInteractionMode] = useState<SpineInteractionMode>("free");
   const [showFullscreenControls, setShowFullscreenControls] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [effectsStrength, setEffectsStrength] = useState(DEFAULT_EFFECTS_STRENGTH);
@@ -242,6 +250,10 @@ export function Spine() {
   const inputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<SpineViewportHandle>(null);
   const stagePointer = useRef<{ x: number; y: number } | null>(null);
+  const freeCameraMode = useRef<SpineCameraMode>("fill");
+  const freePlaying = useRef(true);
+  const freeLoop = useRef(true);
+  const freeSpeed = useRef(1);
 
   // React's DOM typings do not expose the non-standard directory attribute,
   // and React may omit an unknown JSX prop. Set it on the actual input so the
@@ -402,6 +414,32 @@ export function Spine() {
     setProgress((current) => ({ ...current, time: 0 }));
   };
 
+  const selectInteractionMode = (value: SpineInteractionMode) => {
+    if (value === interactionMode) return;
+    if (value === "interaction") {
+      freeCameraMode.current = cameraMode;
+      freePlaying.current = playing;
+      freeLoop.current = loop;
+      freeSpeed.current = speed;
+      setCameraMode("game");
+      setPlaying(true);
+      setLoop(true);
+      setSpeed(1);
+    } else {
+      setCameraMode(freeCameraMode.current);
+      setPlaying(freePlaying.current);
+      setLoop(freeLoop.current);
+      setSpeed(freeSpeed.current);
+    }
+    setInteractionMode(value);
+    viewportRef.current?.setInteractionMode(value);
+  };
+
+  const interactionReady = interactionMode === "interaction"
+    && Boolean(meta)
+    && progress.animation !== null
+    && (!(meta?.introAnimation && meta.idleAnimation) || progress.animation !== meta.introAnimation);
+
   const togglePlayback = () => setPlaying((value) => !value);
 
   const restartPlayback = () => {
@@ -495,7 +533,7 @@ export function Spine() {
         }} onPointerUp={(event) => {
           const start = stagePointer.current;
           stagePointer.current = null;
-          if (fullscreen && start && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 5) {
+          if (fullscreen && interactionMode === "free" && start && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 5) {
             setShowFullscreenControls((shown) => !shown);
           }
         }} onPointerCancel={() => { stagePointer.current = null; }}>
@@ -508,22 +546,23 @@ export function Spine() {
             speed={speed}
             loop={loop}
             cameraMode={cameraMode}
+            interactionMode={interactionMode}
             effectsStrength={effectsStrength}
             onMeta={(next) => {
               setMeta(next);
               setAnimation(next?.defaultAnimation ?? "");
-              setCameraMode(next?.hasGameCamera ? "game" : "fill");
+              setCameraMode(interactionMode === "interaction" ? "game" : next?.hasGameCamera ? "game" : "fill");
               if (!next) setProgress({ time: 0, duration: 0, animation: null });
             }}
             onProgress={setProgress}
             onLoading={setRendererLoading}
             onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
-            onCameraMode={setCameraMode}
+            onCameraMode={(mode) => setCameraMode(interactionMode === "interaction" ? "game" : mode)}
           />
           {!source && <div className="spine-stage-empty"><strong>{t("spine.empty.heading")}</strong><span>{t("spine.empty.body")}</span></div>}
           {source && !setFiles && !error && <div className="spine-stage-empty"><strong>{isLoading ? t("spine.loading") : t("spine.empty.set")}</strong><span>{isLoading ? t("spine.loadingDetail") : selectedDirectoryName}</span></div>}
           {isLoading && setFiles && <div className="spine-loading" aria-live="polite">{t("spine.loading")}</div>}
-          <div className="spine-stage-hint">{t("spine.stageHint")}</div>
+          <div className="spine-stage-hint">{t(interactionMode === "interaction" ? "spine.interactionHint" : "spine.stageHint")}</div>
         </div>
 
         <div id="spine-playback-controls" className={`spine-controls${showFullscreenOptions ? " spine-options-open" : ""}`} aria-label={t("spine.controlsAria")}>
@@ -531,10 +570,10 @@ export function Spine() {
             <button className="spine-fullscreen-only spine-compact-button spine-character-button" type="button" aria-expanded={showFullscreenSidebar} aria-controls="spine-sidebar" onClick={() => setShowFullscreenSidebar((shown) => !shown)} title={t(showFullscreenSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}>
               {selectedCharacter || t("spine.characters")} <span>▾</span>
             </button>
-            <button className="spine-icon-button" type="button" onClick={togglePlayback} disabled={!meta} aria-label={t(playing ? "spine.pause" : "spine.play")} title={t(playing ? "spine.pause" : "spine.play")}>
+            <button className="spine-icon-button" type="button" onClick={togglePlayback} disabled={!meta || interactionMode === "interaction"} aria-label={t(playing ? "spine.pause" : "spine.play")} title={t(playing ? "spine.pause" : "spine.play")}>
               {playing ? <IconPause /> : <IconPlay />}
             </button>
-            <button className="spine-restart-button" type="button" disabled={!meta} onClick={restartPlayback} aria-label={t("spine.restart")} title={t("spine.restart")}><IconRotate /><span>{t("spine.restart")}</span></button>
+            <button className="spine-restart-button" type="button" disabled={!meta || interactionMode === "interaction"} onClick={restartPlayback} aria-label={t("spine.restart")} title={t("spine.restart")}><IconRotate /><span>{t("spine.restart")}</span></button>
             <input
               className="spine-scrubber"
               type="range"
@@ -542,7 +581,7 @@ export function Spine() {
               max={progress.duration || 0.01}
               step="0.01"
               value={Math.min(progress.time, progress.duration || 0.01)}
-              disabled={!meta}
+              disabled={!meta || interactionMode === "interaction"}
               onChange={(event) => viewportRef.current?.seek(Number(event.target.value))}
               aria-label={t("spine.scrubber")}
             />
@@ -551,33 +590,41 @@ export function Spine() {
             <button className="spine-fullscreen-only spine-compact-button" type="button" onClick={() => void viewportRef.current?.toggleFullscreen()} aria-label={t("a11y.fullscreenExit")} title={t("a11y.fullscreenExit")}><IconCompress /></button>
           </div>
           <div id="spine-options" className="spine-control-row">
+            <label className="spine-field spine-mode-field">
+              <span>{t("spine.mode")}</span>
+              <select value={interactionMode} onChange={(event) => selectInteractionMode(event.target.value as SpineInteractionMode)} aria-label={t("spine.modeAria")}>
+                <option value="free">{t("spine.mode.free")}</option>
+                <option value="interaction">{t("spine.mode.interaction")}</option>
+              </select>
+            </label>
             <label className="spine-field spine-animation-field">
               <span>{t("spine.animation")}</span>
-              <select value={animation} onChange={(event) => selectAnimation(event.target.value)} disabled={!meta} aria-label={t("spine.animationAria")}>
+              <select value={animation} onChange={(event) => selectAnimation(event.target.value)} disabled={!meta || interactionMode === "interaction"} aria-label={t("spine.animationAria")}>
                 {animationOptions.map((name) => <option key={name} value={name}>{name === INTRO_ANIMATION ? t("spine.introIdle") : name}</option>)}
               </select>
             </label>
             <label className="spine-field spine-camera-field">
               <span>{t("spine.camera")}</span>
-              <select value={cameraMode} onChange={(event) => setCameraMode(event.target.value as SpineCameraMode)} aria-label={t("spine.cameraAria")}>
+              <select value={interactionMode === "interaction" ? "game" : cameraMode} onChange={(event) => setCameraMode(event.target.value as SpineCameraMode)} disabled={interactionMode === "interaction"} aria-label={t("spine.cameraAria")}>
                 <option value="fill">{t("spine.camera.fill")}</option>
                 <option value="fit">{t("spine.camera.fit")}</option>
-                {meta?.hasGameCamera && <option value="game">{t("spine.camera.game")}</option>}
+                {(meta?.hasGameCamera || interactionMode === "interaction") && <option value="game">{t("spine.camera.game")}</option>}
               </select>
             </label>
             <label className="spine-field spine-speed-field">
               <span>{t("spine.speed")}</span>
-              <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))} aria-label={t("spine.speedAria")}>
+              <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))} disabled={interactionMode === "interaction"} aria-label={t("spine.speedAria")}>
                 {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}
               </select>
             </label>
-            <label className="spine-check"><input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>
+            <label className="spine-check"><input type="checkbox" checked={loop} disabled={interactionMode === "interaction"} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>
+            {interactionReady && meta?.interaction.talkCount ? <button className="btn ghost spine-action-button spine-interaction-action" type="button" onClick={() => viewportRef.current?.triggerTalk()} aria-label={t("spine.talkAria")}><span>{t("spine.talk")}</span><small>{meta.interaction.talkCount}</small></button> : null}
             <label className="spine-field spine-effects-field">
               <span>{t("spine.effects")}</span>
               <input type="range" min="0" max="1" step="0.05" value={effectsStrength} onChange={(event) => setEffectsStrength(Number(event.target.value))} aria-label={t("spine.effects")} title={t("spine.effects.hint")} />
               <output>{Math.round(effectsStrength * 100)}%</output>
             </label>
-            <button className="btn ghost spine-action-button" type="button" onClick={() => viewportRef.current?.resetCamera()}><span>{t("spine.resetView")}</span></button>
+            <button className="btn ghost spine-action-button" type="button" disabled={interactionMode === "interaction"} onClick={() => viewportRef.current?.resetCamera()}><span>{t("spine.resetView")}</span></button>
             <button className="btn ghost spine-action-button" type="button" onClick={() => void viewportRef.current?.toggleFullscreen()} aria-label={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")}>
               <span>{fullscreen ? <IconCompress /> : <IconExpand />} {t("spine.fullscreen")}</span>
             </button>

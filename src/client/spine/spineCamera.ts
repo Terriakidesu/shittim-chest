@@ -85,6 +85,23 @@ function descendantOf(bone: Bone, ancestor: Bone): boolean {
   return false;
 }
 
+function isCharacterContainer(bone: Bone): boolean {
+  return /^(?:pc(?:[ _-]?layer)?|cha(?:racter)?[ _-]?root)$/i.test(bone.data.name.trim());
+}
+
+function interactionSlots(skeleton: Skeleton): Slot[] {
+  const scene = activeScene(skeleton, anchorPoint(skeleton));
+  const available = scene?.slots ?? skeleton.drawOrder;
+  const containers = skeleton.bones
+    .filter(isCharacterContainer)
+    .sort((a, b) => boneDepth(b) - boneDepth(a));
+  for (const container of containers) {
+    const slots = available.filter((slot) => descendantOf(slot.bone, container));
+    if (slots.length > 0) return slots;
+  }
+  return available;
+}
+
 function boneDepth(bone: Bone): number {
   let depth = 0;
   for (let current = bone.parent; current; current = current.parent) depth += 1;
@@ -187,6 +204,23 @@ export function sceneBounds(skeleton: Skeleton): SceneBounds {
   if (mainBackground) return mainBackground;
   if (![minX, minY, maxX, maxY].every(Number.isFinite) || maxX <= minX || maxY <= minY) return skeleton.getBoundsRect();
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+/** Bounds used for game-like taps, excluding authored backdrops and FX. */
+export function interactionBounds(skeleton: Skeleton): SceneBounds | null {
+  const bounds = interactionSlots(skeleton)
+    .filter((slot) => !isBackdrop(slot))
+    .map(attachmentBounds)
+    .filter((item): item is SceneBounds => Boolean(item));
+  return unionBounds(bounds);
+}
+
+/** Test a world-space pointer against the authored character attachments. */
+export function interactionHit(skeleton: Skeleton, x: number, y: number): boolean {
+  return interactionSlots(skeleton)
+    .filter((slot) => !isBackdrop(slot))
+    .map((slot) => attachmentBounds(slot))
+    .some((bounds) => Boolean(bounds && x >= bounds.x && x <= bounds.x + bounds.width && y >= bounds.y && y <= bounds.y + bounds.height));
 }
 
 /**
