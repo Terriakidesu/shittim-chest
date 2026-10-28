@@ -51,9 +51,15 @@ table of those rows and `scripts/export.ts` merges them into `banners.json` with
 - **Negative ids.** Announcement rows and their characters use ids like `-1`;
   SchaleDB ids are positive, so a placeholder can never collide with a real
   student.
-- **Headshots** live in `public/img/announced/`, cropped from the official
-  promo art (© NEXON Games & Yostar). Delete those files once SchaleDB
-  publishes the real artwork; nothing else references them.
+- **Headshots** live in `public/img/announced/`, cropped from the student's own
+  `Student_Portrait_*` bust in the JP client (© NEXON Games & Yostar). The client
+  is the fastest real source: SchaleDB can trail an update by a day, but the
+  store assets are already on disk, and for a not-yet-listed student they are
+  filed under the costume's `CH####` id rather than a name — the 10/28 Racing
+  forms are `CH0379` (ヒフミ) and `CH0380` (アズサ), whose portraits sit in
+  `uis-01_common-01_character-*_textures-*.bundle` next to the named students'.
+  Delete those files once SchaleDB publishes the real artwork; nothing else
+  references them.
 - **They never reach the simulator** (`Simulator.tsx` filters `provisional`): a
   banner whose pool is a placeholder cannot support a spark exchange, and an
   empty period in the picker is worse than no period. A *hand-kept* row (one the

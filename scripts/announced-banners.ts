@@ -33,9 +33,10 @@
  *
  * Character ids are negative on purpose: SchaleDB ids are positive, so a
  * placeholder can never collide with — or be mistaken for — a real student.
- * Their artwork lives under `public/img/announced/`, cropped from the official
- * promo art for the announcement (see `AVATAR_SOURCE`). Delete those files
- * once SchaleDB publishes the student; nothing else references them.
+ * Their artwork lives under `public/img/announced/`, cropped from the student's
+ * own `Student_Portrait_*` bust in the JP client (see `AVATAR_SOURCE`). Delete
+ * those files once SchaleDB publishes the student; nothing else references
+ * them.
  */
 
 import { normalizeCharName, splitRateup } from "../src/model/domain/characters";
@@ -45,8 +46,8 @@ const DEDUPE_TOLERANCE_MS = 36 * 60 * 60 * 1000;
 
 /** Where the placeholder headshots came from, for attribution in the UI docs. */
 export const AVATAR_SOURCE =
-  "Cropped from the official Blue Archive Japan pickup announcement artwork " +
-  "(© NEXON Games & Yostar); replaced by SchaleDB artwork once published.";
+  "Cropped from the student's own Student_Portrait bust in the Blue Archive Japan " +
+  "client (© NEXON Games & Yostar); replaced by SchaleDB artwork once published.";
 
 export interface AnnouncedCharacter {
   id: number;
@@ -84,6 +85,12 @@ export interface AnnouncedBanner {
  * Announced by the JP news post of 2026-10-27 13:55 JST (04:55 UTC); the
  * maintenance ran 02:00–11:00 JST, so the wiki's recorded start is 11:00 JST
  * (02:00 UTC) — kept here in case the wiki row ever disappears again.
+ *
+ * The client already stores both outfits before SchaleDB lists them: they are
+ * `CH0379` (ヒフミ, Hifumi) and `CH0380` (アズサ, Azusa) in the Addressables
+ * catalog, so the headshots are cropped from
+ * `uis-01_common-01_character-*_textures-2026-09-30_*.bundle` →
+ * `Student_Portrait_CH0379` / `Student_Portrait_CH0380`.
  */
 export const ANNOUNCED_BANNERS: AnnouncedBanner[] = [
   {
