@@ -118,6 +118,26 @@ describe("Spine scene framing", () => {
     expect(viewport.y).toBeCloseTo(962 - 200 * 9 / 32);
   });
 
+  test("breaks near-equal backdrop widths by height, not export rounding", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const layer = new BoneData(1, "All_Layer", root);
+    layer.y = 962;
+    data.bones.push(root, layer);
+    data.slots.push(new SlotData(0, "BG_short", layer), new SlotData(1, "BG_tall", layer));
+    const skeleton = new Skeleton(data);
+    const short = new RegionAttachment("BG_short", "BG_short");
+    short.offset = [-100, 0, -100, 100, 100.0005, 100, 100.0005, 0];
+    const tall = new RegionAttachment("BG_tall", "BG_tall");
+    tall.offset = [-100, -100, -100, 300, 100, 300, 100, -100];
+    skeleton.slots[0]!.setAttachment(short);
+    skeleton.slots[1]!.setAttachment(tall);
+    skeleton.updateWorldTransform(Physics.update);
+    const viewport = authoredViewport(skeleton);
+    expect(viewport.width).toBeCloseTo(200);
+    expect(viewport.height).toBeCloseTo(200 * 9 / 16);
+  });
+
   test("keeps the authored anchor fixed when a scene parent is animated", () => {
     const setup = authoredScene();
     const animated = authoredScene();

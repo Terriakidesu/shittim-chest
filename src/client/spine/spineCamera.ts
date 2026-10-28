@@ -144,7 +144,12 @@ function sceneInfo(skeleton: Skeleton, container: Bone) {
     // useful for artwork bounds, but the widest authored backdrop is the best
     // signal for the camera width and avoids spanning decorative pieces or
     // multiple cuts.
-    backdrop: backdropBounds.sort((a, b) => b.width - a.width || b.height - a.height)[0] ?? null,
+    backdrop: backdropBounds.sort((a, b) => {
+      // Atlas/export rounding can make equal-width backdrop cuts differ by a
+      // fraction of a Spine unit. Do not let that noise beat the taller cut.
+      const widthDelta = b.width - a.width;
+      return Math.abs(widthDelta) > 1 ? widthDelta : b.height - a.height;
+    })[0] ?? null,
     depth: boneDepth(container),
   };
 }
