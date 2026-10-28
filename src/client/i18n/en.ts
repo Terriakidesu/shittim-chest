@@ -423,7 +423,7 @@ export const en = {
   "spine.loading": "Loading lobby set…",
   "spine.loadingDetail": "Reading local atlas, textures and skeleton",
   "spine.stageHint": "Drag to pan · scroll to zoom",
-  "spine.interactionHint": "Move over the stage to follow · press the character to pat",
+  "spine.interactionHint": "Hold over the character to follow · press the character to pat",
   "spine.controlsAria": "Spine playback controls",
   "spine.pause": "Pause animation",
   "spine.play": "Play animation",

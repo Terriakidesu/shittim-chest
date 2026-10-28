@@ -407,7 +407,7 @@ export const ko: Record<keyof typeof en, string> = {
   "spine.loading": "로비 세트 불러오는 중…",
   "spine.loadingDetail": "로컬 아틀라스, 텍스처, 스켈레톤을 읽는 중",
   "spine.stageHint": "드래그하여 이동 · 스크롤하여 확대/축소",
-  "spine.interactionHint": "스테이지 위에서 시선이 따라옵니다 · 캐릭터를 눌러 쓰다듬으세요",
+  "spine.interactionHint": "캐릭터 위에서 잠시 기다리면 시선이 따라옵니다 · 캐릭터를 눌러 쓰다듬으세요",
   "spine.controlsAria": "Spine 재생 컨트롤",
   "spine.pause": "애니메이션 일시정지",
   "spine.play": "애니메이션 재생",

@@ -21,6 +21,8 @@ import { DEFAULT_EFFECTS_STRENGTH, drawWithEffectsStrength } from "./spineEffect
 import { findInteractionProfile, type SpineAnimationPair, type SpineInteractionProfile } from "./spineInteraction";
 
 export const INTRO_ANIMATION = "__intro__";
+export const EYE_FOLLOW_DELAY = 0.3;
+const MAX_EYE_FOLLOW_RANGE = 64;
 export type SpineCameraMode = "fit" | "fill" | "game";
 export type SpineInteractionMode = "free" | "interaction";
 
@@ -66,13 +68,21 @@ interface LoadedBundle {
   viewport: SceneBounds;
   interaction: SpineInteractionProfile;
   eyeTarget: EyeTarget | null;
+  touchTarget: InteractionTarget | null;
 }
 
-interface EyeTarget {
+interface InteractionTarget {
   bone: Bone;
   baseX: number;
   baseY: number;
 }
+
+interface EyeTarget extends InteractionTarget {
+  rangeX: number;
+  rangeY: number;
+}
+
+type SpineInteractionState = "idle" | "look" | "lookRelease" | "pat" | "patRelease" | "talk";
 
 interface CameraPose {
   x: number;
@@ -199,9 +209,25 @@ function findEyeTarget(skeleton: Skeleton): Bone | null {
   return skeleton.bones.find((bone) => /^touch[ _-]?eye(?:[ _-]?key)?$/i.test(bone.data.name)) ?? null;
 }
 
-function eyeTargetState(skeleton: Skeleton): EyeTarget | null {
+function findTouchTarget(skeleton: Skeleton): Bone | null {
+  const exact = ["Touch_Point_Key", "Touch_Point_key", "Touch_Point"];
+  for (const wanted of exact) {
+    const found = skeleton.findBone(wanted);
+    if (found) return found;
+  }
+  return skeleton.bones.find((bone) => /^touch[ _-]?point(?:[ _-]?key)?$/i.test(bone.data.name)) ?? null;
+}
+
+function targetState(bone: Bone): InteractionTarget {
+  return { bone, baseX: bone.x, baseY: bone.y };
+}
+
+function eyeTargetState(skeleton: Skeleton, touchTarget: InteractionTarget | null): EyeTarget | null {
   const bone = findEyeTarget(skeleton);
-  return bone ? { bone, baseX: bone.x, baseY: bone.y } : null;
+  if (!bone) return null;
+  const distance = touchTarget ? Math.hypot(bone.worldX - touchTarget.bone.worldX, bone.worldY - touchTarget.bone.worldY) : MAX_EYE_FOLLOW_RANGE;
+  const range = Math.max(24, Math.min(MAX_EYE_FOLLOW_RANGE, distance * 0.4));
+  return { ...targetState(bone), rangeX: range, rangeY: range * 0.75 };
 }
 
 async function loadBundle(files: SpineFiles, directoryName: string, renderer: SceneRenderer, context: ManagedWebGLRenderingContext): Promise<LoadedBundle> {
@@ -284,9 +310,11 @@ async function loadBundle(files: SpineFiles, directoryName: string, renderer: Sc
     meta.hasGameCamera = viewport.authored;
     state.apply(skeleton);
     skeleton.updateWorldTransform(Physics.update);
-    const eyeTarget = eyeTargetState(skeleton);
+    const touchTargetBone = findTouchTarget(skeleton);
+    const touchTarget = touchTargetBone ? targetState(touchTargetBone) : null;
+    const eyeTarget = eyeTargetState(skeleton, touchTarget);
     renderer.resize(ResizeMode.Expand);
-    return { atlas, images, skeleton, state, meta, bounds, viewport, interaction, eyeTarget };
+    return { atlas, images, skeleton, state, meta, bounds, viewport, interaction, eyeTarget, touchTarget };
   } catch (error) {
     atlas.dispose();
     for (const image of images) closeImage(image);
@@ -311,11 +339,12 @@ export class SpineRenderer {
   private freeCameraMode: SpineCameraMode = "fill";
   private interactionPointer: { x: number; y: number } | null = null;
   private pointerInside = false;
-  private looking = false;
-  private patting = false;
+  private interactionState: SpineInteractionState = "idle";
+  private interactionTrackName: string | null = null;
   private interactionReady = false;
+  private eyeFollowHold = 0;
   private talkIndex = 0;
-  private eyeFollowWorld: { x: number; y: number } | null = null;
+  private interactionFollowWorld: { x: number; y: number } | null = null;
   private fitCameraPose: CameraPose | null = null;
   private pendingFit = false;
   private raf = 0;
@@ -384,10 +413,11 @@ export class SpineRenderer {
     this.callbacks.onLoading(false);
     this.interactionPointer = null;
     this.pointerInside = false;
-    this.looking = false;
-    this.patting = false;
+    this.interactionState = "idle";
+    this.interactionTrackName = null;
     this.interactionReady = false;
-    this.eyeFollowWorld = null;
+    this.eyeFollowHold = 0;
+    this.interactionFollowWorld = null;
   }
 
   setPlaying(playing: boolean) {
@@ -431,10 +461,11 @@ export class SpineRenderer {
     this.interactionMode = mode;
     this.interactionPointer = null;
     this.pointerInside = false;
-    this.looking = false;
-    this.patting = false;
+    this.interactionState = "idle";
+    this.interactionTrackName = null;
     this.interactionReady = false;
-    this.eyeFollowWorld = null;
+    this.eyeFollowHold = 0;
+    this.interactionFollowWorld = null;
     if (mode === "interaction") {
       this.freeAnimationSelection = this.animationSelection;
       this.freeCameraMode = this.cameraMode;
@@ -454,10 +485,13 @@ export class SpineRenderer {
   }
 
   triggerTalk() {
-    if (this.interactionMode !== "interaction" || !this.interactionReady || !this.bundle || this.bundle.interaction.talks.length === 0) return;
+    if (this.interactionMode !== "interaction" || this.interactionState !== "idle" || !this.interactionReady || !this.bundle || this.bundle.interaction.talks.length === 0) return;
     const pair = this.bundle.interaction.talks[this.talkIndex % this.bundle.interaction.talks.length]!;
     this.talkIndex = (this.talkIndex + 1) % this.bundle.interaction.talks.length;
-    this.patting = false;
+    this.interactionState = "talk";
+    this.interactionTrackName = pair.main;
+    this.eyeFollowHold = 0;
+    this.resetInteractionTargets();
     this.clearOverlay(3);
     this.clearOverlay(4);
     this.playOverlayPair(pair, 5, 6, false, true);
@@ -490,13 +524,21 @@ export class SpineRenderer {
       bundle.eyeTarget.baseX = bundle.eyeTarget.bone.x;
       bundle.eyeTarget.baseY = bundle.eyeTarget.bone.y;
     }
-    this.eyeFollowWorld = null;
+    if (bundle.touchTarget) {
+      bundle.touchTarget.baseX = bundle.touchTarget.bone.x;
+      bundle.touchTarget.baseY = bundle.touchTarget.bone.y;
+    }
+    this.interactionFollowWorld = null;
   }
 
   private enterInteraction() {
     const bundle = this.bundle;
     if (!bundle) return;
     this.playing = true;
+    this.interactionState = "idle";
+    this.interactionTrackName = null;
+    this.eyeFollowHold = 0;
+    this.interactionFollowWorld = null;
     this.interactionReady = !(bundle.meta.introAnimation && bundle.meta.idleAnimation);
     const selection = bundle.meta.introAnimation && bundle.meta.idleAnimation ? INTRO_ANIMATION : bundle.meta.idleAnimation ?? bundle.meta.animations[0] ?? "";
     this.animationSelection = selection;
@@ -511,6 +553,18 @@ export class SpineRenderer {
       state.apply(this.bundle.skeleton);
       this.bundle.skeleton.updateWorldTransform(Physics.update);
     }
+  }
+
+  private resetInteractionTargets() {
+    const bundle = this.bundle;
+    if (!bundle) return;
+    for (const target of [bundle.eyeTarget, bundle.touchTarget]) {
+      if (!target) continue;
+      target.bone.x = target.baseX;
+      target.bone.y = target.baseY;
+    }
+    this.interactionFollowWorld = null;
+    bundle.skeleton.updateWorldTransform(Physics.pose);
   }
 
   private clearOverlay(track: number) {
@@ -535,43 +589,74 @@ export class SpineRenderer {
   }
 
   private beginLook() {
-    const profile = this.bundle?.interaction.look;
-    if (!profile || this.looking) return;
-    this.looking = true;
-    this.playOverlayPair(profile.start, 1, 2, false, false);
+    const bundle = this.bundle;
+    if (!bundle?.eyeTarget || this.interactionState !== "idle") return;
+    const profile = bundle.interaction.look;
+    this.interactionState = "look";
+    this.interactionTrackName = profile?.start.main ?? null;
+    if (profile) this.playOverlayPair(profile.start, 1, 2, false, false);
   }
 
   private endLook() {
     const bundle = this.bundle;
-    if (!bundle || !this.looking) return;
-    this.looking = false;
+    if (!bundle || this.interactionState !== "look") return;
+    this.resetInteractionTargets();
     const end = bundle.interaction.look?.end;
-    if (end) this.playOverlayPair(end, 1, 2, false, true);
-    else {
+    if (end) {
+      this.interactionState = "lookRelease";
+      this.interactionTrackName = end.main;
+      this.playOverlayPair(end, 1, 2, false, true);
+    } else {
       this.clearOverlay(1);
       this.clearOverlay(2);
+      this.interactionState = "idle";
+      this.interactionTrackName = null;
     }
   }
 
-  private beginPat() {
-    const pat = this.bundle?.interaction.pat;
-    if (!pat || this.patting) return;
-    this.patting = true;
-    this.clearOverlay(5);
-    this.clearOverlay(6);
-    this.playOverlayPair(pat.hold, 3, 4, false, false);
+  private beginPat(): boolean {
+    const bundle = this.bundle;
+    const pat = bundle?.interaction.pat;
+    if ((!pat && !bundle?.touchTarget) || this.interactionState !== "idle") return false;
+    this.interactionState = "pat";
+    this.interactionTrackName = pat?.hold.main ?? null;
+    this.eyeFollowHold = 0;
+    if (pat) {
+      this.clearOverlay(5);
+      this.clearOverlay(6);
+      this.playOverlayPair(pat.hold, 3, 4, false, false);
+    }
+    return true;
   }
 
   private endPat() {
     const bundle = this.bundle;
-    if (!bundle || !this.patting) return;
-    this.patting = false;
+    if (!bundle || this.interactionState !== "pat") return;
+    this.resetInteractionTargets();
     const release = bundle.interaction.pat?.release;
-    if (release) this.playOverlayPair(release, 3, 4, false, true);
-    else {
+    if (release) {
+      this.interactionState = "patRelease";
+      this.interactionTrackName = release.main;
+      this.playOverlayPair(release, 3, 4, false, true);
+    } else {
       this.clearOverlay(3);
       this.clearOverlay(4);
+      this.interactionState = "idle";
+      this.interactionTrackName = null;
     }
+  }
+
+  private finishInteractionState() {
+    const bundle = this.bundle;
+    if (!bundle || !this.interactionTrackName) return;
+    const track = this.interactionState === "lookRelease" ? 1 : this.interactionState === "patRelease" ? 3 : this.interactionState === "talk" ? 5 : -1;
+    if (track < 0) return;
+    const current = bundle.state.getCurrent(track);
+    if (current?.animation?.name === this.interactionTrackName) return;
+    this.interactionState = "idle";
+    this.interactionTrackName = null;
+    this.eyeFollowHold = 0;
+    this.resetInteractionTargets();
   }
 
   restartPlayback() {
@@ -698,9 +783,25 @@ export class SpineRenderer {
         bundle.state.apply(bundle.skeleton);
         bundle.skeleton.updateWorldTransform(Physics.update);
         if (this.interactionMode === "interaction") {
+          const wasInteractionReady = this.interactionReady;
           const entry = bundle.state.getCurrent(0);
           if (!(bundle.meta.introAnimation && bundle.meta.idleAnimation) || entry?.animation?.name !== bundle.meta.introAnimation) this.interactionReady = true;
-          if (this.interactionReady) this.applyEyeFollow(delta);
+          if (!wasInteractionReady && this.interactionReady) this.eyeFollowHold = 0;
+          this.finishInteractionState();
+          if (this.interactionReady) {
+            if (this.interactionState === "idle" && this.interactionPointer) {
+              this.eyeFollowHold = Math.min(EYE_FOLLOW_DELAY, this.eyeFollowHold + delta);
+              if (this.eyeFollowHold >= EYE_FOLLOW_DELAY) {
+                this.beginLook();
+              }
+            } else if (this.interactionState === "look") {
+              this.applyEyeFollow(delta);
+            } else if (this.interactionState === "pat") {
+              this.applyTouchFollow(delta);
+            } else if (this.interactionState === "idle") {
+              this.eyeFollowHold = 0;
+            }
+          }
         }
       }
 
@@ -756,11 +857,11 @@ export class SpineRenderer {
   private onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) return;
     if (this.interactionMode === "interaction") {
-      if (!this.interactionReady) return;
       this.pointerInside = true;
       this.updateInteractionPointer(event);
-      if (this.isInteractionHit(event)) this.beginPat();
-      if (this.patting) this.canvas.setPointerCapture(event.pointerId);
+      if (!this.interactionReady) return;
+      if (this.interactionState !== "idle") return;
+      if (this.isInteractionHit(event) && this.beginPat()) this.canvas.setPointerCapture(event.pointerId);
       return;
     }
     this.useManualCamera();
@@ -772,7 +873,6 @@ export class SpineRenderer {
 
   private onPointerMove = (event: PointerEvent) => {
     if (this.interactionMode === "interaction") {
-      if (!this.interactionReady) return;
       this.pointerInside = true;
       this.updateInteractionPointer(event);
       return;
@@ -805,7 +905,7 @@ export class SpineRenderer {
   };
 
   private onPointerEnter = (event: PointerEvent) => {
-    if (this.interactionMode !== "interaction" || !this.interactionReady) return;
+    if (this.interactionMode !== "interaction") return;
     this.pointerInside = true;
     this.updateInteractionPointer(event);
   };
@@ -814,20 +914,30 @@ export class SpineRenderer {
     if (this.interactionMode !== "interaction") return;
     this.pointerInside = false;
     this.interactionPointer = null;
+    this.eyeFollowHold = 0;
     if (!this.canvas.hasPointerCapture(event.pointerId)) this.endLook();
   };
 
   private updateInteractionPointer(event: PointerEvent) {
-    if (!this.bundle || !this.interactionReady) return;
+    if (!this.bundle) return;
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     const world = this.pointerWorldFromEvent(event);
+    const wasOverCharacter = Boolean(this.interactionPointer);
     this.interactionPointer = world && interactionHit(this.bundle.skeleton, world.x, world.y) ? {
       x: Math.max(0, Math.min(rect.width, event.clientX - rect.left)),
       y: Math.max(0, Math.min(rect.height, event.clientY - rect.top)),
     } : null;
-    if (this.interactionPointer) this.beginLook();
-    else this.endLook();
+    if (!this.interactionReady) {
+      this.eyeFollowHold = 0;
+      return;
+    }
+    if (!this.interactionPointer) {
+      this.eyeFollowHold = 0;
+      this.endLook();
+    } else if (!wasOverCharacter) {
+      this.eyeFollowHold = 0;
+    }
   }
 
   private pointerWorld(): Vector3 | null {
@@ -869,15 +979,15 @@ export class SpineRenderer {
     const pointer = this.pointerWorld();
     const desired = pointer
       ? {
-        x: base.x + Math.max(-bundle.viewport.width * 0.24, Math.min(bundle.viewport.width * 0.24, pointer.x - base.x)),
-        y: base.y + Math.max(-bundle.viewport.height * 0.32, Math.min(bundle.viewport.height * 0.32, pointer.y - base.y)),
+        x: base.x + Math.max(-eyeTarget.rangeX, Math.min(eyeTarget.rangeX, pointer.x - base.x)),
+        y: base.y + Math.max(-eyeTarget.rangeY, Math.min(eyeTarget.rangeY, pointer.y - base.y)),
       }
       : base;
-    const current = this.eyeFollowWorld ?? { x: eyeTarget.bone.worldX, y: eyeTarget.bone.worldY };
+    const current = this.interactionFollowWorld ?? { x: eyeTarget.bone.worldX, y: eyeTarget.bone.worldY };
     const amount = Math.min(1, Math.max(0.08, delta * (pointer ? 14 : 10)));
     current.x += (desired.x - current.x) * amount;
     current.y += (desired.y - current.y) * amount;
-    this.eyeFollowWorld = current;
+    this.interactionFollowWorld = current;
     const local = eyeTarget.bone.parent
       ? eyeTarget.bone.parent.worldToLocal(new Vector2(current.x, current.y))
       : new Vector2(current.x - bundle.skeleton.x, current.y - bundle.skeleton.y);
@@ -886,6 +996,27 @@ export class SpineRenderer {
     // The authored Touch_Eye constraints consume the target bone during the
     // world-transform pass. Re-run that pass after moving the target so the
     // eyes, brows and Touch_Point followers respond in the same frame.
+    bundle.skeleton.updateWorldTransform(Physics.pose);
+  }
+
+  private applyTouchFollow(delta: number) {
+    const bundle = this.bundle;
+    const touchTarget = bundle?.touchTarget;
+    if (!bundle || !touchTarget) return;
+    const base = touchTarget.bone.parent
+      ? touchTarget.bone.parent.localToWorld(new Vector2(touchTarget.baseX, touchTarget.baseY))
+      : new Vector2(touchTarget.baseX + bundle.skeleton.x, touchTarget.baseY + bundle.skeleton.y);
+    const pointer = this.pointerWorld() ?? base;
+    const amount = Math.min(1, Math.max(0.12, delta * 18));
+    const current = this.interactionFollowWorld ?? { x: touchTarget.bone.worldX, y: touchTarget.bone.worldY };
+    current.x += (pointer.x - current.x) * amount;
+    current.y += (pointer.y - current.y) * amount;
+    this.interactionFollowWorld = current;
+    const local = touchTarget.bone.parent
+      ? touchTarget.bone.parent.worldToLocal(new Vector2(current.x, current.y))
+      : new Vector2(current.x - bundle.skeleton.x, current.y - bundle.skeleton.y);
+    touchTarget.bone.x = local.x;
+    touchTarget.bone.y = local.y;
     bundle.skeleton.updateWorldTransform(Physics.pose);
   }
 

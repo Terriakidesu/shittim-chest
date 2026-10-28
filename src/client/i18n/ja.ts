@@ -407,7 +407,7 @@ export const ja: Record<keyof typeof en, string> = {
   "spine.loading": "ロビーセットを読み込み中…",
   "spine.loadingDetail": "ローカルのアトラス、テクスチャ、スケルトンを読み込んでいます",
   "spine.stageHint": "ドラッグで移動 · スクロールでズーム",
-  "spine.interactionHint": "ステージ上で視線を追従 · キャラクターを押してなでる",
+  "spine.interactionHint": "キャラクター上で少し待つと視線を追従 · キャラクターを押してなでる",
   "spine.controlsAria": "Spine再生コントロール",
   "spine.pause": "アニメーションを一時停止",
   "spine.play": "アニメーションを再生",
