@@ -92,7 +92,7 @@ minutes. Check `Settings → Pages` (or `gh api repos/<owner>/<repo>/pages
 
 ## Routing and SEO
 
-Routes are **path-based**: `/`, `/calendar`, `/simulator`, `/about`. GitHub
+Routes are **path-based**: `/`, `/calendar`, `/simulator`, `/spine`, `/about`. GitHub
 Pages serves an extensionless URL from the matching `.html` file, so
 `/calendar` and `/calendar.html` are the same document and both work.
 
@@ -106,6 +106,7 @@ each route is a real document and carries its own:
 | Lobby | `/` | `public/og/home.png` |
 | Calendar | `/calendar` | `public/og/calendar.png` |
 | Simulator | `/simulator` | `public/og/simulator.png` |
+| Spine viewer | `/spine` | `public/og/about.png` |
 | About | `/about` | `public/og/about.png` |
 
 Two things follow from this and are easy to break:
@@ -113,14 +114,20 @@ Two things follow from this and are easy to break:
 - **Route documents are flat siblings of `index.html`**, never
   `calendar/index.html`, and they are Vite build entries (see `vite.config.ts`).
   A subdirectory would make every relative asset URL (`./assets/...`,
-  `./data/...`) resolve one level too deep. All four entries load the same
-  `main.tsx`, and Rollup emits one shared chunk, so the extra entries cost three
+  `./data/...`) resolve one level too deep. All five entries load the same
+  `main.tsx`, and Rollup emits one shared chunk, so the extra entries cost four
   small HTML files and no duplicated JavaScript.
 - **`og:image` must be absolute, and static HTML cannot compute it**, so the
-  origin is hardcoded in five files: `index.html`, the three route documents,
-  and `sitemap.xml`. A domain change means editing all five. The runtime copy in
+  origin is hardcoded in six files: `index.html`, the four route documents,
+  and `sitemap.xml`. A domain change means editing all six. The runtime copy in
   `src/client/seo.ts` resolves against `location.href` instead, so it follows
   the domain by itself. Nothing checks that the two copies agree.
+
+The Spine viewer is intentionally local-only. Choose the directory containing
+the exported Spine assets in a Chromium browser; the page reads the selected
+`.atlas`, `.png`, and `.skel` files through
+the File System Access API and never uploads them. The character and variant
+grouping index is bundled at `src/client/spine/characters.json`.
 
 `public/404.html` forwards the shapes that still need handling: trailing-slash
 URLs (`/calendar/`) and pre-migration hash links. `src/client/route.ts`

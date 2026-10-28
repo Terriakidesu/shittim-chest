@@ -19,7 +19,7 @@
  *   (`./assets/...`, `./data/...`) resolve one level too deep.
  */
 
-export type Route = "/" | "/calendar" | "/simulator" | "/about";
+export type Route = "/" | "/calendar" | "/simulator" | "/about" | "/spine";
 
 /**
  * Resolve a pathname to a route. Matches on the trailing segment so it works
@@ -32,6 +32,7 @@ export function routeFromPath(pathname: string): Route {
   if (/(^|\/)calendar(\.html)?$/i.test(clean)) return "/calendar";
   if (/(^|\/)simulator(\.html)?$/i.test(clean)) return "/simulator";
   if (/(^|\/)about(\.html)?$/i.test(clean)) return "/about";
+  if (/(^|\/)spine(\.html)?$/i.test(clean)) return "/spine";
   return "/";
 }
 
@@ -61,7 +62,7 @@ export function query(): URLSearchParams {
  * the entire reason the routes moved in the first place.
  */
 export function redirectLegacyHash() {
-  const match = /^#\/?(calendar|simulator|about)\b/i.exec(window.location.hash);
+  const match = /^#\/?(calendar|simulator|about|spine)\b/i.exec(window.location.hash);
   if (!match) return;
   const target = new URL(`./${match[1]}.html`, window.location.href);
   target.hash = "";
@@ -79,4 +80,5 @@ export const link = {
   calendar: "./calendar.html",
   simulator: "./simulator.html",
   about: "./about.html",
+  spine: "./spine.html",
 };

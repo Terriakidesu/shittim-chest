@@ -140,6 +140,10 @@ export function IconPlay(props: IconProps) {
   return <Solid points="7 4 20 12 7 20" {...props} />;
 }
 
+export function IconPause(props: IconProps) {
+  return <Base {...props}><line x1="8" y1="5" x2="8" y2="19" /><line x1="16" y1="5" x2="16" y2="19" /></Base>;
+}
+
 /** Five-point rarity star. Colour comes from the surrounding text. */
 export function IconStar(props: IconProps) {
   return (

@@ -1,12 +1,13 @@
 import { link } from "../route";
 import { t, type LangKey } from "../i18n";
 
-export type SiteNavPage = "home" | "calendar" | "simulator" | "about";
+export type SiteNavPage = "home" | "calendar" | "simulator" | "about" | "spine";
 
 const pages: [SiteNavPage, string, LangKey][] = [
   ["home", link.home, "nav.home"],
   ["calendar", link.calendar, "nav.calendar"],
   ["simulator", link.simulator, "nav.simulator"],
+  ["spine", link.spine, "nav.spine"],
   ["about", link.about, "nav.about"],
 ];
 

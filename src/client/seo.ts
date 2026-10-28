@@ -67,6 +67,14 @@ export const ROUTE_META: Record<Route, RouteMeta> = {
     image: "og/about.png",
     imageAlt: "Credits and data sources for Shittim Chest",
   },
+  "/spine": {
+    title: "Spine Lobby Viewer — Shittim Chest",
+    description:
+      "Preview Blue Archive lobby Spine animations from a local game asset folder, grouped by character and variant.",
+    share: "./spine.html",
+    image: "og/about.png",
+    imageAlt: "The Shittim Chest Spine lobby viewer",
+  },
 };
 
 const SITE_NAME = "Shittim Chest";
@@ -77,6 +85,7 @@ const ROUTE_SEO_SUFFIX: Record<Route, string> = {
   "/calendar": "calendar",
   "/simulator": "simulator",
   "/about": "about",
+  "/spine": "spine",
 };
 
 /**

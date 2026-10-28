@@ -8,6 +8,12 @@ const num = (v: string | undefined, fallback: number) => {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
+// The same config module is imported by the export scripts and by the static
+// client for school metadata. Vite's browser runtime has no Node `process`, so
+// read it only when it actually exists instead of making every client route
+// fail before React mounts.
+const env: Record<string, string | undefined> = typeof process === "undefined" ? {} : process.env;
+
 /** Wiki pages are stable; only the year subpages change over time. */
 export const WIKI_BASE =
   "https://bluearchive.wiki/w/index.php";
@@ -34,19 +40,19 @@ export const SCHALEDB_SERVERS = ["jp", "en", "kr"] as const;
 
 export const CONFIG = {
   /** Banner runs come and go on a 7-14 day cycle; daily polling is waste. */
-  refreshIntervalDays: num(process.env.REFRESH_INTERVAL_DAYS, 7),
+  refreshIntervalDays: num(env.REFRESH_INTERVAL_DAYS, 7),
 
-  port: num(process.env.PORT, 3001),
-  host: process.env.HOST ?? "localhost",
+  port: num(env.PORT, 3001),
+  host: env.HOST ?? "localhost",
 
-  dbPath: process.env.DB_PATH ?? "data/calendar.db",
+  dbPath: env.DB_PATH ?? "data/calendar.db",
   /** Committed snapshots keep backtests reproducible. */
-  snapshotDir: process.env.SNAPSHOT_DIR ?? "data/snapshots",
+  snapshotDir: env.SNAPSHOT_DIR ?? "data/snapshots",
   /** Local mirror for avatar, banner and mascot art. */
-  imageCacheDir: process.env.IMAGE_CACHE_DIR ?? "data/img-cache",
+  imageCacheDir: env.IMAGE_CACHE_DIR ?? "data/img-cache",
 
   /** How many days of the future to project. */
-  forecastHorizonDays: num(process.env.FORECAST_HORIZON_DAYS, 240),
+  forecastHorizonDays: num(env.FORECAST_HORIZON_DAYS, 240),
 
   /**
    * The wiki timestamps BOTH servers at +09:00, but Global's game clock is

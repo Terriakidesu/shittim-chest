@@ -1,0 +1,205 @@
+import { describe, expect, test } from "bun:test";
+import { BlendMode, BoneData, Physics, RegionAttachment, Skeleton, SkeletonData, SlotData } from "@esotericsoftware/spine-core";
+import { authoredViewport, fitScene, sceneBounds } from "./spineCamera";
+import { SpineRenderer } from "./spineRuntime";
+
+function scene() {
+  const data = new SkeletonData();
+  const root = new BoneData(0, "root", null);
+  data.bones.push(root);
+  for (const name of ["background", "hidden", "additive", "screen", "fx_glow", "transparent"]) {
+    data.slots.push(new SlotData(data.slots.length, name, root));
+  }
+  const skeleton = new Skeleton(data);
+  for (const [index, slot] of skeleton.slots.entries()) {
+    const attachment = new RegionAttachment(slot.data.name, slot.data.name);
+    const size = index === 0 ? 100 : 1000;
+    attachment.offset = [0, 0, 0, size, size * 2, size, size * 2, 0];
+    slot.setAttachment(attachment);
+  }
+  skeleton.slots[1]!.color.a = 0;
+  skeleton.slots[2]!.data.blendMode = BlendMode.Additive;
+  skeleton.slots[3]!.data.blendMode = BlendMode.Screen;
+  (skeleton.slots[5]!.getAttachment() as RegionAttachment).color.a = 0;
+  skeleton.updateWorldTransform(Physics.update);
+  return skeleton;
+}
+
+function authoredScene() {
+  const data = new SkeletonData();
+  const root = new BoneData(0, "root", null);
+  const layer = new BoneData(1, "All_Layer", root);
+  layer.y = 962;
+  const offstage = new BoneData(2, "All_Layer_00", layer);
+  offstage.x = -5000;
+  const onstage = new BoneData(3, "All_Layer_01", layer);
+  const characterLayer = new BoneData(4, "PC_Layer", onstage);
+  data.bones.push(root, layer, offstage, onstage, characterLayer);
+
+  data.slots.push(
+    new SlotData(0, "02-BG", offstage),
+    new SlotData(1, "BG", onstage),
+    new SlotData(2, "BG_detail", onstage),
+    new SlotData(3, "character", characterLayer),
+  );
+  const skeleton = new Skeleton(data);
+  const makeAttachment = (slotIndex: number, name: string, width: number, height: number, x = -width / 2) => {
+    const attachment = new RegionAttachment(name, name);
+    attachment.offset = [x, 0, x, height, x + width, height, x + width, 0];
+    skeleton.slots[slotIndex]!.setAttachment(attachment);
+  };
+  makeAttachment(0, "02/BG", 400, 200);
+  makeAttachment(1, "01/BG", 200, 100);
+  makeAttachment(2, "01/BG_detail", 20, 20, 100);
+  makeAttachment(3, "character", 40, 80, -20);
+  skeleton.updateWorldTransform(Physics.update);
+  return skeleton;
+}
+
+describe("Spine scene framing", () => {
+  test("ignores invisible attachments and oversized effect quads", () => {
+    const bounds = sceneBounds(scene());
+    expect(bounds.x).toBeCloseTo(0);
+    expect(bounds.y).toBeCloseTo(0);
+    expect(bounds.width).toBeCloseTo(200);
+    expect(bounds.height).toBeCloseTo(100);
+  });
+
+  test("fits the same scene to the larger fullscreen viewport", () => {
+    const bounds = { x: -100, y: -50, width: 200, height: 100 };
+    const embedded = fitScene(bounds, 800, 450);
+    const fullscreen = fitScene(bounds, 1920, 1080);
+    expect(embedded.x).toBe(0);
+    expect(embedded.y).toBe(0);
+    expect(fullscreen.zoom / embedded.zoom).toBeCloseTo(800 / 1920);
+    expect(bounds.width / fullscreen.zoom / 1920).toBeCloseTo(1 / 1.02);
+  });
+
+  test("fits portrait viewports without cropping the scene", () => {
+    const fit = fitScene({ x: 20, y: 30, width: 200, height: 100 }, 300, 600);
+    expect(fit.x).toBe(120);
+    expect(fit.y).toBe(80);
+    expect(fit.zoom * 300).toBeGreaterThanOrEqual(200);
+    expect(fit.zoom * 600).toBeGreaterThanOrEqual(100);
+  });
+
+  test("fills the end-frame viewport by cropping instead of letterboxing", () => {
+    const bounds = { x: 0, y: 0, width: 1440, height: 1080 };
+    const fit = fitScene(bounds, 1920, 1080, true);
+    expect(fit.zoom).toBe(0.75);
+    expect(fit.x).toBe(720);
+    expect(fit.y).toBe(540);
+    expect(1920 * fit.zoom).toBeLessThanOrEqual(bounds.width);
+    expect(1080 * fit.zoom).toBeLessThanOrEqual(bounds.height);
+  });
+
+  test("frames the onstage background rather than both cuts of a multi-scene lobby", () => {
+    const skeleton = scene();
+    const cut = skeleton.slots[1]!;
+    cut.color.a = 1;
+    cut.data.name = "02-BG";
+    const attachment = cut.getAttachment() as RegionAttachment;
+    attachment.name = "02/BG";
+    attachment.offset = [-5000, 0, -5000, 100, -4800, 100, -4800, 0];
+    const bounds = sceneBounds(skeleton);
+    expect(bounds.x).toBeCloseTo(0);
+    expect(bounds.width).toBeCloseTo(200);
+  });
+
+  test("uses the owned onstage child and its widest backdrop for an authored viewport", () => {
+    const skeleton = authoredScene();
+    const viewport = authoredViewport(skeleton);
+    expect(viewport.authored).toBe(true);
+    expect(viewport.anchorX).toBeCloseTo(0);
+    expect(viewport.anchorY).toBeCloseTo(962);
+    expect(viewport.width).toBeCloseTo(200);
+    expect(viewport.height).toBeCloseTo(200 * 9 / 16);
+    expect(viewport.x).toBeCloseTo(-100);
+    expect(viewport.y).toBeCloseTo(962 - 200 * 9 / 32);
+  });
+
+  test("keeps the authored anchor fixed when a scene parent is animated", () => {
+    const setup = authoredScene();
+    const animated = authoredScene();
+    animated.findBone("All_Layer_01")!.x = 700;
+    animated.updateWorldTransform(Physics.update);
+    const viewport = authoredViewport(animated, setup);
+    expect(viewport.anchorX).toBeCloseTo(0);
+    expect(viewport.anchorY).toBeCloseTo(962);
+    expect(viewport.width).toBeCloseTo(200);
+  });
+
+  test("resolves a camera rig nested under a scaled and offset wrapper", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const wrapper = new BoneData(1, "Scale", root);
+    wrapper.x = -178;
+    wrapper.y = 43;
+    wrapper.scaleX = wrapper.scaleY = 1.13;
+    const camera = new BoneData(2, "Main_Camera", wrapper);
+    camera.y = 962;
+    const layer = new BoneData(3, "All_Layer", camera);
+    data.bones.push(root, wrapper, camera, layer);
+    data.slots.push(new SlotData(0, "BG", layer));
+    const setup = new Skeleton(data);
+    const background = new RegionAttachment("BG", "BG");
+    background.offset = [-1700, -1300, -1700, 1300, 1700, 1300, 1700, -1300];
+    setup.slots[0]!.setAttachment(background);
+    setup.updateWorldTransform(Physics.update);
+    const animated = new Skeleton(data);
+    animated.slots[0]!.setAttachment(background);
+    animated.findBone("Main_Camera")!.y += 500;
+    animated.updateWorldTransform(Physics.update);
+    const viewport = authoredViewport(animated, setup);
+    expect(viewport.authored).toBe(true);
+    expect(viewport.anchorX).toBeCloseTo(-178);
+    expect(viewport.anchorY).toBeCloseTo(43 + 962 * 1.13);
+    expect(viewport.width).toBeCloseTo(3400 * 1.13, 2);
+    expect(viewport.y + viewport.height / 2).toBeCloseTo(viewport.anchorY);
+  });
+
+  test("does not use an independent background layer's offstage origin as the camera center", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const character = new BoneData(1, "PC_Layer", root);
+    character.y = -300;
+    const backgroundLayer = new BoneData(2, "Background_Layer", root);
+    backgroundLayer.y = -500;
+    data.bones.push(root, character, backgroundLayer);
+    data.slots.push(new SlotData(0, "sky", backgroundLayer), new SlotData(1, "street lamp", backgroundLayer));
+    const skeleton = new Skeleton(data);
+    const sky = new RegionAttachment("sky", "sky");
+    sky.offset = [-1580, 351, -1580, 2531, 1580, 2531, 1580, 351];
+    const prop = new RegionAttachment("street lamp", "street lamp");
+    prop.offset = [-100, -200, -100, 300, 100, 300, 100, -200];
+    skeleton.slots[0]!.setAttachment(sky);
+    skeleton.slots[1]!.setAttachment(prop);
+    skeleton.updateWorldTransform(Physics.update);
+    const viewport = authoredViewport(skeleton);
+    expect(viewport.authored).toBe(true);
+    expect(viewport.anchorY).toBeCloseTo(941);
+    expect(viewport.width).toBeCloseTo(3160);
+    expect(viewport.y).toBeGreaterThan(-149);
+    expect(viewport.y + viewport.height).toBeLessThan(2031);
+  });
+
+  test("renderer refits on fullscreen resize while preserving manual zoom", () => {
+    const bounds = { x: 0, y: 0, width: 200, height: 100 };
+    const fit = fitScene(bounds, 800, 450);
+    const camera = { viewportWidth: 800, viewportHeight: 450, position: { x: 110, y: 45 }, zoom: fit.zoom / 2, update() {} };
+    // Exercise the real resize method without needing a WebGL context.
+    const renderer = Object.assign(Object.create(SpineRenderer.prototype), {
+      destroyed: false,
+      pendingFit: false,
+      cameraMode: "fit",
+      fitCameraPose: { x: fit.x, y: fit.y, scaleX: fit.zoom, scaleY: fit.zoom },
+      bundle: { bounds },
+      canvas: { width: 1920, height: 1080 },
+      renderer: { camera, resize() { camera.viewportWidth = 1920; camera.viewportHeight = 1080; } },
+    });
+    renderer.resize();
+    expect(camera.zoom).toBeCloseTo(fitScene(bounds, 1920, 1080).zoom / 2);
+    expect(camera.position.x).toBe(110);
+    expect(camera.position.y).toBe(45);
+  });
+});

@@ -15,9 +15,9 @@ pass.
 
 **Never add a network call to the client.** It reads only `public/data/*.json` and `public/img/`, which the export commits. No `/api/*` exists.
 
-**Routes are path-based** (`/calendar`, `/simulator`, `/about`), and each route is a real document at the repo root — `index.html`, `calendar.html`, `simulator.html`, `about.html` — listed as Vite build inputs. **Keep them flat siblings of `index.html`; never move one into a subdirectory.** A trailing slash or a subdirectory makes every relative asset URL (`./assets/...`, `./data/...`) resolve one level too deep, and the failure is silent: the HTML loads, the JS 404s, the page renders blank. `src/client/route.ts` matches on the trailing path segment so both `/calendar` and `/calendar.html` resolve; GitHub Pages serves the former from the latter.
+**Routes are path-based** (`/calendar`, `/simulator`, `/spine`, `/about`), and each route is a real document at the repo root — `index.html`, `calendar.html`, `simulator.html`, `spine.html`, `about.html` — listed as Vite build inputs. **Keep them flat siblings of `index.html`; never move one into a subdirectory.** A trailing slash or a subdirectory makes every relative asset URL (`./assets/...`, `./data/...`) resolve one level too deep, and the failure is silent: the HTML loads, the JS 404s, the page renders blank. `src/client/route.ts` matches on the trailing path segment so both `/calendar` and `/calendar.html` resolve; GitHub Pages serves the former from the latter.
 
-**Route metadata is duplicated on purpose, in two places that must stay in sync.** `og:image` has to be an absolute URL and static HTML cannot compute it, so the origin is hardcoded in five files: `index.html`, the three route documents, and `sitemap.xml`. A domain change means editing all five. `src/client/seo.ts` (`ROUTE_META`) holds the same copy and applies it at runtime, resolving against `location.href` so it follows the domain by itself. Nothing checks that the two agree. The cards in `public/og/` are **not** build output — they are prepared offline from `scripts/og/template.html`, so changing a card means re-rendering it, not rebuilding.
+**Route metadata is duplicated on purpose, in two places that must stay in sync.** `og:image` has to be an absolute URL and static HTML cannot compute it, so the origin is hardcoded in six files: `index.html`, the four route documents, and `sitemap.xml`. A domain change means editing all six. `src/client/seo.ts` (`ROUTE_META`) holds the same copy and applies it at runtime, resolving against `location.href` so it follows the domain by itself. Nothing checks that the two agree. The cards in `public/og/` are **not** build output — they are prepared offline from `scripts/og/template.html`, so changing a card means re-rendering it, not rebuilding.
 
 **`redirectLegacyHash()` in `route.ts` must stay wired into `main.tsx`.** Old `/#/simulator` links resolve to a perfectly valid `/`, so `public/404.html` never runs for them — without the JS redirect they silently land on the lobby.
 
@@ -189,7 +189,7 @@ string, so a key can ship before its translations land.
   simulator's persisted `localStorage` key: switching languages must not wipe
   a collection or counters. Tests that flip the language must restore it
   (try/finally — bun's `expect()` takes no message argument).
-- Static `<head>` metadata (`index.html`, the three route documents,
+- Static `<head>` metadata (`index.html`, the four route documents,
   `sitemap.xml`) stays English-only; only `applySeo` localizes it, at runtime.
 - Decorative English is untranslated on purpose: contract/document seals, the
   "SHITTIM CHEST" placeholder, "Pick Up!" card labels, source/software names
