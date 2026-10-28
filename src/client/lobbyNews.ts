@@ -50,7 +50,10 @@ export function latestBannerNews(banners: Banner[], nowMs = Date.now()): LobbyNe
       kind,
       server,
       official: false,
-      announced: batch.every((banner) => banner.provisional === true),
+      // Only an announcement that has not opened yet is *announced*. Once the
+      // batch starts the card is live, even while its pool is still a
+      // placeholder from the announced table.
+      announced: start > nowMs && batch.every((banner) => banner.provisional === true),
       students: dedupeStudents(batch),
       startMs: start,
       endMs: Math.max(...batch.map((banner) => banner.endMs)),
@@ -87,11 +90,17 @@ export function forecastNews(banners: Banner[], nowMs = Date.now()): LobbyNewsIt
  * Hand-kept announcements the snapshot already carries, one item per JP start
  * day. `latestBannerNews` deliberately prefers what is *running*, so a pickup
  * announced for tomorrow would otherwise never reach the strip.
+ *
+ * Rows that have already opened are skipped: `latestBannerNews` reports them as
+ * live, and a second card for the same batch would just repeat it. That case is
+ * routine now that the wiki records a batch hours before SchaleDB publishes the
+ * student — the banner is real and running while its pool is still a
+ * placeholder.
  */
 export function announcedNews(banners: Banner[], nowMs = Date.now()): LobbyNewsItem[] {
   const groups = new Map<string, Banner[]>();
   for (const banner of banners) {
-    if (banner.provisional !== true || !usable(banner) || banner.endMs <= nowMs) continue;
+    if (banner.provisional !== true || !usable(banner) || banner.startMs <= nowMs || banner.endMs <= nowMs) continue;
     const key = `announced:${banner.server}:${banner.startMs}`;
     groups.set(key, [...(groups.get(key) ?? []), banner]);
   }

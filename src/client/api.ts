@@ -66,9 +66,11 @@ export interface Banner {
   prediction: Prediction | null;
   forecastStatus: "arrived" | "scheduled" | "estimated" | "unresolved";
   /**
-   * Hand-kept from an official announcement because the wiki and SchaleDB do
-   * not carry the banner yet. Provisional rows are shown on the calendar but
-   * never in the simulator or the forecast.
+   * The featured student is still the announced placeholder: the wiki has the
+   * banner (id, dates, art) but SchaleDB has not published the student, so the
+   * pool, names and portraits come from `scripts/announced-banners.ts` under
+   * negative ids. Shown on the calendar with an announcement badge and kept out
+   * of the simulator, which cannot build a roster or a spark exchange for it.
    */
   provisional?: boolean;
 }

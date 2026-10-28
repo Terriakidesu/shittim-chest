@@ -173,7 +173,7 @@ export const en = {
   "cal.evidence.insufficient": "Insufficient calibration",
   "cal.disclaimer.estimate": "Estimate only, not an announcement.",
   "cal.disclaimer.unresolved": "No reliable Global correspondence or date estimate is available.",
-  "cal.disclaimer.announced": "Announced by the Japanese server on 27 Oct 2026. The dates come from the maintenance notice; the character records and banner art arrive with the next data refresh.",
+  "cal.disclaimer.announced": "Recorded on the Blue Archive Wiki, with its dates and banner art. SchaleDB has not published the featured student yet, so the name and portrait are still the announced ones.",
   "cal.openPeriod": "Open this period in the recruitment simulator",
   "cal.guide.prefix": "Banner history from the ",
   "cal.guide.wikiLink": "Blue Archive Wiki",

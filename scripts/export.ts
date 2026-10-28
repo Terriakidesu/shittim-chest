@@ -43,6 +43,7 @@ import { reuseRerunBannerImages } from "./banner-art";
 import { applyOfficialGlobalSchedules } from "./official-schedules";
 import {
   ANNOUNCED_BANNERS,
+  announcedPlaceholderCharacters,
   type AnnouncedBanner,
   pendingAnnouncedBanners,
 } from "./announced-banners";
@@ -118,6 +119,28 @@ function toDto(banner: Banner, snap: Snapshot): BannerDto {
     banner.server === "JP" ? (snap.predictions.get(banner.id) ?? null) : null;
   const confirmed =
     banner.server === "JP" ? snap.confirmed.get(banner.id) : undefined;
+  const characters = banner.characterIds
+    .map((id) => snap.characters.byId(id))
+    .filter((c): c is NonNullable<typeof c> => Boolean(c))
+    .map((c) => ({
+      id: c.id,
+      name: c.nameEn,
+      nameJp: c.nameJp,
+      nameKr: c.nameKr,
+      school: c.school,
+      starGrade: c.starGrade,
+      avatar: avatarPath(c.id),
+      availability: c.availability,
+    }));
+  // The wiki often lists the batch hours before SchaleDB publishes the student,
+  // so the rate-up name resolves to nothing: the banner would ship with an empty
+  // pool, print its raw code instead of a name, and hand the simulator a period
+  // with no roster. The announced placeholder fills that gap without the wiki's
+  // id, dates and banner art being thrown away.
+  const placeholders =
+    characters.length || banner.server !== "JP"
+      ? []
+      : announcedPlaceholderCharacters(banner.rateupRaw);
   return {
     id: banner.id,
     server: banner.server,
@@ -128,19 +151,7 @@ function toDto(banner: Banner, snap: Snapshot): BannerDto {
     evergreen: banner.evergreen,
     startMs: banner.startMs,
     endMs: banner.endMs,
-    characters: banner.characterIds
-      .map((id) => snap.characters.byId(id))
-      .filter((c): c is NonNullable<typeof c> => Boolean(c))
-      .map((c) => ({
-        id: c.id,
-        name: c.nameEn,
-        nameJp: c.nameJp,
-        nameKr: c.nameKr,
-        school: c.school,
-        starGrade: c.starGrade,
-        avatar: avatarPath(c.id),
-        availability: c.availability,
-      })),
+    characters: characters.length ? characters : placeholders,
     imageUrl: banner.imageFile ? bannerPath(banner.imageFile) : null,
     confirmedGlStartMs: confirmed?.startMs ?? null,
     prediction,
@@ -155,6 +166,7 @@ function toDto(banner: Banner, snap: Snapshot): BannerDto {
               ? "scheduled"
               : "arrived"
             : "unresolved",
+    ...(placeholders.length ? { provisional: true } : {}),
   };
 }
 
@@ -451,6 +463,10 @@ if (!imagesOnly) {
 
   // Announced-only rows: merged into banners.json, kept out of the forecast.
   const announced = pendingAnnouncedBanners(snap.banners, snap.fetchedAtMs).map(announcedDto);
+  // Wiki rows whose pool is still a placeholder: the banner is real (wiki id,
+  // dates and art) but SchaleDB has not published the rate-up student yet.
+  const bannerRows = [...snap.banners.map(dto), ...announced];
+  const placeholders = bannerRows.filter((b) => b.provisional && b.id > 0);
 
   const forecastRows = [...snap.predictions.values()]
     .filter((p) => byId.has(p.bannerId))
@@ -491,8 +507,8 @@ if (!imagesOnly) {
   const banners = {
     from: 0,
     to: Date.UTC(2100, 0, 1),
-    count: snap.banners.length + announced.length,
-    banners: [...snap.banners.map(dto), ...announced],
+    count: bannerRows.length,
+    banners: bannerRows,
   };
 
   const forecast = {
@@ -549,6 +565,12 @@ if (!imagesOnly) {
   // print both halves: a row that never clears means the dedupe drifted.
   console.log(
     `announced    : ${announced.length} provisional, ${ANNOUNCED_BANNERS.length - announced.length} superseded or expired`,
+  );
+  // A wiki row carrying placeholder characters is the normal state for a day or
+  // so after an update: it clears when SchaleDB publishes the student.
+  console.log(
+    `placeholder  : ${placeholders.length} wiki banners with announced characters` +
+      (placeholders.length ? ` (${placeholders.map((b) => b.code).join(", ")})` : ""),
   );
 
   // Rate-up names that link to no student (not even by alias). New variant

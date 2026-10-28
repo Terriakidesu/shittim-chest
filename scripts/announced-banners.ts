@@ -14,20 +14,31 @@
  * measured by start-day proximity rather than a code match: the wiki's code
  * for a brand-new student is itself a guess until SchaleDB publishes it.
  *
+ * The two sources do not always arrive together. The wiki usually records the
+ * batch within hours, while SchaleDB's student dump — the only place the
+ * numeric ids, artwork and localized names come from — can lag by a day. The
+ * wiki's `Rateup_character` then names a student that resolves to nothing, and
+ * the banner ships with an empty pool: the calendar prints the raw code and
+ * the simulator builds a period with no roster. `announcedPlaceholderCharacters`
+ * covers that window by lending these placeholder characters to the real wiki
+ * banner, which keeps the wiki's id, dates and banner art.
+ *
  * Two deliberate refusals:
- *  - Provisional rows never reach the simulator. A banner without a real
- *    student pool cannot support a spark exchange, and an empty period in the
- *    picker is worse than no period.
- *  - Provisional rows never reach `forecast.json`. They carry no JP→GL
- *    prediction, and letting them into the alignment model would shift real
- *    forecasts on the strength of a date we read off a news post.
+ *  - A provisional row that still has no wiki banner never reaches the
+ *    simulator or `forecast.json`. It carries no resolved pool and no JP→GL
+ *    prediction, and letting a date read off a news post into the alignment
+ *    model would shift real forecasts. Once the wiki records the banner the
+ *    date is upstream's, so the prediction is real even while the pool is
+ *    still a placeholder.
  *
  * Character ids are negative on purpose: SchaleDB ids are positive, so a
  * placeholder can never collide with — or be mistaken for — a real student.
  * Their artwork lives under `public/img/announced/`, cropped from the official
- * promo art for the announcement (see `AVATAR_SOURCE`). When the real student
- * arrives the placeholder row drops out and those files should be deleted.
+ * promo art for the announcement (see `AVATAR_SOURCE`). Delete those files
+ * once SchaleDB publishes the student; nothing else references them.
  */
+
+import { normalizeCharName, splitRateup } from "../src/model/domain/characters";
 
 /** Widest gap between an announced start and the wiki's recorded one. */
 const DEDUPE_TOLERANCE_MS = 36 * 60 * 60 * 1000;
@@ -71,8 +82,8 @@ export interface AnnouncedBanner {
 /**
  * The 10/28 maintenance batch: two limited pickups, both Trinity Racing forms.
  * Announced by the JP news post of 2026-10-27 13:55 JST (04:55 UTC); the
- * maintenance window (11:00–19:00 JST) puts the start at 19:00 JST, ending
- * 11/11 10:59 JST.
+ * maintenance ran 02:00–11:00 JST, so the wiki's recorded start is 11:00 JST
+ * (02:00 UTC) — kept here in case the wiki row ever disappears again.
  */
 export const ANNOUNCED_BANNERS: AnnouncedBanner[] = [
   {
@@ -81,7 +92,7 @@ export const ANNOUNCED_BANNERS: AnnouncedBanner[] = [
     type: "LimitedGacha",
     code: "Hifumi_(Racing)_release",
     limited: false,
-    startMs: Date.UTC(2026, 9, 28, 10, 0),
+    startMs: Date.UTC(2026, 9, 28, 2, 0),
     endMs: Date.UTC(2026, 10, 11, 1, 59),
     announcedAtMs: Date.UTC(2026, 9, 27, 4, 55),
     characters: [
@@ -103,7 +114,7 @@ export const ANNOUNCED_BANNERS: AnnouncedBanner[] = [
     type: "LimitedGacha",
     code: "Azusa_(Racing)_release",
     limited: false,
-    startMs: Date.UTC(2026, 9, 28, 10, 0),
+    startMs: Date.UTC(2026, 9, 28, 2, 0),
     endMs: Date.UTC(2026, 10, 11, 1, 59),
     announcedAtMs: Date.UTC(2026, 9, 27, 4, 55),
     characters: [
@@ -152,3 +163,29 @@ export function pendingAnnouncedBanners(
       ),
   );
 }
+
+/**
+ * Placeholder characters standing in for rate-up names the exporter could not
+ * resolve, so a wiki banner is not left with an empty pool.
+ *
+ * The match is on `Rateup_character` spellings, normalised the same way the
+ * SchaleDB join normalises them (`Hifumi (Racing)` → `hifumi_racing`), which is
+ * why the announced table stores the wiki's display name rather than its code.
+ * A name that does not appear in the table — a rerun sharing the batch, say —
+ * simply contributes nothing.
+ */
+export function announcedPlaceholderCharacters(
+  rateupRaw: string | null,
+  rows: readonly AnnouncedBanner[] = ANNOUNCED_BANNERS,
+): AnnouncedCharacter[] {
+  const wanted = new Set(splitRateup(rateupRaw).map(normalizeCharName));
+  if (!wanted.size) return [];
+  const out: AnnouncedCharacter[] = [];
+  for (const row of rows) {
+    for (const character of row.characters) {
+      if (wanted.has(normalizeCharName(character.name))) out.push(character);
+    }
+  }
+  return out;
+}
+

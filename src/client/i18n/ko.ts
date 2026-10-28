@@ -163,7 +163,7 @@ export const ko: Record<keyof typeof en, string> = {
   "cal.evidence.insufficient": "보정 데이터 부족",
   "cal.disclaimer.estimate": "추정일 뿐, 공식 발표가 아닙니다.",
   "cal.disclaimer.unresolved": "신뢰할 수 있는 글로벌 대응이나 날짜 추정이 없습니다.",
-  "cal.disclaimer.announced": "일본 서버에서 2026년 10월 27일에 공지되었습니다. 일정은 점검 공지를 따른 것이며, 학생 데이터와 배너 이미지는 다음 데이터 갱신에서 반영됩니다.",
+  "cal.disclaimer.announced": "일정과 배너 이미지는 Blue Archive Wiki 기록을 따릅니다. SchaleDB에 학생이 아직 등록되지 않아 학생 이름과 아이콘은 공지 시점의 것입니다.",
   "cal.openPeriod": "이 기간을 모집 시뮬레이터에서 열기",
   "cal.guide.prefix": "배너 기록: ",
   "cal.guide.wikiLink": "Blue Archive Wiki",

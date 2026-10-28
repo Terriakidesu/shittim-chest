@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   ANNOUNCED_BANNERS,
+  announcedPlaceholderCharacters,
   pendingAnnouncedBanners,
   type AnnouncedBanner,
 } from "./announced-banners";
@@ -71,4 +72,25 @@ test("evergreen select banners cannot swallow an announcement", () => {
 test("rows expire after their own window closes", () => {
   expect(pendingAnnouncedBanners([], end - 1, [row()])).toHaveLength(1);
   expect(pendingAnnouncedBanners([], end, [row()])).toEqual([]);
+});
+
+test("a wiki rate-up picks up the matching placeholder characters", () => {
+  const placeholders = ANNOUNCED_BANNERS.flatMap((b) => b.characters);
+  const hifumi = placeholders.find((c) => c.name === "Hifumi (Racing)")!;
+  // The wiki writes the display name; normalisation must survive spacing and
+  // bracket style, and only the named character may come back.
+  expect(announcedPlaceholderCharacters("Hifumi (Racing)")).toEqual([hifumi]);
+  expect(announcedPlaceholderCharacters("hifumi  (racing)")).toEqual([hifumi]);
+  expect(announcedPlaceholderCharacters("Hifumi（Racing）")).toEqual([hifumi]);
+});
+
+test("a rate-up that resolves upstream is left alone", () => {
+  expect(announcedPlaceholderCharacters("Noa")).toEqual([]);
+  expect(announcedPlaceholderCharacters("")).toEqual([]);
+  expect(announcedPlaceholderCharacters(null)).toEqual([]);
+});
+
+test("a shared banner keeps every placeholder it names", () => {
+  const both = announcedPlaceholderCharacters("Hifumi (Racing),Azusa (Racing)");
+  expect(both.map((c) => c.name)).toEqual(["Hifumi (Racing)", "Azusa (Racing)"]);
 });

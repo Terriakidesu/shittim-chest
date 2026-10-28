@@ -89,6 +89,17 @@ test("a hand-kept announcement leads the strip while the server is still running
   expect(announcedNews([{ ...announced, endMs: NOW - 1 }], NOW)).toEqual([]);
 });
 
+test("a batch whose pool is still a placeholder turns live, not announced", () => {
+  // The wiki records the banner hours before SchaleDB publishes the student, so
+  // it runs with placeholder characters for a while. One card, labelled live.
+  const running = banner(1080, "JP", NOW - 100, { provisional: true });
+  expect(announcedNews([running], NOW)).toEqual([]);
+  const [item] = latestBannerNews([running], NOW);
+  expect(item.kind).toBe("live");
+  expect(item.announced).toBe(false);
+  expect(item.students.map(({ student }) => student.id)).toEqual([1080]);
+});
+
 test("the strip holds three updates and keeps projections behind real windows", () => {
   const prediction = { bannerId: 4, expectedMs: NOW + 900, p05Ms: NOW + 800, p95Ms: NOW + 1000, confidence: null, confidenceToleranceDays: 7, intervalCoverage: .9, calibrationSamples: 20, method: "recent-lag" as const, explanation: "", glBatchIndex: 1, glBatchStartMs: NOW + 900 };
   const jp = latestBannerNews([banner(1, "JP", NOW - 100)], NOW);

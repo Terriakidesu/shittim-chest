@@ -36,29 +36,47 @@ pass.
 A new pickup is announced on the JP news feed hours before the wiki or SchaleDB
 has the student, so `scripts/announced-banners.ts` keeps a small hand-written
 table of those rows and `scripts/export.ts` merges them into `banners.json` with
-`provisional: true`. They are the only banners in that file that do not come
-from the wiki.
+`provisional: true`.
 
+- **The two upstream sources do not arrive together.** The wiki usually records
+  the batch within hours; SchaleDB — the only source of numeric ids, downloaded
+  artwork and localized names — can trail it by a day. In that window the wiki
+  row's `Rateup_character` resolves to nothing, so `toDto()` grafts the matching
+  announced characters onto the *real wiki banner* (`announcedPlaceholderCharacters`,
+  matched on the normalised display name) and marks it `provisional`. The wiki
+  keeps its id, dates, type and banner art; only the pool is a placeholder.
+  Otherwise the banner ships with an empty roster: the calendar prints the raw
+  code, the lobby card has no faces, and the simulator lists a period with
+  nothing in it.
 - **Negative ids.** Announcement rows and their characters use ids like `-1`;
   SchaleDB ids are positive, so a placeholder can never collide with a real
   student.
 - **Headshots** live in `public/img/announced/`, cropped from the official
   promo art (© NEXON Games & Yostar). Delete those files once SchaleDB
   publishes the real artwork; nothing else references them.
-- **They never reach the simulator** (`Simulator.tsx` filters `provisional`) or
-  `forecast.json` (the DTO merge happens after the snapshot, so the alignment
-  model never sees them). A provisional banner has no resolved student pool, so
-  a period for it would have an empty roster and no spark exchange. They *do*
-  lead the lobby strip: `announcedNews()` in `lobbyNews.ts` reads the flag and
-  `topUpdates()` ranks an announcement above a running period.
+- **They never reach the simulator** (`Simulator.tsx` filters `provisional`): a
+  banner whose pool is a placeholder cannot support a spark exchange, and an
+  empty period in the picker is worse than no period. A *hand-kept* row (one the
+  wiki has not recorded yet) also stays out of `forecast.json` — it has no
+  JP→GL prediction, and letting a date read off a news post into the alignment
+  model would shift real forecasts. A *grafted* row does carry a prediction,
+  because its date is upstream's by then, so it appears in the forecast like any
+  other wiki banner.
+- **The lobby strip** shows a provisional batch as `announced` only before it
+  opens: `announcedNews()` skips rows whose `startMs` has passed, since
+  `latestBannerNews()` already reports them as `live`, and `topUpdates()` ranks a
+  pending announcement above a running period. Once the batch starts, the card
+  reads "live" with the placeholder faces instead of duplicating itself.
 - **Dedupe is start-day proximity, not code matching** (`pendingAnnouncedBanners`):
   any wiki banner on the same server starting within 36 h retires the row. The
   announced start comes from a maintenance window and the wiki usually records
   the batch a few hours apart, and the wiki's code for a brand-new student is
   itself a guess until SchaleDB publishes it.
-- The export log prints `announced : N provisional, M superseded or expired` —
-  a row that never clears means the dedupe drifted or the wiki spelled the
-  student differently (check the `unresolved rate-ups` line below it).
+- The export log prints `announced : N provisional, M superseded or expired` and
+  `placeholder : N wiki banners with announced characters` — a row that never
+  clears means the dedupe drifted or the wiki spelled the student differently
+  (check the `unresolved rate-ups` line below it), and a `placeholder` count that
+  stays at 1 after SchaleDB catches up means the name stopped matching.
 - `cal.tag.announced` / `cal.disclaimer.announced` / `chip.title.announced` are
   the localized strings; the detail panel hides the simulator deep link for
   these rows because no period exists to open.
