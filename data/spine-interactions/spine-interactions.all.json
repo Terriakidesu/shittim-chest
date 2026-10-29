@@ -1,0 +1,2589 @@
+{
+  "schemaVersion": 1,
+  "projects": [
+    {
+      "schemaVersion": 1,
+      "name": "Airi_home interactions",
+      "assetDirectory": "Airi_home",
+      "interactions": [
+        {
+          "id": "interaction-0222e39e",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "Pat_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-bbe9b4c2",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+              "offsetX": 82.35721098303412,
+              "offsetY": 48.97793190162373,
+              "radiusX": 136.97286847397606,
+              "radiusY": 251.73248641107287,
+              "rotation": 4
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-0222e39e",
+      "selectedRegionId": "region-bbe9b4c2",
+      "selectedBonePath": "root/All_Layer/BG",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": false,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Airi_home interactions",
+      "assetDirectory": "Akane_home",
+      "interactions": [
+        {
+          "id": "interaction-0222e39e",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "Pat_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-bbe9b4c2",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+              "offsetX": -178.22860812662964,
+              "offsetY": 1447.2809439628052,
+              "radiusX": 237.13489479815877,
+              "radiusY": 128.94117025879808,
+              "rotation": 4,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-0222e39e",
+      "selectedRegionId": "region-bbe9b4c2",
+      "selectedBonePath": "root/All_Layer/BG",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Airi_home interactions",
+      "assetDirectory": "akari_bg",
+      "interactions": [
+        {
+          "id": "interaction-0222e39e",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "Pat_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-bbe9b4c2",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+              "offsetX": -178.22860812662964,
+              "offsetY": 1447.2809439628052,
+              "radiusX": 237.13489479815877,
+              "radiusY": 128.94117025879808,
+              "rotation": 4,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-0222e39e",
+      "selectedRegionId": "region-bbe9b4c2",
+      "selectedBonePath": "root/All_Layer/BG",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Ako_home interactions",
+      "assetDirectory": "Ako_home",
+      "interactions": [
+        {
+          "id": "interaction-814feb05",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/Pc_Root/Hip/B_Torso_01/Neck/Face_01/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-18d91c3e",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/Pc_Root/Hip/B_Torso_01/Neck/Face_01",
+              "offsetX": 368.27961480515967,
+              "offsetY": -153.24919404433263,
+              "radiusX": 297.0064261169996,
+              "radiusY": 209.99106465320676,
+              "rotation": -69.1203802700679,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-814feb05",
+      "selectedRegionId": "region-18d91c3e",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Ako_home interactions",
+      "assetDirectory": "Aris_home",
+      "interactions": [
+        {
+          "id": "interaction-814feb05",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/Pc_Root/Hip/B_Torso_01/Neck/Face_01/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-18d91c3e",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/Pc_Root/Hip/B_Torso_01/Neck/Face_01",
+              "offsetX": -88.73663021470611,
+              "offsetY": 1586.6152006544326,
+              "radiusX": 213.00306003697474,
+              "radiusY": 385.5634327024367,
+              "rotation": -83,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-814feb05",
+      "selectedRegionId": "region-18d91c3e",
+      "selectedBonePath": "root/All_Layer",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Aru_newyear_home interactions",
+      "assetDirectory": "Aru_newyear_home",
+      "interactions": [
+        {
+          "id": "interaction-c2081296",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/All_Layer_01/PC_Layer/HIP/Torso_01/Torso_02/Head/Head_rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-5485bcc6",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/All_Layer_01/PC_Layer/HIP/Torso_01/Torso_02/Head/Head_rot",
+              "offsetX": 215.535595797907,
+              "offsetY": -120.31414870473203,
+              "radiusX": 311.5995419528301,
+              "radiusY": 189.42166404081127,
+              "rotation": -118.76180728686379,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-c2081296",
+      "selectedRegionId": "region-5485bcc6",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Asuna_home interactions",
+      "assetDirectory": "Asuna_home",
+      "interactions": [
+        {
+          "id": "interaction-6f8cf0cd",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/Camera_Pos/All_Layer/PC_Layer/Hip/Spine_01/Spine_02/Body_Scale/Neck/Face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-44e02376",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/Camera_Pos/All_Layer/PC_Layer/Hip/Spine_01/Spine_02/Body_Scale/Neck/Face",
+              "offsetX": 524.7938325290543,
+              "offsetY": 33.43272914984525,
+              "radiusX": 307.1939382015287,
+              "radiusY": 241.07435180094072,
+              "rotation": -71.49417201914478,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-6f8cf0cd",
+      "selectedRegionId": "region-44e02376",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Azusa_home interactions",
+      "assetDirectory": "Azusa_home",
+      "interactions": [
+        {
+          "id": "interaction-ff253592",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/HIP/Torso_01/Torso_02/Neck/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-5b645b96",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/HIP/Torso_01/Torso_02/Neck/Head/Head_Rot",
+              "offsetX": 271.5483600480498,
+              "offsetY": 80.78451416106671,
+              "radiusX": 258.16665181061484,
+              "radiusY": 187.8556802294786,
+              "rotation": -81.91352215258631,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-ff253592",
+      "selectedRegionId": "region-5b645b96",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Azusa_swimsuit_home interactions",
+      "assetDirectory": "Azusa_swimsuit_home",
+      "interactions": [
+        {
+          "id": "interaction-67658d67",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/HIP/Torso_01/Torso_02/Neck/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-54eb5df1",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/HIP/Torso_01/Torso_02/Neck/Head/Head_Rot",
+              "offsetX": 272.15350714906333,
+              "offsetY": -0.06498480661306161,
+              "radiusX": 256.74509206368043,
+              "radiusY": 192.5174548706472,
+              "rotation": -77.72314401002325,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-67658d67",
+      "selectedRegionId": "region-54eb5df1",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0080_home interactions",
+      "assetDirectory": "CH0080_home",
+      "interactions": [
+        {
+          "id": "interaction-b6f0b142",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/PC_Layer/BG_PC/HIP/Troso_01F/Troso_01/Troso_02F/Troso_02/Neck_FF/Neck_F/Neck_rot/Neck/Head_f/Head/Head_rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-e6486dcd",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/PC_Layer/BG_PC/HIP/Troso_01F/Troso_01/Troso_02F/Troso_02/Neck_FF/Neck_F/Neck_rot/Neck/Head_f/Head/Head_rot",
+              "offsetX": 152.7330191964257,
+              "offsetY": -251.73495725262288,
+              "radiusX": 387.7178057050722,
+              "radiusY": 241.56984102251482,
+              "rotation": -155.89938891686634,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-b6f0b142",
+      "selectedRegionId": "region-e6486dcd",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0087_home interactions",
+      "assetDirectory": "CH0087_home",
+      "interactions": [
+        {
+          "id": "interaction-a793b19c",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_All/Hip_Root/Hip/Spine_01_Root/Spine_01/Spine_02_Root/Spine_02/Neck_Root/Neck/Face_Root/Face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-36a4e77a",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_All/Hip_Root/Hip/Spine_01_Root/Spine_01/Spine_02_Root/Spine_02/Neck_Root/Neck/Face_Root/Face/Head_Rot",
+              "offsetX": 358.48034940068754,
+              "offsetY": 90.44793268031088,
+              "radiusX": 313.67708165785217,
+              "radiusY": 236.57920517669757,
+              "rotation": -54.835169323695084,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-a793b19c",
+      "selectedRegionId": "region-36a4e77a",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0088_home interactions",
+      "assetDirectory": "CH0088_home",
+      "interactions": [
+        {
+          "id": "interaction-dffbb2e2",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip_Root/Hip_Pos/Spine_Rot/Spine_01/Neck_Rot/Neck/Face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-f8d53066",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip_Root/Hip_Pos/Spine_Rot/Spine_01/Neck_Rot/Neck/Face/Head_Rot",
+              "offsetX": 382.6011636789346,
+              "offsetY": -110.31929785755477,
+              "radiusX": 296.72788368393253,
+              "radiusY": 240.00020701217215,
+              "rotation": -95.84257867136407,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-dffbb2e2",
+      "selectedRegionId": "region-f8d53066",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0124_home interactions",
+      "assetDirectory": "CH0124_home",
+      "interactions": [
+        {
+          "id": "interaction-e0263177",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/bg/BG_F_Con/pc/L_Chair/Hip_TOP/Hip/Hip_TB/Hip2/Torso_01_TB/Torso_01/Neck_TB/Neck/Head_TB/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-2ed6f73a",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/bg/BG_F_Con/pc/L_Chair/Hip_TOP/Hip/Hip_TB/Hip2/Torso_01_TB/Torso_01/Neck_TB/Neck/Head_TB/Head/Head_Rot",
+              "offsetX": 282.5331789319347,
+              "offsetY": -63.101677220951245,
+              "radiusX": 358.84787015952315,
+              "radiusY": 258.35745550628724,
+              "rotation": -98.86975398062845,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-e0263177",
+      "selectedRegionId": "region-2ed6f73a",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0144_home interactions",
+      "assetDirectory": "CH0144_home",
+      "interactions": [
+        {
+          "id": "interaction-d1477fa5",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Root/Hip/bone9/bone8/Neck_01/bone10/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-bdc8442a",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Root/Hip/bone9/bone8/Neck_01/bone10/Head",
+              "offsetX": 642.6203698609676,
+              "offsetY": 61.852097061759395,
+              "radiusX": 328.51538713433354,
+              "radiusY": 254.2771238667845,
+              "rotation": -66.27212736948375,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-d1477fa5",
+      "selectedRegionId": "region-bdc8442a",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Airi_home interactions",
+      "assetDirectory": "CH0296_home",
+      "interactions": [
+        {
+          "id": "interaction-0222e39e",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "Pat_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-bbe9b4c2",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+              "offsetX": 531.8126175424089,
+              "offsetY": 1291.9121067113956,
+              "radiusX": 342.8862786757472,
+              "radiusY": 207.19327788983549,
+              "rotation": -28
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-0222e39e",
+      "selectedRegionId": "region-bbe9b4c2",
+      "selectedBonePath": "root/All_Layer/BG",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Airi_home interactions",
+      "assetDirectory": "CH0306_home",
+      "interactions": [
+        {
+          "id": "interaction-0222e39e",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "Pat_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-bbe9b4c2",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+              "offsetX": -226.15808216417895,
+              "offsetY": 1272.1141135512069,
+              "radiusX": 342.8862786757472,
+              "radiusY": 207.19327788983549,
+              "rotation": 15
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-0222e39e",
+      "selectedRegionId": "region-bbe9b4c2",
+      "selectedBonePath": "root/All_Layer/BG",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Airi_home interactions",
+      "assetDirectory": "CH0319_home",
+      "interactions": [
+        {
+          "id": "interaction-0222e39e",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "Pat_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-bbe9b4c2",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+              "offsetX": 82.35721098303412,
+              "offsetY": 48.97793190162373,
+              "radiusX": 136.97286847397606,
+              "radiusY": 251.73248641107287,
+              "rotation": 4
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-0222e39e",
+      "selectedRegionId": "region-bbe9b4c2",
+      "selectedBonePath": "root/All_Layer/BG",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Airi_home interactions",
+      "assetDirectory": "CH0328_home",
+      "interactions": [
+        {
+          "id": "interaction-0222e39e",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "Pat_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-bbe9b4c2",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+              "offsetX": 82.35721098303412,
+              "offsetY": 48.97793190162373,
+              "radiusX": 136.97286847397606,
+              "radiusY": 251.73248641107287,
+              "rotation": 4
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-0222e39e",
+      "selectedRegionId": "region-bbe9b4c2",
+      "selectedBonePath": "root/All_Layer/BG",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0335_home interactions",
+      "assetDirectory": "CH0335_home",
+      "interactions": [
+        {
+          "id": "interaction-d7cfd6a6",
+          "name": "Cheek pinch",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pinch_01_M",
+          "followAnimation": "Pinch_02_M",
+          "endAnimation": "PinchEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "PinchEnd_01_A",
+          "followTargetBone": "root/2_home_All_Layer/home_PC/PC_2/Hip_rot/Hip/spine_rot_1/spine_01/spine_rot_2/spine_02/spine_rot_3/spine_03/neck_rot/neck/face_rot/face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-4ad69dae",
+              "name": "Cheek area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/2_home_All_Layer/home_PC/PC_2/Hip_rot/Hip/spine_rot_1/spine_01/spine_rot_2/spine_02/spine_rot_3/spine_03/neck_rot/neck/face_rot/face/Head_Rot/Touch_Point",
+              "offsetX": -311.94885005350426,
+              "offsetY": -89.37465140669693,
+              "radiusX": 120,
+              "radiusY": 90,
+              "rotation": -36,
+              "placement": "manual"
+            }
+          ]
+        },
+        {
+          "id": "interaction-628938dd",
+          "name": "Patting",
+          "color": "#ff668f",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/2_home_All_Layer/home_PC/PC_2/Hip_rot/Hip/spine_rot_1/spine_01/spine_rot_2/spine_02/spine_rot_3/spine_03/neck_rot/neck/face_rot/face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-77c96981",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/2_home_All_Layer/home_PC/PC_2/Hip_rot/Hip/spine_rot_1/spine_01/spine_rot_2/spine_02/spine_rot_3/spine_03/neck_rot/neck/face_rot/face/Head_Rot",
+              "offsetX": 371.64697474825215,
+              "offsetY": 123.31618599518946,
+              "radiusX": 398.3146206152704,
+              "radiusY": 230.09846482343409,
+              "rotation": -72.36576738422539,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-d7cfd6a6",
+      "selectedRegionId": "region-4ad69dae",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": false,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0336_home interactions",
+      "assetDirectory": "CH0336_home",
+      "interactions": [
+        {
+          "id": "interaction-512ac324",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/01_Main_Camera/All_Layer/PC/BG_Con_pos/BG_con/PC_cha_root/PC_root/Torso_root/torso_rot_01/torso_01/torso_rot_02/bone34/torso_rot_03/torso_02_IK/neck_rot/torso_03_Ik/neck_rot2/neck/face_rot/face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-0db6baa5",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/01_Main_Camera/All_Layer/PC/BG_Con_pos/BG_con/PC_cha_root/PC_root/Torso_root/torso_rot_01/torso_01/torso_rot_02/bone34/torso_rot_03/torso_02_IK/neck_rot/torso_03_Ik/neck_rot2/neck/face_rot/face/Head_Rot",
+              "offsetX": 213.80533503720153,
+              "offsetY": -37.12901518130916,
+              "radiusX": 181.92127977784236,
+              "radiusY": 117.43266780487849,
+              "rotation": -95,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-512ac324",
+      "selectedRegionId": "region-0db6baa5",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0337_home interactions",
+      "assetDirectory": "CH0337_home",
+      "interactions": [
+        {
+          "id": "interaction-2ec21333",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/Main_Camera/All_Layer/BG/BG_F/Hip_Rot/Hip/Spine_01_Rot/Spine_01/Spine_02_Rot/Spine_02/Spine_03_Rot/Spine_03/Neck_Rot/Neck/Face_Rot/Face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-553f44a7",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/Main_Camera/All_Layer/BG/BG_F/Hip_Rot/Hip/Spine_01_Rot/Spine_01/Spine_02_Rot/Spine_02/Spine_03_Rot/Spine_03/Neck_Rot/Neck/Face_Rot/Face",
+              "offsetX": 255.0748510781883,
+              "offsetY": 30.022762667577254,
+              "radiusX": 156.55676171529672,
+              "radiusY": 119.55225039794085,
+              "rotation": -61.31669179347403,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-2ec21333",
+      "selectedRegionId": "region-553f44a7",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0344_home interactions",
+      "assetDirectory": "CH0344_home",
+      "interactions": [
+        {
+          "id": "interaction-8d8bb44d",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "",
+          "followTargetBone": "root/All_Layer_Add/All_Layer/BG/BG_MID/PC/Hip_Rot/Hip/Spine_01_Rot/Spine_01/Spine_02_Rot/Spine_02/Spine_03_Rot/Spine_03/Neck_Rot/Neck/Face_Rot/Face/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-5b188087",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer_Add/All_Layer/BG/BG_MID/PC/Hip_Rot/Hip/Spine_01_Rot/Spine_01/Spine_02_Rot/Spine_02/Spine_03_Rot/Spine_03/Neck_Rot/Neck/Face_Rot/Face/Head_Rot",
+              "offsetX": 294.1685427219389,
+              "offsetY": 91.0740002071346,
+              "radiusX": 304.4762781818918,
+              "radiusY": 189.57219102704377,
+              "rotation": -67.68112140458912,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-8d8bb44d",
+      "selectedRegionId": "region-5b188087",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0345_home interactions",
+      "assetDirectory": "CH0345_home",
+      "interactions": [
+        {
+          "id": "interaction-92454176",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/Main_Camera/All_Layer/BG/BG_Ctrl_Rot/BG_Ctrl/bone/PC2/Spine_1_Rot/bone8/Spine_2_Rot/Spine_1_IK/Spine_2_IK_Rot/Spine_2_IK/Neck_Rot/Neck/Face_Rot/Face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-a8ad6bbc",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/Main_Camera/All_Layer/BG/BG_Ctrl_Rot/BG_Ctrl/bone/PC2/Spine_1_Rot/bone8/Spine_2_Rot/Spine_1_IK/Spine_2_IK_Rot/Spine_2_IK/Neck_Rot/Neck/Face_Rot/Face/Head_Rot",
+              "offsetX": 279.7278658354241,
+              "offsetY": 27.69849281225614,
+              "radiusX": 297.0192783587191,
+              "radiusY": 217.67858416043856,
+              "rotation": -81,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-92454176",
+      "selectedRegionId": "region-a8ad6bbc",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0346_home interactions",
+      "assetDirectory": "CH0346_home",
+      "interactions": [
+        {
+          "id": "interaction-1407aa7a",
+          "name": "Touch",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Touch_01_M",
+          "followAnimation": "Touch_02_M",
+          "endAnimation": "TouchEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "",
+          "followTargetBone": "root/All_Layer_camera/All_Layer/PC/PC_rot/PC_pos/spine2_IK/Neck_root/spine_02_ik/Neck_rot/Neck/face_rot/face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-b4539c13",
+              "name": "Touch area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer_camera/All_Layer/PC/PC_rot/PC_pos/spine2_IK/Neck_root/spine_02_ik/Neck_rot/Neck/face_rot/face/Head_Rot/Touch_Point",
+              "offsetX": -208.4019908268469,
+              "offsetY": 142.51772731085907,
+              "radiusX": 67.17450903864659,
+              "radiusY": 90.48978018127742,
+              "rotation": -38,
+              "placement": "manual"
+            }
+          ]
+        },
+        {
+          "id": "interaction-c2f22001",
+          "name": "Patting",
+          "color": "#ff668f",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "",
+          "followTargetBone": "root/All_Layer_camera/All_Layer/PC/PC_rot/PC_pos/spine2_IK/Neck_root/spine_02_ik/Neck_rot/Neck/face_rot/face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-e2d8a772",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer_camera/All_Layer/PC/PC_rot/PC_pos/spine2_IK/Neck_root/spine_02_ik/Neck_rot/Neck/face_rot/face/Head_Rot",
+              "offsetX": 334.02995596840276,
+              "offsetY": -42.89139808086911,
+              "radiusX": 168.06927624842785,
+              "radiusY": 186.49220258207785,
+              "rotation": 181,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-1407aa7a",
+      "selectedRegionId": "region-b4539c13",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0347_home interactions",
+      "assetDirectory": "CH0347_home",
+      "interactions": [
+        {
+          "id": "interaction-5d58fab0",
+          "name": "Touch",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Touch_01_M",
+          "followAnimation": "Touch_02_M",
+          "endAnimation": "Touch_End_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "",
+          "followTargetBone": "root/00_Main_Camera/1_All_Layer/PC/PC_BG/PC_rot/PC_1/spine_rot/spine_pos/spine_IK_end_pos/spine_IK_end/neck_rot/neck/face_rot/face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-e86a094d",
+              "name": "Touch area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/00_Main_Camera/1_All_Layer/PC/PC_BG/PC_rot/PC_1/spine_rot/spine_pos/spine_IK_end_pos/spine_IK_end/neck_rot/neck/face_rot/face/Head_Rot/Touch_Point",
+              "offsetX": -289.85428933908065,
+              "offsetY": -134.2768734110579,
+              "radiusX": 92.66235866994211,
+              "radiusY": 56.8014894863641,
+              "rotation": -46,
+              "placement": "manual"
+            }
+          ]
+        },
+        {
+          "id": "interaction-88360b04",
+          "name": "Patting",
+          "color": "#ff668f",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "",
+          "followTargetBone": "root/00_Main_Camera/1_All_Layer/PC/PC_BG/PC_rot/PC_1/spine_rot/spine_pos/spine_IK_end_pos/spine_IK_end/neck_rot/neck/face_rot/face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-5ceed600",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/00_Main_Camera/1_All_Layer/PC/PC_BG/PC_rot/PC_1/spine_rot/spine_pos/spine_IK_end_pos/spine_IK_end/neck_rot/neck/face_rot/face/Head_Rot",
+              "offsetX": 327.2908168761344,
+              "offsetY": -130.8217978195177,
+              "radiusX": 337.6354127575221,
+              "radiusY": 204.73637591404633,
+              "rotation": -101.93266190372456,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-5d58fab0",
+      "selectedRegionId": "region-e86a094d",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0348_home interactions",
+      "assetDirectory": "CH0348_home",
+      "interactions": [
+        {
+          "id": "interaction-b194b1bf",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "",
+          "followTargetBone": "root/00_Main_Camera/01_All_Layer/BG/BG_M/BG_M2/PC2/PC3/PC4b/PC4/Spine_02_Key2/Spine_02_Key/Spine_02_Rot/Spine_03/Spine_03a2/Spine_03b/Neck_01_Rot/Neck/Head_01_Rot/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-990defdb",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/00_Main_Camera/01_All_Layer/BG/BG_M/BG_M2/PC2/PC3/PC4b/PC4/Spine_02_Key2/Spine_02_Key/Spine_02_Rot/Spine_03/Spine_03a2/Spine_03b/Neck_01_Rot/Neck/Head_01_Rot/Head/Head_Rot",
+              "offsetX": 272.34036848910205,
+              "offsetY": 28.496684518601125,
+              "radiusX": 294.5725350650502,
+              "radiusY": 189.28775937048334,
+              "rotation": -88.40909103384413,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-b194b1bf",
+      "selectedRegionId": "region-990defdb",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0355_home interactions",
+      "assetDirectory": "CH0355_home",
+      "interactions": [
+        {
+          "id": "interaction-fa103b92",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer_Idle/PC/BG_M/Body_Rot/Body/bone37/Spine_01_Rot/bone38/Spine_02_Rot/bone39/Spine_02/bone10/Spine_03/Neck_Rot/Neck/Head_Add/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-f85a26e8",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer_Idle/PC/BG_M/Body_Rot/Body/bone37/Spine_01_Rot/bone38/Spine_02_Rot/bone39/Spine_02/bone10/Spine_03/Neck_Rot/Neck/Head_Add/Head/Head_Rot",
+              "offsetX": 269.8815645860442,
+              "offsetY": 26.402549126286658,
+              "radiusX": 228.99952563032292,
+              "radiusY": 213.5516875908324,
+              "rotation": -137.67692607561392,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-fa103b92",
+      "selectedRegionId": "region-f85a26e8",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0356_home interactions",
+      "assetDirectory": "CH0356_home",
+      "interactions": [
+        {
+          "id": "interaction-b27d0575",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "",
+          "followTargetBone": "root/00_Main_Camera/01_All_Layer/BG/Boat/Boat2/Chair/PC2/PC3/PC4b/PC4/Spine_02_Key2/Spine_02_Key/Spine_02_Rot/Spine_03/Neck_01_Rot/Neck/Head_01_Rot/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-7741d40c",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/00_Main_Camera/01_All_Layer/BG/Boat/Boat2/Chair/PC2/PC3/PC4b/PC4/Spine_02_Key2/Spine_02_Key/Spine_02_Rot/Spine_03/Neck_01_Rot/Neck/Head_01_Rot/Head/Head_Rot",
+              "offsetX": 279.37284655410224,
+              "offsetY": 8.639986232713397,
+              "radiusX": 261.09388440554795,
+              "radiusY": 151.1054400579139,
+              "rotation": -77,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-b27d0575",
+      "selectedRegionId": "region-7741d40c",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0368_home interactions",
+      "assetDirectory": "CH0368_home",
+      "interactions": [
+        {
+          "id": "interaction-c4643a96",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "",
+          "followTargetBone": "root/All_Layer_camera/All_Layer/PC/PC_root/Hip_rot/Hip/spine1_rot/spine1_pos/spine_01/spine2_rot/spine2_pos/spine_02/spine3_rot/spine3_pos/spine_03/neck_rot/neck/face_rot/face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-e88cef43",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer_camera/All_Layer/PC/PC_root/Hip_rot/Hip/spine1_rot/spine1_pos/spine_01/spine2_rot/spine2_pos/spine_02/spine3_rot/spine3_pos/spine_03/neck_rot/neck/face_rot/face/Head_Rot",
+              "offsetX": 287.5724645564835,
+              "offsetY": -21.39992560985654,
+              "radiusX": 287.37901806154184,
+              "radiusY": 184.0726840240546,
+              "rotation": -92.93888582163781,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-c4643a96",
+      "selectedRegionId": "region-e88cef43",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0369_home interactions",
+      "assetDirectory": "CH0369_home",
+      "interactions": [
+        {
+          "id": "interaction-d0f8d9e5",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "",
+          "followTargetBone": "root/All_Layer/PC/bone31/BG_M/Spine_IK02rot/Spine_IK02/Neck_Rot/Neck/Face_Rot/Face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-6b412d9b",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC/bone31/BG_M/Spine_IK02rot/Spine_IK02/Neck_Rot/Neck/Face_Rot/Face/Head_Rot",
+              "offsetX": 220.80402804805806,
+              "offsetY": -5.9577455794907905,
+              "radiusX": 288.37853780481646,
+              "radiusY": 156.6083859124435,
+              "rotation": -64,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-d0f8d9e5",
+      "selectedRegionId": "region-6b412d9b",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0379_home interactions",
+      "assetDirectory": "CH0379_home",
+      "interactions": [
+        {
+          "id": "interaction-ef68911f",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "",
+          "followTargetBone": "root/All_Layer_camera/All_Layer/PC/Cha_root/Cha_/spine_1_rot/spine_1_pos/spine_01/spine_2_rot/spine_2_pos/spine_02/neck_rot/neck_pos/neck/face_rot/face_pos/face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-eb5755a1",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer_camera/All_Layer/PC/Cha_root/Cha_/spine_1_rot/spine_1_pos/spine_01/spine_2_rot/spine_2_pos/spine_02/neck_rot/neck_pos/neck/face_rot/face_pos/face/Head_Rot",
+              "offsetX": 295.1168256068254,
+              "offsetY": 75.0197871411676,
+              "radiusX": 212.24152726135438,
+              "radiusY": 297.74535842515013,
+              "rotation": -165,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-ef68911f",
+      "selectedRegionId": "region-eb5755a1",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0380_home interactions",
+      "assetDirectory": "CH0380_home",
+      "interactions": [
+        {
+          "id": "interaction-4d831bf0",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_02_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "",
+          "faceFollowAnimation": "",
+          "faceEndAnimation": "",
+          "followTargetBone": "root/Scale/Main_Camera/All_Layer/BG/BG_M_Rot/BG_M/PC_Rot/PC/Body_1_Rot/Body_1/Body_2_Rot/Body_2/Neck_Rot/Neck/Face_Rot/Face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-95c603ec",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/Scale/Main_Camera/All_Layer/BG/BG_M_Rot/BG_M/PC_Rot/PC/Body_1_Rot/Body_1/Body_2_Rot/Body_2/Neck_Rot/Neck/Face_Rot/Face/Head_Rot",
+              "offsetX": 146.99380165742778,
+              "offsetY": -7.331074445336355,
+              "radiusX": 220.869430537527,
+              "radiusY": 126.54287001893674,
+              "rotation": -105,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-4d831bf0",
+      "selectedRegionId": "region-95c603ec",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH0996_home interactions",
+      "assetDirectory": "CH0996_home",
+      "interactions": [
+        {
+          "id": "interaction-e2c7cfc9",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC/Hip_Pos/Hip_Rot/Hip/Spine_01_Rot/Spine_01/Spine_02_Rot/Spine_02/Neck_Rot/Neck/bone4/Face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-ca7e0538",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC/Hip_Pos/Hip_Rot/Hip/Spine_01_Rot/Spine_01/Spine_02_Rot/Spine_02/Neck_Rot/Neck/bone4/Face/Head_Rot/Touch_Point",
+              "offsetX": -13.553048147937064,
+              "offsetY": 32.21953710982366,
+              "radiusX": 136.27366861424525,
+              "radiusY": 288.7104569558296,
+              "rotation": 0,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-e2c7cfc9",
+      "selectedRegionId": "region-ca7e0538",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH9998_home interactions",
+      "assetDirectory": "CH9998_home",
+      "interactions": [
+        {
+          "id": "interaction-68b3c852",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/BG/BG_F/pc_root/pc/pc6/Hip/Hip63/Hip2/bone9/Troso/bone10/neck/bone11/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-16ee5ef6",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/BG/BG_F/pc_root/pc/pc6/Hip/Hip63/Hip2/bone9/Troso/bone10/neck/bone11/Head",
+              "offsetX": 450.6611256464363,
+              "offsetY": -131.7726898752542,
+              "radiusX": 294.6862992867619,
+              "radiusY": 224.7161753710884,
+              "rotation": -89.92110478023355,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-68b3c852",
+      "selectedRegionId": "region-16ee5ef6",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "CH9999_home interactions",
+      "assetDirectory": "CH9999_home",
+      "interactions": [
+        {
+          "id": "interaction-ea924b57",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/All_Layer_01/Cut_pc/Hip/Torso_00/Torso_01/Neck/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-e70fe1b4",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/All_Layer_01/Cut_pc/Hip/Torso_00/Torso_01/Neck/Head",
+              "offsetX": 556.5523610449917,
+              "offsetY": -54.45017821396182,
+              "radiusX": 374.76584718796016,
+              "radiusY": 227.47121098002248,
+              "rotation": -102.31559358668484,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-ea924b57",
+      "selectedRegionId": "region-e70fe1b4",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Hina_home interactions",
+      "assetDirectory": "Hina_home",
+      "interactions": [
+        {
+          "id": "interaction-58860e1e",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/PC_Layer/Hip_01/Torso_01/Neck_01/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-2ee07cc1",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/PC_Layer/Hip_01/Torso_01/Neck_01/Head/Head_Rot",
+              "offsetX": 106.6947826131888,
+              "offsetY": -177.31696167919176,
+              "radiusX": 292.70091807287923,
+              "radiusY": 148.16947811968032,
+              "rotation": -119,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-58860e1e",
+      "selectedRegionId": "region-2ee07cc1",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Ibuki_home interactions",
+      "assetDirectory": "Ibuki_home",
+      "interactions": [
+        {
+          "id": "interaction-42c28054",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/B_AllLayer/A_PC_AllLayer/Hip/Spine_01_Rot/Spine_01/Spine_02_Rot/Spine_02_Talk/Neck_Rot/Neck/Face_Rot/Face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-99419eeb",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/B_AllLayer/A_PC_AllLayer/Hip/Spine_01_Rot/Spine_01/Spine_02_Rot/Spine_02_Talk/Neck_Rot/Neck/Face_Rot/Face/Head_Rot",
+              "offsetX": 406.95367069285703,
+              "offsetY": 18.316854779041563,
+              "radiusX": 376.56187903545583,
+              "radiusY": 220.93101279798935,
+              "rotation": -82.59834122433368,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-42c28054",
+      "selectedRegionId": "region-99419eeb",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Airi_home interactions",
+      "assetDirectory": "Kaede_home",
+      "interactions": [
+        {
+          "id": "interaction-0222e39e",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "Pat_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-bbe9b4c2",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip/Spine_01_Root/Skirt_03/Spine_02_Root/Torso_1/Torso_11/Neck_Root/Neck/Head_Root/head/head_Rot/Touch_Point",
+              "offsetX": 82.35721098303412,
+              "offsetY": 48.97793190162373,
+              "radiusX": 136.97286847397606,
+              "radiusY": 251.73248641107287,
+              "rotation": 4
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-0222e39e",
+      "selectedRegionId": "region-bbe9b4c2",
+      "selectedBonePath": "root/All_Layer/BG",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "LobbyHoshino_multi interactions",
+      "assetDirectory": "LobbyHoshino_multi",
+      "interactions": [
+        {
+          "id": "interaction-cd630d4a",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/pc/All_Layer3/PC/PC2/Body_0/bone6/Body_1/bone5/Face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-0df6f637",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/pc/All_Layer3/PC/PC2/Body_0/bone6/Body_1/bone5/Face",
+              "offsetX": 603.6782185333526,
+              "offsetY": -17.253260983319095,
+              "radiusX": 351.5404316451531,
+              "radiusY": 255.8858150603915,
+              "rotation": -89.63195252697327,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-cd630d4a",
+      "selectedRegionId": "region-0df6f637",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "mari_home interactions",
+      "assetDirectory": "mari_home",
+      "interactions": [
+        {
+          "id": "interaction-0dd04b15",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/pc/Hip/torso/torso2/neck/face/face3/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-43e0bbf5",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/pc/Hip/torso/torso2/neck/face/face3",
+              "offsetX": 358.59976866856357,
+              "offsetY": -142.4525258097981,
+              "radiusX": 342.6310588618317,
+              "radiusY": 229.0381810968587,
+              "rotation": -98,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-0dd04b15",
+      "selectedRegionId": "region-43e0bbf5",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Miyako_home interactions",
+      "assetDirectory": "Miyako_home",
+      "interactions": [
+        {
+          "id": "interaction-a802de6f",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Helicopter_inside_01/Helicopter_con/Hip/Torso/Neck/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-9de88a4b",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Helicopter_inside_01/Helicopter_con/Hip/Torso/Neck/Head/Head_Rot",
+              "offsetX": 208.62441972883195,
+              "offsetY": -26.811943844582196,
+              "radiusX": 201.7846041682118,
+              "radiusY": 147.7518529448869,
+              "rotation": -102.73818613490677,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-a802de6f",
+      "selectedRegionId": "region-9de88a4b",
+      "selectedBonePath": "root",
+      "showBones": true,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Mutsuki_home interactions",
+      "assetDirectory": "Mutsuki_home",
+      "interactions": [
+        {
+          "id": "interaction-317db2f2",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip/Torso/Torso2/Torso3/Neck_Root/Neck/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-15bd85cb",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip/Torso/Torso2/Torso3/Neck_Root/Neck/Head",
+              "offsetX": 266.2624678061994,
+              "offsetY": -42.582777059381236,
+              "radiusX": 152.9766494814696,
+              "radiusY": 101.50497113671902,
+              "rotation": -107,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-317db2f2",
+      "selectedRegionId": "region-15bd85cb",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "mutsuki_newyear_home interactions",
+      "assetDirectory": "mutsuki_newyear_home",
+      "interactions": [
+        {
+          "id": "interaction-3ef0ab27",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC/Hip/Troso_00/Troso_01/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-21b0a560",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC/Hip/Troso_00/Troso_01/Head",
+              "offsetX": 372.95673497845524,
+              "offsetY": -63.58422508175159,
+              "radiusX": 190.1260882437706,
+              "radiusY": 144.79269093548905,
+              "rotation": -102,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-3ef0ab27",
+      "selectedRegionId": "region-21b0a560",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Pina_home interactions",
+      "assetDirectory": "Pina_home",
+      "interactions": [
+        {
+          "id": "interaction-9fd3e481",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC/HIP/waist_02_TK/waist_02/chest_01_TK/chest_01/neck_01_TK/neck_01/head_01_TK/head_01/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-67b892f9",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC/HIP/waist_02_TK/waist_02/chest_01_TK/chest_01/neck_01_TK/neck_01/head_01_TK/head_01",
+              "offsetX": 493.0821586815017,
+              "offsetY": 83.00723395810684,
+              "radiusX": 261.0379222362199,
+              "radiusY": 192.2866637265756,
+              "rotation": -79.79001949597931,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-9fd3e481",
+      "selectedRegionId": "region-67b892f9",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Sakurako_home interactions",
+      "assetDirectory": "Sakurako_home",
+      "interactions": [
+        {
+          "id": "interaction-7da27105",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip_Pos/Hip/Spine_01_Pos/Spine_01/Spine_02_Pos/Spine_02/Neck_Pos/Neck/bone/Face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-28420578",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip_Pos/Hip/Spine_01_Pos/Spine_01/Spine_02_Pos/Spine_02/Neck_Pos/Neck/bone/Face/Head_Rot",
+              "offsetX": 358.9754549231696,
+              "offsetY": -112.94633207015785,
+              "radiusX": 307.71691207522184,
+              "radiusY": 274.8186443217018,
+              "rotation": -98,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-7da27105",
+      "selectedRegionId": "region-28420578",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Saori_home interactions",
+      "assetDirectory": "Saori_home",
+      "interactions": [
+        {
+          "id": "interaction-8dfa7bd7",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/F_BG/F_Hip/F_Hip2/F_Hip3/neck_01/face/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-37e22adf",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/F_BG/F_Hip/F_Hip2/F_Hip3/neck_01/face",
+              "offsetX": 278.7038422158153,
+              "offsetY": -31.83208470057373,
+              "radiusX": 169.5451609432726,
+              "radiusY": 136.13515237701364,
+              "rotation": -67.87311989875388,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-8dfa7bd7",
+      "selectedRegionId": "region-37e22adf",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Saya_casual_home interactions",
+      "assetDirectory": "Saya_casual_home",
+      "interactions": [
+        {
+          "id": "interaction-8915f543",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/HIP/torso_01/torso_02/Neck/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-993a528c",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/HIP/torso_01/torso_02/Neck/Head/Head_Rot",
+              "offsetX": 341.0473709223832,
+              "offsetY": -155.0018412569566,
+              "radiusX": 329.75002633067993,
+              "radiusY": 251.83958162382277,
+              "rotation": -124.02878500657937,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-8915f543",
+      "selectedRegionId": "region-993a528c",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Saya_home interactions",
+      "assetDirectory": "Saya_home",
+      "interactions": [
+        {
+          "id": "interaction-eb4e2e2f",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/HIP/Torso_01/Torso_02/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-2b8f22f4",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/HIP/Torso_01/Torso_02/Head",
+              "offsetX": 449.44073040236805,
+              "offsetY": 11.273622410509503,
+              "radiusX": 348.36587243252245,
+              "radiusY": 245.10499425344506,
+              "rotation": -95,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-eb4e2e2f",
+      "selectedRegionId": "region-2b8f22f4",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Wakamo_home interactions",
+      "assetDirectory": "Wakamo_home",
+      "interactions": [
+        {
+          "id": "interaction-02b21ebe",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/pc/Hip/torso_03/torso_01/neck_01/head_01/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-54804c1c",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/pc/Hip/torso_03/torso_01/neck_01/head_01",
+              "offsetX": 363.78445414083217,
+              "offsetY": -133.56985400766277,
+              "radiusX": 218.47960460480206,
+              "radiusY": 167.51997371469668,
+              "rotation": -103.64649344078416,
+              "placement": "head-v1"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-02b21ebe",
+      "selectedRegionId": "region-54804c1c",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Yoshimi_home interactions",
+      "assetDirectory": "Yoshimi_home",
+      "interactions": [
+        {
+          "id": "interaction-8f0a6dd3",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/BG/BG2/PC_Layer/Hip/Spine_01_Root/clothes_04/Spine_02_Root/body_up/Neck_Root/neck_01/Head_Root/head_01/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-6a739997",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/BG/BG2/PC_Layer/Hip/Spine_01_Root/clothes_04/Spine_02_Root/body_up/Neck_Root/neck_01/Head_Root/head_01",
+              "offsetX": 411.44220575522144,
+              "offsetY": -117.91465803289854,
+              "radiusX": 249.6136677298441,
+              "radiusY": 205.2299497972356,
+              "rotation": -119,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-8f0a6dd3",
+      "selectedRegionId": "region-6a739997",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Yuuka_home interactions",
+      "assetDirectory": "Yuuka_home",
+      "interactions": [
+        {
+          "id": "interaction-9238d5c0",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Hip/Torso/Torso2/Neck/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-89e6dad7",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Hip/Torso/Torso2/Neck/Head/Head_Rot",
+              "offsetX": 322.1681758023302,
+              "offsetY": -68.05478193563425,
+              "radiusX": 380.9578699905806,
+              "radiusY": 228.01493639482487,
+              "rotation": -95,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-9238d5c0",
+      "selectedRegionId": "region-89e6dad7",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Yuzu_home interactions",
+      "assetDirectory": "Yuzu_home",
+      "interactions": [
+        {
+          "id": "interaction-b3bd98fa",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/HIP/Troso_01/Troso_02/neck/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-d737e73b",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/HIP/Troso_01/Troso_02/neck/Head/Head_Rot",
+              "offsetX": 356.5803753607674,
+              "offsetY": 32.60969887093641,
+              "radiusX": 286.20084611176344,
+              "radiusY": 180.77712535563683,
+              "rotation": -86,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-b3bd98fa",
+      "selectedRegionId": "region-d737e73b",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    },
+    {
+      "schemaVersion": 1,
+      "name": "Zunko_home interactions",
+      "assetDirectory": "Zunko_home",
+      "interactions": [
+        {
+          "id": "interaction-e29a970b",
+          "name": "Patting",
+          "color": "#28c7ed",
+          "enabled": true,
+          "trigger": "hold",
+          "startAnimation": "Pat_01_M",
+          "followAnimation": "Pat_01_M",
+          "endAnimation": "PatEnd_01_M",
+          "faceStartAnimation": "Pat_01_A",
+          "faceFollowAnimation": "Pat_01_A",
+          "faceEndAnimation": "PatEnd_01_A",
+          "followTargetBone": "root/All_Layer/PC_Layer/Table/Hip/Torso_01/Neck/Head/Head_Rot/Touch_Point",
+          "sensitivity": 0.25,
+          "limitX": 90,
+          "limitY": 65,
+          "smoothing": 8,
+          "regions": [
+            {
+              "id": "region-2d0889dc",
+              "name": "Patting area",
+              "enabled": true,
+              "shape": "ellipse",
+              "anchorBone": "root/All_Layer/PC_Layer/Table/Hip/Torso_01/Neck/Head/Head_Rot",
+              "offsetX": 405.76526713048554,
+              "offsetY": -57.001420356425065,
+              "radiusX": 364.8684886885217,
+              "radiusY": 221.10377535569677,
+              "rotation": -91.49474471440305,
+              "placement": "manual"
+            }
+          ]
+        }
+      ],
+      "selectedInteractionId": "interaction-e29a970b",
+      "selectedRegionId": "region-2d0889dc",
+      "selectedBonePath": "root",
+      "showBones": false,
+      "showBoneNames": false,
+      "showConstraints": true,
+      "showInactiveBones": false
+    }
+  ]
+}
