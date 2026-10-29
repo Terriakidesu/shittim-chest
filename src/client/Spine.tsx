@@ -11,6 +11,7 @@ import {
   type SpineCameraMode,
   type SpineFiles,
   type SpineInteractionMode,
+  type SpineInteractionOverlay,
   type SpineMeta,
   type SpineProgress,
 } from "./spine/spineRuntime";
@@ -130,6 +131,7 @@ interface SpineViewportProps {
   loop: boolean;
   cameraMode: SpineCameraMode;
   interactionMode: SpineInteractionMode;
+  showInteractionPoints: boolean;
   effectsStrength: number;
   onMeta: (meta: SpineMeta | null) => void;
   onProgress: (progress: SpineProgress) => void;
@@ -148,6 +150,7 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   loop,
   cameraMode,
   interactionMode,
+  showInteractionPoints,
   effectsStrength,
   onMeta,
   onProgress,
@@ -158,6 +161,7 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<SpineRenderer | null>(null);
+  const [interactionOverlay, setInteractionOverlay] = useState<SpineInteractionOverlay>({ canvasWidth: 0, canvasHeight: 0, points: [] });
   const callbacks = useRef({ onMeta, onProgress, onLoading, onError, onCameraMode });
   callbacks.current = { onMeta, onProgress, onLoading, onError, onCameraMode };
 
@@ -173,6 +177,7 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
         onLoading: (loading) => callbacks.current.onLoading(loading),
         onError: (error) => callbacks.current.onError(error),
         onCameraMode: (mode) => callbacks.current.onCameraMode(mode),
+        onInteractionPoints: (overlay) => setInteractionOverlay(overlay),
       });
       rendererRef.current = renderer;
       return () => {
@@ -198,6 +203,7 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   useEffect(() => rendererRef.current?.setCameraMode(cameraMode), [cameraMode]);
   useEffect(() => rendererRef.current?.setInteractionMode(interactionMode), [interactionMode]);
   useEffect(() => rendererRef.current?.setEffectsStrength(effectsStrength), [effectsStrength]);
+  useEffect(() => rendererRef.current?.setShowInteractionPoints(showInteractionPoints), [showInteractionPoints]);
 
   useImperativeHandle(ref, () => ({
     resetCamera: () => rendererRef.current?.resetCamera(),
@@ -217,8 +223,22 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
     seek: (value) => rendererRef.current?.seek(value),
   }), []);
 
+  const overlayWidth = interactionOverlay.canvasWidth;
+  const overlayHeight = interactionOverlay.canvasHeight;
+  const colors = { pat: "#ff668f", pinch: "#28c7ed", touch: "#ffc857" } as const;
   return <div ref={stageRef} className={`spine-stage${interactionMode === "interaction" ? " spine-stage-interaction" : ""}`}>
     <canvas ref={canvasRef} aria-label={t("spine.stageAria")} />
+    {showInteractionPoints && interactionOverlay.points.length > 0 && overlayWidth > 0 && overlayHeight > 0 && <svg className="spine-interaction-overlay" viewBox={`0 0 ${overlayWidth} ${overlayHeight}`} preserveAspectRatio="none" aria-hidden="true">
+      {interactionOverlay.points.map((point, index) => {
+        const color = colors[point.kind];
+        const matrix = `matrix(${point.axisXEndX - point.centerX} ${point.axisXEndY - point.centerY} ${point.axisYEndX - point.centerX} ${point.axisYEndY - point.centerY} ${point.centerX} ${point.centerY})`;
+        return <g key={`${point.kind}-${index}`} className={`spine-interaction-point spine-interaction-point-${point.kind}`}>
+          {point.shape === "ellipse" ? <ellipse transform={matrix} cx="0" cy="0" rx="1" ry="1" fill={color} fillOpacity=".14" stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" /> : <rect transform={matrix} x="-1" y="-1" width="2" height="2" fill={color} fillOpacity=".14" stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" />}
+          <circle cx={point.centerX} cy={point.centerY} r="7" fill={color} fillOpacity=".9" stroke="#fff" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+          <text x={point.centerX + 11} y={point.centerY - 10} fill={color} stroke="#10202d" strokeWidth="4" paintOrder="stroke" fontSize="18" fontWeight="700">{point.kind}</text>
+        </g>;
+      })}
+    </svg>}
   </div>;
 });
 
@@ -256,6 +276,7 @@ export function Spine() {
   const [loop, setLoop] = useState(true);
   const [cameraMode, setCameraMode] = useState<SpineCameraMode>("fill");
   const [interactionMode, setInteractionMode] = useState<SpineInteractionMode>("free");
+  const [showInteractionPoints, setShowInteractionPoints] = useState(false);
   const [showFullscreenControls, setShowFullscreenControls] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [effectsStrength, setEffectsStrength] = useState(DEFAULT_EFFECTS_STRENGTH);
@@ -551,11 +572,6 @@ export function Spine() {
           <div><strong>{selectedCharacter}</strong><span>{selectedVariant?.variant}</span></div>
           <small>{t(meta ? "spine.preview.ready" : "spine.preview.waiting")}</small>
         </div>
-        <div className="spine-fullscreen-actions">
-          <button className="btn spine-fullscreen-toggle" type="button" aria-expanded={showFullscreenControls} aria-controls="spine-playback-controls" onClick={() => setShowFullscreenControls((shown) => !shown)}>
-            <span>{t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}</span>
-          </button>
-        </div>
         <div className="spine-stage-frame" onPointerDown={(event) => {
           stagePointer.current = { x: event.clientX, y: event.clientY };
         }} onPointerUp={(event) => {
@@ -576,6 +592,7 @@ export function Spine() {
             loop={loop}
             cameraMode={cameraMode}
             interactionMode={interactionMode}
+            showInteractionPoints={showInteractionPoints}
             effectsStrength={effectsStrength}
             onMeta={(next) => {
               setMeta(next);
@@ -615,6 +632,9 @@ export function Spine() {
               aria-label={t("spine.scrubber")}
             />
             <span className="spine-time" aria-live="off">{formatSeconds(progress.time)} / {formatSeconds(progress.duration)}s</span>
+            <button className="spine-fullscreen-only spine-compact-button spine-controls-toggle" type="button" aria-expanded={showFullscreenControls} aria-controls="spine-playback-controls" onClick={() => setShowFullscreenControls((shown) => !shown)}>
+              {t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}
+            </button>
             <button className="spine-fullscreen-only spine-compact-button" type="button" aria-expanded={showFullscreenOptions} aria-controls="spine-options" onClick={() => setShowFullscreenOptions((shown) => !shown)}>{t("spine.options")}</button>
             <button className="spine-fullscreen-only spine-compact-button" type="button" onClick={() => void viewportRef.current?.toggleFullscreen()} aria-label={t("a11y.fullscreenExit")} title={t("a11y.fullscreenExit")}><IconCompress /></button>
           </div>
@@ -647,6 +667,7 @@ export function Spine() {
               </select>
             </label>
             <label className="spine-check"><input type="checkbox" checked={loop} disabled={interactionMode === "interaction"} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>
+            <label className="spine-check"><input type="checkbox" checked={showInteractionPoints} onChange={(event) => setShowInteractionPoints(event.target.checked)} />{t("spine.showInteractionPoints")}</label>
             {interactionReady && meta?.interaction.talkCount ? <button className="btn ghost spine-action-button spine-interaction-action" type="button" onClick={() => viewportRef.current?.triggerTalk()} aria-label={t("spine.talkAria")}><span>{t("spine.talk")}</span><small>{meta.interaction.talkCount}</small></button> : null}
             <label className="spine-field spine-effects-field">
               <span>{t("spine.effects")}</span>

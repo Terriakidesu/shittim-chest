@@ -16,7 +16,7 @@ import {
   SceneRenderer,
   Vector3,
 } from "@esotericsoftware/spine-webgl";
-import { authoredViewport, fitScene, interactionKindAtPoint, sceneBounds, type InteractionHitKind, type SceneBounds } from "./spineCamera";
+import { authoredViewport, fitScene, interactionKindAtPoint, interactionZonesForDisplay, sceneBounds, type InteractionHitKind, type SceneBounds } from "./spineCamera";
 import { DEFAULT_EFFECTS_STRENGTH, drawWithEffectsStrength } from "./spineEffects";
 import { authoredInteraction, authoredRegions, profileFromProject, type SpineAnimationPair, type SpineInteractionAction, type SpineInteractionProfile, type SpineInteractionProject, type SpineAuthoredRegion } from "./spineInteraction";
 import {
@@ -114,12 +114,30 @@ export interface SpineInteractionMeta {
   talkCount: number;
 }
 
+export interface SpineInteractionPoint {
+  kind: InteractionHitKind;
+  shape: "ellipse" | "rectangle";
+  centerX: number;
+  centerY: number;
+  axisXEndX: number;
+  axisXEndY: number;
+  axisYEndX: number;
+  axisYEndY: number;
+}
+
+export interface SpineInteractionOverlay {
+  canvasWidth: number;
+  canvasHeight: number;
+  points: SpineInteractionPoint[];
+}
+
 export interface SpineRendererCallbacks {
   onMeta: (meta: SpineMeta | null) => void;
   onProgress: (progress: SpineProgress) => void;
   onLoading: (loading: boolean) => void;
   onError: (error: Error | null) => void;
   onCameraMode?: (mode: SpineCameraMode) => void;
+  onInteractionPoints?: (overlay: SpineInteractionOverlay) => void;
   onEditorFrame?: (frame: SpineEditorFrame) => void;
   /** Private authoring hooks. Not used by the published viewer. */
   onBeforeEditorUpdate?: (skeleton: Skeleton) => void;
@@ -430,6 +448,7 @@ export class SpineRenderer {
   private loop = true;
   private speed = 1;
   private effectsStrength = DEFAULT_EFFECTS_STRENGTH;
+  private showInteractionPoints = false;
   private cameraMode: SpineCameraMode = "fill";
   private interactionMode: SpineInteractionMode = "free";
   private freeAnimationSelection = "";
@@ -481,6 +500,7 @@ export class SpineRenderer {
     this.callbacks.onMeta(null);
     this.callbacks.onError(null);
     this.callbacks.onLoading(true);
+    this.callbacks.onInteractionPoints?.({ canvasWidth: 0, canvasHeight: 0, points: [] });
     this.animationSelection = "";
 
     try {
@@ -515,6 +535,7 @@ export class SpineRenderer {
     this.callbacks.onMeta(null);
     this.callbacks.onProgress({ time: 0, duration: 0, animation: null });
     this.callbacks.onLoading(false);
+    this.callbacks.onInteractionPoints?.({ canvasWidth: 0, canvasHeight: 0, points: [] });
     this.interactionPointer = null;
     this.interactionPointerId = null;
     this.interactionPointerHeld = false;
@@ -539,6 +560,11 @@ export class SpineRenderer {
 
   setEffectsStrength(strength: number) {
     this.effectsStrength = Number.isFinite(strength) ? Math.max(0, Math.min(1, strength)) : DEFAULT_EFFECTS_STRENGTH;
+  }
+
+  setShowInteractionPoints(show: boolean) {
+    this.showInteractionPoints = show;
+    if (!show) this.callbacks.onInteractionPoints?.({ canvasWidth: 0, canvasHeight: 0, points: [] });
   }
 
   setLoop(loop: boolean) {
@@ -997,6 +1023,35 @@ export class SpineRenderer {
     if (editorFrame) this.callbacks.onEditorFrame?.(editorFrame);
   }
 
+  private interactionOverlay(): SpineInteractionOverlay {
+    const bundle = this.bundle;
+    if (!bundle || this.canvas.width <= 0 || this.canvas.height <= 0) return { canvasWidth: this.canvas.width, canvasHeight: this.canvas.height, points: [] };
+    const kinds: InteractionHitKind[] = [];
+    if (bundle.interaction.pat) kinds.push("pat");
+    if (bundle.interaction.pinch) kinds.push("pinch");
+    if (bundle.interaction.touch) kinds.push("touch");
+    const screen = (x: number, y: number) => {
+      const projected = this.renderer.camera.worldToScreen(new Vector3(x, y, 0), this.canvas.width, this.canvas.height);
+      return { x: projected.x, y: this.canvas.height - projected.y };
+    };
+    const points = interactionZonesForDisplay(bundle.skeleton, kinds, bundle.authoredRegions).map((zone) => {
+      const center = screen(zone.x, zone.y);
+      const axisX = screen(zone.x + zone.axisX.x, zone.y + zone.axisX.y);
+      const axisY = screen(zone.x + zone.axisY.x, zone.y + zone.axisY.y);
+      return {
+        kind: zone.kind,
+        shape: zone.shape,
+        centerX: center.x,
+        centerY: center.y,
+        axisXEndX: axisX.x,
+        axisXEndY: axisX.y,
+        axisYEndX: axisY.x,
+        axisYEndY: axisY.y,
+      } satisfies SpineInteractionPoint;
+    });
+    return { canvasWidth: this.canvas.width, canvasHeight: this.canvas.height, points };
+  }
+
   resetCamera() {
     this.pendingFit = true;
   }
@@ -1110,6 +1165,7 @@ export class SpineRenderer {
           }
         }
         this.emitEditorFrame();
+        if (this.showInteractionPoints) this.callbacks.onInteractionPoints?.(this.interactionOverlay());
       }
 
       const gl = this.context.gl;

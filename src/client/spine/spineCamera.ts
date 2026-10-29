@@ -372,7 +372,7 @@ export function interactionBounds(skeleton: Skeleton): SceneBounds | null {
 
 export type InteractionHitKind = "pat" | "pinch" | "touch";
 
-interface InteractionZone {
+export interface InteractionZone {
   x: number;
   y: number;
   axisX: { x: number; y: number };
@@ -467,6 +467,15 @@ function interactionZones(skeleton: Skeleton, kind: InteractionHitKind, regions:
   }
 
   return cheekZones(skeleton, face, all);
+}
+
+/** Geometry for the optional viewer overlay; it is the same geometry used for hit testing. */
+export function interactionZonesForDisplay(
+  skeleton: Skeleton,
+  kinds: InteractionHitKind[],
+  regions: SpineAuthoredRegion[] = [],
+): Array<InteractionZone & { kind: InteractionHitKind }> {
+  return kinds.flatMap((kind) => interactionZones(skeleton, kind, regions).map((zone) => ({ ...zone, kind })));
 }
 
 function zoneCoordinates(zone: InteractionZone, x: number, y: number): { x: number; y: number } | null {

@@ -440,6 +440,7 @@ export const ko: Record<keyof typeof en, string> = {
   "spine.speed": "속도",
   "spine.speedAria": "애니메이션 속도",
   "spine.loop": "반복",
+  "spine.showInteractionPoints": "상호작용 지점 표시",
   "spine.resetView": "화면 초기화",
   "spine.fullscreen": "전체 화면",
   "spine.loaded": "애니메이션 {animations}개 · Spine 4.2 바이너리",

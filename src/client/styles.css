@@ -386,8 +386,6 @@ a { color: var(--cyan); }
 .spine-workspace-heading strong { font-size: 13px; }
 .spine-workspace-heading span { padding: 3px 7px; border-radius: 4px; color: var(--cyan); background: var(--cyan-soft); font-size: 10px; }
 .spine-workspace-heading small { color: var(--muted); font-size: 10px; }
-.spine-fullscreen-toggle { display: none; }
-.spine-fullscreen-actions { display: none; }
 .spine-fullscreen-only { display: none; }
 .spine-layout:fullscreen { position: relative; width: 100vw; height: 100vh; box-sizing: border-box; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 0; margin: 0; padding: 0; overflow: hidden; background: #09141e; }
 .spine-layout:fullscreen .spine-sidebar { position: absolute; z-index: 6; top: 16px; bottom: 88px; left: 16px; width: min(260px, calc(100% - 32px)); min-height: 0; overflow-y: auto; display: flex; gap: 0; padding: 8px; border: 1px solid #ffffff25; border-radius: 12px; background: #10202df2; color: #edf7ff; box-shadow: 0 8px 32px #0006; }
@@ -401,9 +399,7 @@ a { color: var(--cyan); }
 .spine-layout:fullscreen .spine-workspace { position: relative; height: 100%; min-height: 0; border: 0; border-radius: 0; background: var(--surface); }
 .spine-layout:fullscreen .spine-stage-frame { position: absolute; inset: 0; border: 0; }
 .spine-layout:fullscreen .spine-stage { width: 100%; height: 100%; min-height: 0; aspect-ratio: auto; }
-.spine-layout:fullscreen .spine-fullscreen-actions { display: flex; position: absolute; z-index: 5; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); gap: 6px; }
-.spine-layout:fullscreen .spine-sidebar-toggle,
-.spine-layout:fullscreen .spine-fullscreen-toggle { display: block; min-height: 30px; padding: 5px 10px; border: 1px solid #ffffff40; border-radius: 6px; background: #10202db8; color: white; font-size: 11px; transform: none; }
+.spine-layout:fullscreen .spine-sidebar-toggle { display: block; min-height: 30px; padding: 5px 10px; border: 1px solid #ffffff40; border-radius: 6px; background: #10202db8; color: white; font-size: 11px; transform: none; }
 .spine-layout:fullscreen .spine-controls { position: absolute; z-index: 7; bottom: max(20px, env(safe-area-inset-bottom)); left: 50%; right: auto; transform: translateX(-50%); width: min(720px, calc(100% - 24px)); box-sizing: border-box; max-height: 45vh; overflow-y: auto; margin: 0; padding: 7px 10px; border: 1px solid #ffffff20; border-radius: 12px; background: #10202dbf; backdrop-filter: blur(12px); color: #edf7ff; box-shadow: 0 4px 20px #0003; }
 .spine-layout:fullscreen .spine-scrubber-row { gap: 8px; }
 .spine-layout:fullscreen .spine-fullscreen-only { display: inline-flex; align-items: center; justify-content: center; }
@@ -430,14 +426,15 @@ a { color: var(--cyan); }
 .spine-layout:fullscreen .spine-check { color: #edf7ff; font-size: 11px; }
 .spine-layout:fullscreen .spine-check { min-height: 30px; }
 .spine-layout:fullscreen .spine-workspace.spine-controls-hidden .spine-controls { display: none; }
-.spine-layout:fullscreen .spine-workspace.spine-controls-hidden .spine-fullscreen-toggle { display: none; }
 .spine-layout:fullscreen .spine-caption,
 .spine-layout:fullscreen .spine-workspace-heading,
 .spine-layout:fullscreen .spine-stage-hint { display: none; }
 .spine-stage-frame { position: relative; min-width: 0; overflow: hidden; background: var(--surface); }
-.spine-stage { width: 100%; height: auto; aspect-ratio: 16 / 9; background: #102432; }
+.spine-stage { position: relative; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #102432; }
 .spine-stage canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 .spine-stage canvas:active { cursor: grabbing; }
+.spine-interaction-overlay { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.spine-interaction-point text { font-family: inherit; text-transform: uppercase; }
 .spine-stage:fullscreen { width: 100vw; height: 100vh; min-height: 0; border: 0; }
 .spine-stage-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; color: var(--muted); text-align: center; pointer-events: none; }
 .spine-stage-empty strong { color: var(--text); font-size: 18px; }

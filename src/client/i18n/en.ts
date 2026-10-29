@@ -456,6 +456,7 @@ export const en = {
   "spine.speed": "Speed",
   "spine.speedAria": "Animation speed",
   "spine.loop": "Loop",
+  "spine.showInteractionPoints": "Show interaction points",
   "spine.resetView": "Reset view",
   "spine.fullscreen": "Fullscreen",
   "spine.loaded": "{animations} animations · Spine 4.2 binary",

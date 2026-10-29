@@ -440,6 +440,7 @@ export const ja: Record<keyof typeof en, string> = {
   "spine.speed": "速度",
   "spine.speedAria": "アニメーション速度",
   "spine.loop": "ループ",
+  "spine.showInteractionPoints": "インタラクションポイントを表示",
   "spine.resetView": "表示をリセット",
   "spine.fullscreen": "全画面",
   "spine.loaded": "{animations}アニメーション · Spine 4.2バイナリ",
