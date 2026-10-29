@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { BlendMode, BoneData, Physics, RegionAttachment, Skeleton, SkeletonData, SlotData } from "@esotericsoftware/spine-core";
-import { authoredViewport, fitScene, interactionBounds, interactionHit, sceneBounds } from "./spineCamera";
+import { BlendMode, BoneData, Physics, RegionAttachment, Skeleton, SkeletonData, SlotData, Vector2 } from "@esotericsoftware/spine-core";
+import { authoredViewport, fitScene, interactionBounds, interactionHit, interactionKindAtPoint, sceneBounds } from "./spineCamera";
 import { SpineRenderer } from "./spineRuntime";
 
 function scene() {
@@ -324,6 +324,95 @@ describe("Spine scene framing", () => {
     skeleton.updateWorldTransform(Physics.update);
     expect(interactionHit(skeleton, 0, 0)).toBe(true);
     expect(interactionHit(skeleton, 400, 0)).toBe(false);
+  });
+
+  test("uses the authored touch point for patting instead of the whole body", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const character = new BoneData(1, "PC", root);
+    const touchPoint = new BoneData(2, "Touch_Point", character);
+    touchPoint.y = 300;
+    data.bones.push(root, character, touchPoint);
+    data.slots.push(new SlotData(0, "Face", character), new SlotData(1, "Body", character));
+    const skeleton = new Skeleton(data);
+    const face = new RegionAttachment("Face", "Face");
+    face.offset = [-100, -100, -100, 100, 100, 100, 100, -100];
+    const body = new RegionAttachment("Body", "Body");
+    body.offset = [-250, -700, -250, -300, 250, -300, 250, -700];
+    skeleton.slots[0]!.setAttachment(face);
+    skeleton.slots[1]!.setAttachment(body);
+    skeleton.updateWorldTransform(Physics.update);
+    expect(interactionHit(skeleton, 0, 300, "pat")).toBe(true);
+    expect(interactionHit(skeleton, 0, -500, "pat")).toBe(false);
+  });
+
+  test("restricts pinch and touch gestures to cheek areas", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const character = new BoneData(1, "PC", root);
+    const cheek = new BoneData(2, "cheek_01", character);
+    cheek.x = -80;
+    cheek.y = 300;
+    data.bones.push(root, character, cheek);
+    data.slots.push(new SlotData(0, "Face", character));
+    const skeleton = new Skeleton(data);
+    const face = new RegionAttachment("Face", "Face");
+    face.offset = [-150, 150, -150, 450, 150, 450, 150, 150];
+    skeleton.slots[0]!.setAttachment(face);
+    skeleton.updateWorldTransform(Physics.update);
+    expect(interactionHit(skeleton, -80, 300, "pinch")).toBe(true);
+    expect(interactionHit(skeleton, 250, 300, "touch")).toBe(false);
+    expect(interactionHit(skeleton, 250, 300, "pinch")).toBe(false);
+  });
+
+  test("shared pat and cheek edges choose the nearest region, not pinch priority", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const character = new BoneData(1, "PC", root);
+    const point = new BoneData(2, "Touch_Point", character);
+    const cheek = new BoneData(3, "cheek_01", character);
+    point.y = 300;
+    cheek.x = -60;
+    cheek.y = 260;
+    data.bones.push(root, character, point, cheek);
+    data.slots.push(new SlotData(0, "Face", character));
+    const skeleton = new Skeleton(data);
+    const face = new RegionAttachment("Face", "Face");
+    face.offset = [-150, 150, -150, 450, 150, 450, 150, 150];
+    skeleton.slots[0]!.setAttachment(face);
+    skeleton.updateWorldTransform(Physics.update);
+    expect(interactionKindAtPoint(skeleton, -30, 290, ["pinch", "pat"])).toBe("pat");
+    expect(interactionKindAtPoint(skeleton, -60, 260, ["pinch", "pat"])).toBe("pinch");
+    expect(interactionKindAtPoint(skeleton, -60, 260, ["pat"])).toBe("pat");
+    expect(interactionKindAtPoint(skeleton, 500, 0, ["pinch", "pat"])).toBeNull();
+  });
+
+  test("uses saved interaction regions when a project provides them", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const character = new BoneData(1, "PC", root);
+    const cheek = new BoneData(2, "cheek_01", character);
+    cheek.x = -80;
+    cheek.y = 300;
+    data.bones.push(root, character, cheek);
+    const skeleton = new Skeleton(data);
+    skeleton.updateWorldTransform(Physics.update);
+    const regions = [{
+      id: "saved-cheek",
+      kind: "pinch" as const,
+      name: "Saved cheek",
+      enabled: true,
+      shape: "ellipse" as const,
+      anchorBone: "root/PC/cheek_01",
+      offsetX: 20,
+      offsetY: 10,
+      radiusX: 30,
+      radiusY: 20,
+      rotation: 25,
+    }];
+    const center = skeleton.findBone("cheek_01")!.localToWorld(new Vector2(20, 10));
+    expect(interactionKindAtPoint(skeleton, center.x, center.y, ["pinch"], regions)).toBe("pinch");
+    expect(interactionKindAtPoint(skeleton, -150, 300, ["pinch"], regions)).toBeNull();
   });
 
   test("renderer refits on fullscreen resize while preserving manual zoom", () => {

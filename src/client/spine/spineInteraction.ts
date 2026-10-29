@@ -3,11 +3,66 @@ export interface SpineAnimationPair {
   face: string | null;
 }
 
+export interface SpineInteractionAction {
+  start: SpineAnimationPair;
+  follow: SpineAnimationPair;
+  release: SpineAnimationPair | null;
+}
+
+export type SpineInteractionKind = "pat" | "pinch" | "touch";
+
+export interface SpineInteractionRegion {
+  id: string;
+  name: string;
+  enabled: boolean;
+  shape: "ellipse" | "rectangle";
+  anchorBone: string | null;
+  offsetX: number;
+  offsetY: number;
+  radiusX: number;
+  radiusY: number;
+  rotation: number;
+}
+
+export interface SpineAuthoredInteraction {
+  id: string;
+  name: string;
+  enabled: boolean;
+  trigger: "press" | "hold" | "drag";
+  startAnimation: string;
+  followAnimation: string;
+  endAnimation: string;
+  faceStartAnimation: string;
+  faceFollowAnimation: string;
+  faceEndAnimation: string;
+  followTargetBone: string | null;
+  sensitivity: number;
+  limitX: number;
+  limitY: number;
+  smoothing: number;
+  regions: SpineInteractionRegion[];
+}
+
+export interface SpineInteractionProject {
+  schemaVersion: number;
+  name?: string;
+  assetDirectory: string;
+  interactions: SpineAuthoredInteraction[];
+}
+
+export interface SpineInteractionBundle {
+  schemaVersion: number;
+  projects: SpineInteractionProject[];
+}
+
+export interface SpineAuthoredRegion extends SpineInteractionRegion {
+  kind: SpineInteractionKind;
+}
+
 export interface SpineInteractionProfile {
-  pat: {
-    hold: SpineAnimationPair;
-    release: SpineAnimationPair | null;
-  } | null;
+  pat: SpineInteractionAction | null;
+  pinch: SpineInteractionAction | null;
+  touch: SpineInteractionAction | null;
   look: {
     start: SpineAnimationPair;
     end: SpineAnimationPair | null;
@@ -25,8 +80,11 @@ function animationBase(name: string): string {
 }
 
 function faceVariant(animations: string[], main: string): string | null {
-  const candidate = main.replace(/_m(?=_|$)/i, "_A");
-  return exactAnimation(animations, candidate);
+  const candidates = [
+    main.replace(/_m(?=_|$)/i, "_A"),
+    `${main}_A`,
+  ].filter((candidate) => candidate.toLocaleLowerCase() !== main.toLocaleLowerCase());
+  return candidates.map((candidate) => exactAnimation(animations, candidate)).find(Boolean) ?? null;
 }
 
 function pair(animations: string[], main: string | null): SpineAnimationPair | null {
@@ -34,7 +92,7 @@ function pair(animations: string[], main: string | null): SpineAnimationPair | n
 }
 
 function numberIn(name: string): number {
-  const match = animationBase(name).match(/(?:pat|talk|look|touch)(?:2)?[_ -]?(\d+)/i);
+  const match = animationBase(name).match(/(?:pat|talk|look|touch|pinch)(?:2)?[_ -]?(\d+)/i);
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 }
 
@@ -46,24 +104,29 @@ function preferRoot(names: string[]): string[] {
   });
 }
 
-function mainAnimations(animations: string[], kind: "pat" | "look" | "talk" | "touch"): string[] {
+function mainAnimations(animations: string[], kind: "pat" | "look" | "talk" | "touch" | "pinch"): string[] {
   const pattern = kind === "pat"
     ? /(?:^|\/)(?:s_)?pat(?:2)?[_ -]?\d+_m(?:_|$)/i
     : kind === "touch"
       ? /(?:^|\/)touch[_ -]?\d+_m(?:_|$)/i
+      : kind === "pinch"
+        ? /(?:^|\/)(?:s_)?pinch[_ -]?\d+(?:_m)?(?:_|$)/i
       : kind === "look"
         ? /(?:^|\/)(?:s_)?look[_ -]?\d+_m(?:_|$)/i
         : /(?:^|\/)talk[_ -]?\d+_m(?:_|$)/i;
   return preferRoot(animations.filter((name) => pattern.test(name) && !/^dev[ _/]/i.test(name)));
 }
 
-function endCandidates(main: string, kind: "pat" | "look" | "touch"): string[] {
+function endCandidates(main: string, kind: "pat" | "look" | "touch" | "pinch"): string[] {
   const base = animationBase(main);
   const variants: string[] = [];
   if (kind === "look") {
     variants.push(base.replace(/^look/i, "LookEnd"));
   } else if (kind === "touch") {
     variants.push(base.replace(/^touch/i, "TouchEnd"), base.replace(/^touch/i, "Touch_End"));
+  } else if (kind === "pinch") {
+    const end = base.replace(/^pinch/i, "PinchEnd");
+    variants.push(end, `${end}_M`, `${end}_A`, base.replace(/^pinch/i, "Pinch_End"));
   } else if (/^pat2/i.test(base)) {
     variants.push(base.replace(/^pat2/i, "Pat2End"), base.replace(/^pat2/i, "PatEnd2"));
   } else {
@@ -72,7 +135,7 @@ function endCandidates(main: string, kind: "pat" | "look" | "touch"): string[] {
   return variants;
 }
 
-function findEnd(animations: string[], main: string, kind: "pat" | "look" | "touch"): SpineAnimationPair | null {
+function findEnd(animations: string[], main: string, kind: "pat" | "look" | "touch" | "pinch"): SpineAnimationPair | null {
   for (const candidate of endCandidates(main, kind)) {
     const found = exactAnimation(animations, candidate);
     if (found) return pair(animations, found);
@@ -88,14 +151,47 @@ function findPreferred(animations: string[], names: string[]): string | null {
   return null;
 }
 
+function followCandidates(main: string): string[] {
+  const slash = main.lastIndexOf("/");
+  const directory = slash >= 0 ? main.slice(0, slash + 1) : "";
+  const base = animationBase(main);
+  const match = base.match(/^(.*?)(\d+)(?=_[A-Za-z]+$|$)/);
+  if (!match) return [];
+  const digits = match[2]!;
+  const nextNumber = String(Number(digits) + 1).padStart(digits.length, "0");
+  const next = `${match[1]}${nextNumber}${base.slice(match[0].length)}`;
+  const candidates = [`${directory}${next}`];
+  if (/_M$/i.test(next)) candidates.push(`${directory}${next.replace(/_M$/i, "")}`);
+  else candidates.push(`${directory}${next}_M`);
+  return candidates;
+}
+
+function followPair(animations: string[], start: string): SpineAnimationPair {
+  const follow = followCandidates(start)
+    .map((candidate) => exactAnimation(animations, candidate))
+    .find(Boolean) ?? start;
+  return pair(animations, follow)!;
+}
+
 function findPat(animations: string[]): SpineInteractionProfile["pat"] {
   const mains = mainAnimations(animations, "pat");
-  const main = findPreferred(animations, ["Pat_01_M", "Pat_01_M_all"]) ?? mains[0]
-    ?? mainAnimations(animations, "touch")[0]
-    ?? null;
+  const main = findPreferred(animations, ["Pat_01_M", "Pat_01_M_all"]) ?? mains[0] ?? null;
   if (!main) return null;
-  const kind = /^touch/i.test(animationBase(main)) ? "touch" : "pat";
-  return { hold: pair(animations, main)!, release: findEnd(animations, main, kind) };
+  return { start: pair(animations, main)!, follow: followPair(animations, main), release: findEnd(animations, main, "pat") };
+}
+
+function findAction(animations: string[], kind: "touch" | "pinch", preferred: string[]): SpineInteractionAction | null {
+  const main = findPreferred(animations, preferred) ?? mainAnimations(animations, kind)[0] ?? null;
+  if (!main) return null;
+  return { start: pair(animations, main)!, follow: followPair(animations, main), release: findEnd(animations, main, kind) };
+}
+
+function findPinch(animations: string[]): SpineInteractionProfile["pinch"] {
+  return findAction(animations, "pinch", ["Pinch_01_M", "Pinch_01"]);
+}
+
+function findTouch(animations: string[]): SpineInteractionProfile["touch"] {
+  return findAction(animations, "touch", ["Touch_01_M"]);
 }
 
 function findLook(animations: string[]): SpineInteractionProfile["look"] {
@@ -127,7 +223,68 @@ function findTalks(animations: string[]): SpineAnimationPair[] {
 export function findInteractionProfile(animations: string[]): SpineInteractionProfile {
   return {
     pat: findPat(animations),
+    pinch: findPinch(animations),
+    touch: findTouch(animations),
     look: findLook(animations),
     talks: findTalks(animations),
   };
+}
+
+export function interactionKind(interaction: Pick<SpineAuthoredInteraction, "name" | "startAnimation">): SpineInteractionKind | null {
+  const value = `${interaction.name} ${interaction.startAnimation}`;
+  if (/pinch/i.test(value)) return "pinch";
+  if (/pat/i.test(value)) return "pat";
+  if (/touch/i.test(value)) return "touch";
+  return null;
+}
+
+export function authoredInteraction(project: SpineInteractionProject | null | undefined, kind: SpineInteractionKind): SpineAuthoredInteraction | null {
+  return project?.interactions.find((interaction) => interaction.enabled && interactionKind(interaction) === kind) ?? null;
+}
+
+function authoredPair(animations: string[], mainName: string, faceName: string): SpineAnimationPair | null {
+  const main = exactAnimation(animations, mainName);
+  if (!main) return null;
+  return { main, face: faceName ? exactAnimation(animations, faceName) : null };
+}
+
+function authoredAction(animations: string[], interaction: SpineAuthoredInteraction): SpineInteractionAction | null {
+  const start = authoredPair(animations, interaction.startAnimation, interaction.faceStartAnimation);
+  const follow = authoredPair(animations, interaction.followAnimation, interaction.faceFollowAnimation);
+  if (!start || !follow) return null;
+  return {
+    start,
+    follow,
+    release: interaction.endAnimation
+      ? authoredPair(animations, interaction.endAnimation, interaction.faceEndAnimation)
+      : null,
+  };
+}
+
+/** Apply saved editor phases without losing automatic look/talk detection. */
+export function profileFromProject(animations: string[], project?: SpineInteractionProject | null): SpineInteractionProfile {
+  const detected = findInteractionProfile(animations);
+  if (!project) return detected;
+  const overrides = new Map<SpineInteractionKind, SpineInteractionAction | null>();
+  for (const item of project.interactions ?? []) {
+    const kind = interactionKind(item);
+    if (!kind || overrides.has(kind)) continue;
+    overrides.set(kind, item.enabled ? authoredAction(animations, item) ?? detected[kind] : null);
+  }
+  return {
+    ...detected,
+    pat: overrides.has("pat") ? overrides.get("pat")! : detected.pat,
+    pinch: overrides.has("pinch") ? overrides.get("pinch")! : detected.pinch,
+    touch: overrides.has("touch") ? overrides.get("touch")! : detected.touch,
+  };
+}
+
+export function authoredRegions(project?: SpineInteractionProject | null): SpineAuthoredRegion[] {
+  if (!project) return [];
+  return project.interactions.flatMap((interaction) => {
+    const kind = interactionKind(interaction);
+    return kind && interaction.enabled
+      ? interaction.regions.filter((region) => region.enabled).map((region) => ({ ...region, kind }))
+      : [];
+  });
 }

@@ -1,0 +1,107 @@
+import { Physics, type AnimationState, type Skeleton } from "@esotericsoftware/spine-core";
+import type { EditorInteraction } from "./editorModel";
+import { interactionKind } from "../../../src/client/spine/spineInteraction";
+import {
+  applyInteractionMotion,
+  beforeInteractionMotion,
+  beginInteractionMotion,
+  createInteractionMotionState,
+  resetInteractionMotion,
+  type SpineInteractionMotionState,
+} from "../../../src/client/spine/spineInteractionMotion";
+
+export type PreviewPhase = "idle" | "starting" | "holding" | "releasing";
+
+/** Runs the authored project, independently of the viewer's detected presets. */
+export class InteractionPreview {
+  phase: PreviewPhase = "idle";
+  interaction: EditorInteraction | null = null;
+  regionName = "";
+  held = false;
+  private pending = false;
+  private released = false;
+  private elapsed = 0;
+  private duration = 0;
+  private pointer = { x: 0, y: 0 };
+  private motion: SpineInteractionMotionState = createInteractionMotionState();
+
+  get progress() {
+    return { time: this.phase === "holding" && this.duration > 0 ? this.elapsed % this.duration : Math.min(this.elapsed, this.duration), duration: this.duration };
+  }
+
+  press(interaction: EditorInteraction, regionName: string, x: number, y: number) {
+    if (this.phase !== "idle" || this.pending) return;
+    this.interaction = structuredClone(interaction);
+    this.regionName = regionName;
+    this.pointer = { x, y };
+    const kind = interactionKind(interaction) ?? "touch";
+    beginInteractionMotion(this.motion, this.interaction, kind, this.pointer);
+    this.held = true;
+    this.released = false;
+    this.pending = true;
+  }
+
+  move(x: number, y: number) { this.pointer = { x, y }; }
+  release() { this.held = false; this.released = true; }
+
+  beforeUpdate() {
+    beforeInteractionMotion(this.motion);
+  }
+
+  reset(state?: AnimationState) {
+    resetInteractionMotion(this.motion);
+    state?.clearTrack(1);
+    state?.clearTrack(2);
+    this.phase = "idle";
+    this.interaction = null;
+    this.pending = this.held = this.released = false;
+    this.regionName = "";
+  }
+
+  private enter(phase: PreviewPhase, state: AnimationState) {
+    this.phase = phase;
+    this.elapsed = 0;
+    const item = this.interaction;
+    if (!item) return;
+    const main = phase === "starting" ? item.startAnimation : phase === "holding" ? item.followAnimation : item.endAnimation;
+    const face = phase === "starting" ? item.faceStartAnimation : phase === "holding" ? item.faceFollowAnimation : item.faceEndAnimation;
+    this.duration = 0;
+    for (const [track, name] of [[1, main], [2, face]] as const) {
+      if (name && state.data.skeletonData.findAnimation(name)) {
+        const entry = state.setAnimation(track, name, phase === "holding");
+        this.duration = Math.max(this.duration, entry.animation?.duration ?? 0);
+      } else state.clearTrack(track);
+    }
+  }
+
+  update(delta: number, skeleton: Skeleton, state: AnimationState) {
+    if (this.pending && this.interaction?.trigger === "drag") {
+      if (!this.held) { this.reset(state); return; }
+      const origin = this.motion.origin ?? this.pointer;
+      if (Math.hypot(this.pointer.x - origin.x, this.pointer.y - origin.y) < 4) return;
+    }
+    if (this.pending) { this.pending = false; this.enter("starting", state); }
+    else this.elapsed += delta;
+    const item = this.interaction;
+    if (!item) return;
+    if (this.phase === "starting" && (this.elapsed >= this.duration || (this.released && item.trigger !== "press"))) {
+      this.enter(this.held && item.trigger !== "press" ? "holding" : "releasing", state);
+    }
+    if (this.phase === "holding" && !this.held) this.enter("releasing", state);
+    if (this.phase === "releasing" && this.elapsed >= this.duration) {
+      this.reset(state);
+      skeleton.setToSetupPose();
+      state.apply(skeleton);
+      skeleton.updateWorldTransform(Physics.pose);
+      return;
+    }
+    // Apply newly entered body/face tracks immediately, then apply the shared
+    // editor/viewer motion in the animated parent space.
+    state.apply(skeleton);
+    skeleton.updateWorldTransform(Physics.pose);
+    if (this.phase === "holding" && item.trigger !== "press") {
+      applyInteractionMotion(this.motion, skeleton, this.pointer, delta);
+      if (this.motion.target?.directCheek && this.motion.resolvedTargetBonePath) item.followTargetBone = this.motion.resolvedTargetBonePath;
+    }
+  }
+}

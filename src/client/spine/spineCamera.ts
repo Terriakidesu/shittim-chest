@@ -1,4 +1,5 @@
-import { BlendMode, MeshAttachment, RegionAttachment, type Bone, type Skeleton, type Slot } from "@esotericsoftware/spine-core";
+import { BlendMode, MeshAttachment, RegionAttachment, Vector2, type Bone, type Skeleton, type Slot } from "@esotericsoftware/spine-core";
+import type { SpineAuthoredRegion } from "./spineInteraction";
 
 export interface SceneBounds {
   x: number;
@@ -369,8 +370,145 @@ export function interactionBounds(skeleton: Skeleton): SceneBounds | null {
   return unionBounds(bounds);
 }
 
-/** Test a world-space pointer against the authored character attachments. */
-export function interactionHit(skeleton: Skeleton, x: number, y: number): boolean {
+export type InteractionHitKind = "pat" | "pinch" | "touch";
+
+interface InteractionZone {
+  x: number;
+  y: number;
+  axisX: { x: number; y: number };
+  axisY: { x: number; y: number };
+  shape: "ellipse" | "rectangle";
+}
+
+function interactionBone(skeleton: Skeleton, pattern: RegExp): Bone | null {
+  return skeleton.bones.find((bone) => pattern.test(bone.data.name.trim())) ?? null;
+}
+
+function interactionFaceBounds(skeleton: Skeleton): SceneBounds | null {
+  const bounds = interactionSlots(skeleton)
+    .filter((slot) => !isBackdrop(skeleton, slot))
+    .filter((slot) => /(?:^|[\/_\s-])(?:face|head|cheek|chin|mouth)(?:[\/_\s-]|\d|$)/i.test(`${slot.data.name}/${slot.getAttachment()?.name ?? ""}/${boneNamePath(slot.bone)}`))
+    .map(attachmentBounds)
+    .filter((item): item is SceneBounds => Boolean(item));
+  return unionBounds(bounds);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function pointZone(x: number, y: number, radiusX: number, radiusY = radiusX): InteractionZone {
+  return {
+    x,
+    y,
+    axisX: { x: Math.max(1, radiusX), y: 0 },
+    axisY: { x: 0, y: Math.max(1, radiusY) },
+    shape: "ellipse",
+  };
+}
+
+function fullBonePath(bone: Bone): string {
+  const names: string[] = [];
+  for (let current: Bone | null = bone; current; current = current.parent) names.unshift(current.data.name);
+  return names.join("/");
+}
+
+function authoredZone(skeleton: Skeleton, region: SpineAuthoredRegion): InteractionZone | null {
+  if (!region.anchorBone) return null;
+  const bone = skeleton.bones.find((candidate) => fullBonePath(candidate) === region.anchorBone);
+  if (!bone) return null;
+  const angle = region.rotation * Math.PI / 180;
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const center = bone.localToWorld(new Vector2(region.offsetX, region.offsetY));
+  const xEnd = bone.localToWorld(new Vector2(region.offsetX + cos * region.radiusX, region.offsetY + sin * region.radiusX));
+  const yEnd = bone.localToWorld(new Vector2(region.offsetX - sin * region.radiusY, region.offsetY + cos * region.radiusY));
+  return {
+    x: center.x,
+    y: center.y,
+    axisX: { x: xEnd.x - center.x, y: xEnd.y - center.y },
+    axisY: { x: yEnd.x - center.x, y: yEnd.y - center.y },
+    shape: region.shape,
+  };
+}
+
+function cheekZones(skeleton: Skeleton, face: SceneBounds | null, all: SceneBounds | null): InteractionZone[] {
+  const cheeks = skeleton.bones.filter((bone) => /^(?:[lr][ _-]?)?cheek(?:[ _-]?\d+)?$/i.test(bone.data.name.trim()));
+  if (cheeks.length > 0) {
+    const radius = clamp(Math.min(face?.width ?? 600, face?.height ?? 600) * 0.12, 50, Math.max(90, (all?.width ?? 1200) * 0.06));
+    return cheeks.map((bone) => pointZone(bone.worldX, bone.worldY, radius, radius * 0.8));
+  }
+  if (!face) return [];
+  const radiusX = clamp(face.width * 0.14, 50, Math.max(90, (all?.width ?? face.width) * 0.07));
+  const radiusY = clamp(face.height * 0.12, 40, Math.max(80, (all?.height ?? face.height) * 0.06));
+  const centerY = face.y + face.height * 0.38;
+  const offsetX = Math.max(radiusX * 0.8, face.width * 0.23);
+  const centerX = face.x + face.width / 2;
+  return [
+    pointZone(centerX - offsetX, centerY, radiusX, radiusY),
+    pointZone(centerX + offsetX, centerY, radiusX, radiusY),
+  ];
+}
+
+function interactionZones(skeleton: Skeleton, kind: InteractionHitKind, regions: SpineAuthoredRegion[] = []): InteractionZone[] {
+  const authored = regions.filter((region) => region.kind === kind).map((region) => authoredZone(skeleton, region)).filter((zone): zone is InteractionZone => Boolean(zone));
+  if (authored.length > 0) return authored;
+  const all = interactionBounds(skeleton);
+  const face = interactionFaceBounds(skeleton);
+  const point = interactionBone(skeleton, /^touch[ _-]?point$/i)
+    ?? interactionBone(skeleton, /^touch[ _-]?point[ _-]?key$/i);
+
+  if (kind === "pat") {
+    if (point) {
+      const radiusX = clamp((face?.width ?? all?.width ?? 800) * 0.28, 90, Math.max(160, (all?.width ?? 1200) * 0.18));
+      const radiusY = clamp((face?.height ?? all?.height ?? 800) * 0.18, 70, Math.max(130, (all?.height ?? 1200) * 0.12));
+      return [pointZone(point.worldX, point.worldY, radiusX, radiusY)];
+    }
+    return face ? [pointZone(face.x + face.width / 2, face.y + face.height * 0.85, face.width * 0.3, face.height * 0.18)] : [];
+  }
+
+  return cheekZones(skeleton, face, all);
+}
+
+function zoneCoordinates(zone: InteractionZone, x: number, y: number): { x: number; y: number } | null {
+  const dx = x - zone.x;
+  const dy = y - zone.y;
+  const determinant = zone.axisX.x * zone.axisY.y - zone.axisX.y * zone.axisY.x;
+  if (Math.abs(determinant) < 1e-9) return null;
+  return {
+    x: (dx * zone.axisY.y - dy * zone.axisY.x) / determinant,
+    y: (zone.axisX.x * dy - zone.axisX.y * dx) / determinant,
+  };
+}
+
+function zoneDistance(zone: InteractionZone, x: number, y: number): number {
+  const point = zoneCoordinates(zone, x, y);
+  if (!point) return Infinity;
+  return zone.shape === "rectangle" ? Math.max(Math.abs(point.x), Math.abs(point.y)) : Math.hypot(point.x, point.y);
+}
+
+function inZone(zone: InteractionZone, x: number, y: number): boolean {
+  return zoneDistance(zone, x, y) <= 1;
+}
+
+/** Resolve shared edges once, using only actions the loaded character supports. */
+export function interactionKindAtPoint(skeleton: Skeleton, x: number, y: number, kinds: InteractionHitKind[], regions: SpineAuthoredRegion[] = []): InteractionHitKind | null {
+  let closest: InteractionHitKind | null = null;
+  let bestDistance = Infinity;
+  for (const kind of kinds) {
+    for (const zone of interactionZones(skeleton, kind, regions)) {
+      const distance = zoneDistance(zone, x, y);
+      if (distance <= 1 && distance < bestDistance) {
+        closest = kind;
+        bestDistance = distance;
+      }
+    }
+  }
+  return closest;
+}
+
+/** Test a world-space pointer against the authored character attachments or a named interaction area. */
+export function interactionHit(skeleton: Skeleton, x: number, y: number, kind?: InteractionHitKind, regions: SpineAuthoredRegion[] = []): boolean {
+  if (kind) return interactionZones(skeleton, kind, regions).some((zone) => inZone(zone, x, y));
   const scene = activeScene(skeleton, anchorPoint(skeleton));
   return interactionSlots(skeleton)
     .filter((slot) => !isBackdrop(skeleton, slot, scene?.container ?? null))
