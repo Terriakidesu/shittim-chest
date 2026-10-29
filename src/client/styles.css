@@ -395,7 +395,7 @@ a { color: var(--cyan); }
 .spine-set-meta > div { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 .spine-set-meta code { padding: 3px 5px; background: var(--surface-alt); overflow-wrap: anywhere; }
 .spine-set-meta span { padding: 3px 5px; border: 1px solid var(--line); }
-.spine-workspace { position: relative; display: flex; flex-direction: column; min-width: 0; height: min(810px, max(430px, calc(100dvh - 236px))); border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--surface); }
+.spine-workspace { position: relative; min-width: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--surface); }
 .spine-workspace-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 11px; border-bottom: 1px solid var(--line); }
 .spine-workspace-identity, .spine-workspace-status { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .spine-workspace-identity strong { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
@@ -423,8 +423,8 @@ a { color: var(--cyan); }
 .spine-layout:fullscreen .spine-settings-heading button { color: #edf7ff; }
 .spine-layout:fullscreen .spine-settings-panel select { background: #10202d99; color: #edf7ff; border-color: #ffffff30; }
 .spine-layout:fullscreen .spine-caption, .spine-layout:fullscreen .spine-stage-hint { display: none; }
-.spine-stage-frame { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; background: var(--surface); }
-.spine-stage { position: relative; width: 100%; height: 100%; background: #102432; }
+.spine-stage-frame { position: relative; min-width: 0; overflow: hidden; background: var(--surface); }
+.spine-stage { position: relative; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #102432; }
 .spine-stage canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 .spine-stage canvas:active { cursor: grabbing; }
 .spine-interaction-overlay { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
@@ -480,9 +480,6 @@ a { color: var(--cyan); }
 .spine-caption { margin: 0; padding: 0 11px 8px; color: var(--muted); font-size: 9px; line-height: 1.5; }
 @media (max-width: 900px) {
   .spine-layout { position: relative; grid-template-columns: minmax(0, 1fr); }
-  .spine-workspace { height: auto; }
-  .spine-stage-frame { flex: none; }
-  .spine-stage { height: auto; aspect-ratio: 16 / 9; }
   .spine-sidebar { position: absolute; z-index: 5; top: 0; left: 0; width: min(285px, calc(100% - 16px)); display: none; box-shadow: 0 12px 30px #0003; }
   .spine-layout:not(.spine-sidebar-hidden) .spine-sidebar { display: block; }
   .spine-sidebar-toggle { display: inline-flex; }
@@ -521,6 +518,7 @@ a { color: var(--cyan); }
   .spine-stage-hint { right: 7px; bottom: 7px; max-width: calc(100% - 14px); font-size: 8px; }
   .spine-show-controls-floating { right: 8px; bottom: 8px; }
 }
+.spine-layout:fullscreen .spine-stage { height: 100%; aspect-ratio: auto; }
 
 /* Recruitment simulator -------------------------------------------------- */
 .sim-detail-link { display: inline-block; margin-top: 14px; color: var(--cyan); font-size: 11px; font-weight: 800; text-decoration: none; }
