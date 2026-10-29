@@ -447,6 +447,7 @@ export class SpineRenderer {
   private playing = true;
   private loop = true;
   private speed = 1;
+  private skipIntro = false;
   private effectsStrength = DEFAULT_EFFECTS_STRENGTH;
   private showInteractionPoints = false;
   private cameraMode: SpineCameraMode = "fill";
@@ -518,6 +519,10 @@ export class SpineRenderer {
       this.animationSelection = bundle.meta.defaultAnimation;
       this.pendingFit = true;
       if (this.interactionMode === "interaction") this.enterInteraction();
+      else if (this.skipIntro && bundle.meta.idleAnimation) {
+        this.animationSelection = bundle.meta.idleAnimation;
+        this.applyBaseAnimation(bundle.meta.idleAnimation, true);
+      }
       this.callbacks.onMeta(bundle.meta);
       this.callbacks.onLoading(false);
     } catch (error) {
@@ -556,6 +561,24 @@ export class SpineRenderer {
 
   setSpeed(speed: number) {
     this.speed = Math.max(0.1, Math.min(3, speed));
+  }
+
+  setSkipIntro(skip: boolean) {
+    if (this.skipIntro === skip) return;
+    this.skipIntro = skip;
+    const bundle = this.bundle;
+    if (!bundle?.meta.introAnimation || !bundle.meta.idleAnimation) return;
+
+    if (this.interactionMode === "interaction") {
+      this.enterInteraction();
+      return;
+    }
+
+    const current = bundle.state.getCurrent(0)?.animation?.name;
+    if (skip && (this.animationSelection === INTRO_ANIMATION || current === bundle.meta.introAnimation)) {
+      this.animationSelection = bundle.meta.idleAnimation;
+      this.applyBaseAnimation(bundle.meta.idleAnimation, true);
+    }
   }
 
   setEffectsStrength(strength: number) {
@@ -684,8 +707,10 @@ export class SpineRenderer {
     this.eyeFollowHold = 0;
     this.interactionFollowWorld = null;
     this.interactionPressedKind = null;
-    this.interactionReady = !(bundle.meta.introAnimation && bundle.meta.idleAnimation);
-    const selection = bundle.meta.introAnimation && bundle.meta.idleAnimation ? INTRO_ANIMATION : bundle.meta.idleAnimation ?? bundle.meta.animations[0] ?? "";
+    this.interactionReady = this.skipIntro || !(bundle.meta.introAnimation && bundle.meta.idleAnimation);
+    const selection = !this.skipIntro && bundle.meta.introAnimation && bundle.meta.idleAnimation
+      ? INTRO_ANIMATION
+      : bundle.meta.idleAnimation ?? bundle.meta.animations[0] ?? "";
     this.animationSelection = selection;
     this.applyBaseAnimation(selection, true);
   }
@@ -892,15 +917,17 @@ export class SpineRenderer {
   }
 
   replayIntro() {
-    if (this.interactionMode === "interaction") {
-      this.enterInteraction();
-      return;
-    }
     const bundle = this.bundle;
     const introAnimation = bundle?.meta.introAnimation;
     const idleAnimation = bundle?.meta.idleAnimation;
     if (!bundle || !introAnimation || !idleAnimation) return;
     this.playing = true;
+    if (this.interactionMode === "interaction") {
+      this.resetInteractionTargets();
+      this.interactionState = "idle";
+      this.interactionTrackName = null;
+      this.interactionReady = false;
+    }
     this.animationSelection = INTRO_ANIMATION;
     const { skeleton, state } = bundle;
     skeleton.setToSetupPose();

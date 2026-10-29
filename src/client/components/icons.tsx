@@ -113,6 +113,34 @@ export function IconCompress(props: IconProps) {
   );
 }
 
+export function IconFolder(props: IconProps) {
+  return <Base {...props}><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H10l2 2h6.5A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5Z" /></Base>;
+}
+
+export function IconSearch(props: IconProps) {
+  return <Base {...props}><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 5 5" /></Base>;
+}
+
+export function IconSliders(props: IconProps) {
+  return <Base {...props}><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="9" cy="6" r="2" /><circle cx="15" cy="12" r="2" /><circle cx="11" cy="18" r="2" /></Base>;
+}
+
+export function IconTarget(props: IconProps) {
+  return <Base {...props}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /><path d="M12 2v3m0 14v3M2 12h3m14 0h3" /></Base>;
+}
+
+export function IconHand(props: IconProps) {
+  return <Base {...props}><path d="M7 11V6a1.5 1.5 0 0 1 3 0v4V4.5a1.5 1.5 0 0 1 3 0V10V5.5a1.5 1.5 0 0 1 3 0V11V8a1.5 1.5 0 0 1 3 0v6.5A5.5 5.5 0 0 1 13.5 20H12a5 5 0 0 1-4.1-2.15L5 13.5a1.5 1.5 0 0 1 2-2.25Z" /></Base>;
+}
+
+export function IconMessage(props: IconProps) {
+  return <Base {...props}><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-4.5 3V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" /><path d="M8 10h.01M12 10h.01M16 10h.01" /></Base>;
+}
+
+export function IconUsers(props: IconProps) {
+  return <Base {...props}><circle cx="9" cy="8" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.9M16.5 13a4.5 4.5 0 0 1 4 4" /></Base>;
+}
+
 function Solid({
   size = "1em",
   className,

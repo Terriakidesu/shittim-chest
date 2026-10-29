@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { IconCompress, IconExpand, IconPause, IconPlay, IconRotate } from "./components/icons";
+import { IconClose, IconCompress, IconExpand, IconFolder, IconHand, IconMessage, IconPause, IconPlay, IconRotate, IconSearch, IconSliders, IconTarget, IconUsers } from "./components/icons";
 import { LanguageSwitch } from "./components/LanguageSwitch";
 import { SiteNav } from "./components/SiteNav";
 import { ThemeSwitch } from "./components/ThemeSwitch";
@@ -131,6 +131,7 @@ interface SpineViewportProps {
   loop: boolean;
   cameraMode: SpineCameraMode;
   interactionMode: SpineInteractionMode;
+  skipIntro: boolean;
   showInteractionPoints: boolean;
   effectsStrength: number;
   onMeta: (meta: SpineMeta | null) => void;
@@ -150,6 +151,7 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   loop,
   cameraMode,
   interactionMode,
+  skipIntro,
   showInteractionPoints,
   effectsStrength,
   onMeta,
@@ -192,6 +194,8 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
+    renderer.setInteractionMode(interactionMode);
+    renderer.setSkipIntro(skipIntro);
     if (files) void renderer.load(files, directory, interactionProject);
     else renderer.clear();
   }, [files, directory, interactionProject]);
@@ -202,6 +206,7 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   useEffect(() => rendererRef.current?.setLoop(loop), [loop]);
   useEffect(() => rendererRef.current?.setCameraMode(cameraMode), [cameraMode]);
   useEffect(() => rendererRef.current?.setInteractionMode(interactionMode), [interactionMode]);
+  useEffect(() => rendererRef.current?.setSkipIntro(skipIntro), [skipIntro]);
   useEffect(() => rendererRef.current?.setEffectsStrength(effectsStrength), [effectsStrength]);
   useEffect(() => rendererRef.current?.setShowInteractionPoints(showInteractionPoints), [showInteractionPoints]);
 
@@ -275,15 +280,16 @@ export function Spine() {
   const [playing, setPlaying] = useState(true);
   const [loop, setLoop] = useState(true);
   const [cameraMode, setCameraMode] = useState<SpineCameraMode>("fill");
-  const [interactionMode, setInteractionMode] = useState<SpineInteractionMode>("free");
+  const [interactionMode, setInteractionMode] = useState<SpineInteractionMode>("interaction");
+  const [skipIntro, setSkipIntro] = useState(false);
   const [showInteractionPoints, setShowInteractionPoints] = useState(false);
   const [showFullscreenControls, setShowFullscreenControls] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [effectsStrength, setEffectsStrength] = useState(DEFAULT_EFFECTS_STRENGTH);
   const [progress, setProgress] = useState<SpineProgress>({ time: 0, duration: 0, animation: null });
   const [fullscreen, setFullscreen] = useState(false);
-  const [showFullscreenSidebar, setShowFullscreenSidebar] = useState(true);
-  const [showFullscreenOptions, setShowFullscreenOptions] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
+  const [showOptions, setShowOptions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<SpineViewportHandle>(null);
   const stagePointer = useRef<{ x: number; y: number } | null>(null);
@@ -394,12 +400,16 @@ export function Spine() {
     const onFullscreen = () => {
       const active = Boolean(document.fullscreenElement);
       setFullscreen(active);
-      setShowFullscreenSidebar(!active);
-      setShowFullscreenOptions(false);
+      setShowSidebar(!active);
+      setShowOptions(false);
       setShowFullscreenControls(true);
     };
     document.addEventListener("fullscreenchange", onFullscreen);
     return () => document.removeEventListener("fullscreenchange", onFullscreen);
+  }, []);
+
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 900px)").matches) setShowSidebar(false);
   }, []);
 
   useEffect(() => {
@@ -463,6 +473,16 @@ export function Spine() {
     setProgress((current) => ({ ...current, time: 0 }));
   };
 
+  const toggleSkipIntro = (value: boolean) => {
+    setSkipIntro(value);
+    if (!meta) return;
+    if (interactionMode === "interaction") {
+      setAnimation(value && meta.idleAnimation ? meta.idleAnimation : meta.defaultAnimation);
+    } else if (value && animation === INTRO_ANIMATION && meta.idleAnimation) {
+      selectAnimation(meta.idleAnimation);
+    }
+  };
+
   const selectInteractionMode = (value: SpineInteractionMode) => {
     if (value === interactionMode) return;
     if (value === "interaction") {
@@ -487,7 +507,7 @@ export function Spine() {
   const interactionReady = interactionMode === "interaction"
     && Boolean(meta)
     && progress.animation !== null
-    && (!(meta?.introAnimation && meta.idleAnimation) || progress.animation !== meta.introAnimation);
+    && (skipIntro || !(meta?.introAnimation && meta.idleAnimation) || progress.animation !== meta.introAnimation);
 
   const togglePlayback = () => setPlaying((value) => !value);
 
@@ -500,9 +520,12 @@ export function Spine() {
   return <main className="spine-page">
     <SiteNav active="spine" />
     <header className="spine-header">
-      <div>
+      <div className="spine-brand">
         <span className="spine-kicker">Shittim Chest / Spine 4.2</span>
-        <h1>{t("spine.title")}</h1>
+        <div className="spine-title-row">
+          <h1>{t("spine.title")}</h1>
+          <span className={`spine-connection-pill${source ? " is-connected" : ""}`}><i />{source ? t("spine.preview.ready") : t("spine.preview.waiting")}</span>
+        </div>
         <p>{t("spine.subtitle")}</p>
       </div>
       <div className="spine-header-tools"><LanguageSwitch /><ThemeSwitch /></div>
@@ -510,33 +533,41 @@ export function Spine() {
 
     <section className={`spine-source${source ? " is-connected" : ""}`} aria-labelledby="spine-source-title">
       <div className="spine-source-copy">
-        <h2 id="spine-source-title">{t("spine.source.heading")}</h2>
-        <p>{source ? t("spine.source.ready") : t("spine.source.hint")}</p>
-        <small>{t("spine.source.localOnly")}</small>
+        <span className="spine-source-icon" aria-hidden="true"><IconFolder /></span>
+        <div>
+          <strong id="spine-source-title">{t("spine.source.heading")}</strong>
+          <span>{source ? t("spine.source.ready") : t("spine.source.hint")}</span>
+        </div>
       </div>
+      <small className="spine-source-local">{t("spine.source.localOnly")}</small>
       <div className="spine-source-action">
-        <button className="btn ghost" type="button" onClick={chooseFolder}><span>{t(source ? "spine.source.change" : "spine.source.choose")}</span></button>
-         <input ref={inputRef} type="file" multiple hidden onChange={onInputChange} />
+        <button className="btn ghost" type="button" onClick={chooseFolder}><IconFolder /><span>{t(source ? "spine.source.change" : "spine.source.choose")}</span></button>
+        <input ref={inputRef} type="file" multiple hidden onChange={onInputChange} />
       </div>
     </section>
 
     {error && <div className="alert spine-alert" role="alert">{error}</div>}
 
-    <div className={`spine-layout${showFullscreenSidebar ? "" : " spine-sidebar-hidden"}`}>
+    <div className={`spine-layout${showSidebar ? "" : " spine-sidebar-hidden"}`}>
       <aside id="spine-sidebar" className="spine-sidebar">
         <section className="spine-selector panel">
-          <div className="phead"><span className="lead" />{t("spine.characters")}</div>
-          <input
-            className="search spine-character-search"
-            value={characterSearch}
-            onChange={(event) => setCharacterSearch(event.target.value)}
-            placeholder={t("spine.characterSearch")}
-            aria-label={t("spine.characterSearchAria")}
-          />
-          <div className="spine-character-count">{t("spine.characterCount", { n: filteredCharacters.length })}</div>
+          <div className="spine-panel-heading">
+            <div className="phead"><IconUsers /><span>{t("spine.characters")}</span></div>
+            <span className="spine-character-count">{t("spine.characterCount", { n: filteredCharacters.length })}</span>
+          </div>
+          <label className="spine-search-field">
+            <IconSearch />
+            <input
+              className="search spine-character-search"
+              value={characterSearch}
+              onChange={(event) => setCharacterSearch(event.target.value)}
+              placeholder={t("spine.characterSearch")}
+              aria-label={t("spine.characterSearchAria")}
+            />
+          </label>
           <div className="spine-character-list" role="listbox" aria-label={t("spine.charactersAria")}>
             {filteredCharacters.map((name) => {
-               const count = characterIndex.characters[name]?.filter((variant) => availableDirectories?.has(variant.directory)).length ?? 0;
+              const count = characterIndex.characters[name]?.filter((variant) => availableDirectories?.has(variant.directory)).length ?? 0;
               return <button
                 key={name}
                 type="button"
@@ -550,27 +581,30 @@ export function Spine() {
             })}
             {filteredCharacters.length === 0 && <p className="hint">{source && !availableDirectories ? t("spine.loading") : t("spine.noCharacters")}</p>}
           </div>
-        </section>
-
-        <section className="spine-selector panel">
-          <div className="phead"><span className="lead" />{selectedCharacter}</div>
-          <label className="spine-field">
-            <span>{t("spine.variant")}</span>
-            <select value={selectedDirectoryName} onChange={(event) => { setSelectedDirectory(event.target.value); setMeta(null); }} aria-label={t("spine.variantAria")}>
-              {variants.map((variant) => <option key={variant.directory} value={variant.directory}>{variant.variant}</option>)}
-            </select>
-          </label>
-          <details className="spine-set-meta"><summary>{t("spine.assetDetails")}</summary><div>
-            <code>{selectedDirectoryName}</code>
-            {selectedVariant?.assetId && <span>{selectedVariant.assetId}</span>}
-          </div></details>
+          <div className="spine-variant-picker">
+            <label className="spine-field">
+              <span>{t("spine.variant")}</span>
+              <select value={selectedDirectoryName} onChange={(event) => { setSelectedDirectory(event.target.value); setMeta(null); }} aria-label={t("spine.variantAria")}>
+                {variants.map((variant) => <option key={variant.directory} value={variant.directory}>{variant.variant}</option>)}
+              </select>
+            </label>
+            <details className="spine-set-meta"><summary>{t("spine.assetDetails")}</summary><div>
+              <code>{selectedDirectoryName}</code>
+              {selectedVariant?.assetId && <span>{selectedVariant.assetId}</span>}
+            </div></details>
+          </div>
         </section>
       </aside>
 
       <section className={`spine-workspace${showFullscreenControls ? "" : " spine-controls-hidden"}`} aria-label={t("spine.viewerAria")}>
         <div className="spine-workspace-heading">
-          <div><strong>{selectedCharacter}</strong><span>{selectedVariant?.variant}</span></div>
-          <small>{t(meta ? "spine.preview.ready" : "spine.preview.waiting")}</small>
+          <div className="spine-workspace-identity"><strong>{selectedCharacter}</strong><span>{selectedVariant?.variant}</span></div>
+          <div className="spine-workspace-status">
+            <small>{t(meta ? "spine.preview.ready" : "spine.preview.waiting")}</small>
+            <button className="spine-sidebar-toggle" type="button" aria-expanded={showSidebar} aria-controls="spine-sidebar" onClick={() => setShowSidebar((shown) => !shown)} title={t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}>
+              <IconUsers /><span>{t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}</span>
+            </button>
+          </div>
         </div>
         <div className="spine-stage-frame" onPointerDown={(event) => {
           stagePointer.current = { x: event.clientX, y: event.clientY };
@@ -592,11 +626,12 @@ export function Spine() {
             loop={loop}
             cameraMode={cameraMode}
             interactionMode={interactionMode}
+            skipIntro={skipIntro}
             showInteractionPoints={showInteractionPoints}
             effectsStrength={effectsStrength}
             onMeta={(next) => {
               setMeta(next);
-              setAnimation(next?.defaultAnimation ?? "");
+              setAnimation(skipIntro && next?.idleAnimation ? next.idleAnimation : next?.defaultAnimation ?? "");
               setCameraMode(interactionMode === "interaction" ? "game" : next?.hasGameCamera ? "game" : "fill");
               if (!next) setProgress({ time: 0, duration: 0, animation: null });
             }}
@@ -610,16 +645,29 @@ export function Spine() {
           {isLoading && setFiles && <div className="spine-loading" aria-live="polite">{t("spine.loading")}</div>}
           <div className="spine-stage-hint">{t(interactionMode === "interaction" ? "spine.interactionHint" : "spine.stageHint")}</div>
         </div>
+        {fullscreen && !showFullscreenControls && <button className="spine-show-controls-floating" type="button" onClick={() => setShowFullscreenControls(true)}><IconSliders /><span>{t("spine.controls.show")}</span></button>}
 
-        <div id="spine-playback-controls" className={`spine-controls${showFullscreenOptions ? " spine-options-open" : ""}`} aria-label={t("spine.controlsAria")}>
-          <div className="spine-scrubber-row">
-            <button className="spine-fullscreen-only spine-compact-button spine-character-button" type="button" aria-expanded={showFullscreenSidebar} aria-controls="spine-sidebar" onClick={() => setShowFullscreenSidebar((shown) => !shown)} title={t(showFullscreenSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}>
-              {selectedCharacter || t("spine.characters")} <span>▾</span>
-            </button>
-            <button className="spine-icon-button" type="button" onClick={togglePlayback} disabled={!meta || interactionMode === "interaction"} aria-label={t(playing ? "spine.pause" : "spine.play")} title={t(playing ? "spine.pause" : "spine.play")}>
+        <div id="spine-playback-controls" className={`spine-controls${showOptions ? " spine-options-open" : ""}`} aria-label={t("spine.controlsAria")}>
+          <div className="spine-toolbar-row">
+            <div className="spine-mode-switch" role="group" aria-label={t("spine.modeAria")}>
+              <button className={interactionMode === "interaction" ? "is-selected" : undefined} type="button" aria-pressed={interactionMode === "interaction"} onClick={() => selectInteractionMode("interaction")}><IconHand /><span>{t("spine.mode.interaction")}</span></button>
+              <button className={interactionMode === "free" ? "is-selected" : undefined} type="button" aria-pressed={interactionMode === "free"} onClick={() => selectInteractionMode("free")}><IconPlay /><span>{t("spine.mode.free")}</span></button>
+            </div>
+            <div className="spine-toolbar-actions">
+              {interactionReady && meta?.interaction.talkCount ? <button className="spine-tool-button" type="button" onClick={() => viewportRef.current?.triggerTalk()} aria-label={t("spine.talkAria")} title={t("spine.talkAria")}><IconMessage /><span>{t("spine.talk")}</span><small>{meta.interaction.talkCount}</small></button> : null}
+              <button className={`spine-tool-button${showInteractionPoints ? " is-active" : ""}`} type="button" disabled={!meta} aria-pressed={showInteractionPoints} onClick={() => setShowInteractionPoints((shown) => !shown)} aria-label={t("spine.showInteractionPoints")} title={t("spine.showInteractionPoints")}><IconTarget /><span>{t("spine.points")}</span></button>
+              <button className={`spine-tool-button${showOptions ? " is-active" : ""}`} type="button" aria-expanded={showOptions} aria-controls="spine-options" onClick={() => setShowOptions((shown) => !shown)}><IconSliders /><span>{t("spine.options")}</span></button>
+              <button className="spine-tool-button spine-sidebar-toggle" type="button" aria-expanded={showSidebar} aria-controls="spine-sidebar" onClick={() => setShowSidebar((shown) => !shown)} title={t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}><IconUsers /><span>{t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}</span></button>
+              {fullscreen && <button className="spine-tool-button spine-fullscreen-controls-toggle" type="button" aria-expanded={showFullscreenControls} onClick={() => setShowFullscreenControls((shown) => !shown)} title={t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}><IconSliders /><span>{t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}</span></button>}
+              <button className="spine-tool-button" type="button" onClick={() => void viewportRef.current?.toggleFullscreen()} aria-label={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")} title={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")}><span>{fullscreen ? <IconCompress /> : <IconExpand />}</span><span className="spine-button-label">{t("spine.fullscreen")}</span></button>
+            </div>
+          </div>
+
+          {interactionMode === "free" && <div className="spine-playback-row">
+            <button className="spine-icon-button" type="button" onClick={togglePlayback} disabled={!meta} aria-label={t(playing ? "spine.pause" : "spine.play")} title={t(playing ? "spine.pause" : "spine.play")}>
               {playing ? <IconPause /> : <IconPlay />}
             </button>
-            <button className="spine-restart-button" type="button" disabled={!meta || interactionMode === "interaction"} onClick={restartPlayback} aria-label={t("spine.restart")} title={t("spine.restart")}><IconRotate /><span>{t("spine.restart")}</span></button>
+            <button className="spine-icon-button spine-restart-icon" type="button" disabled={!meta} onClick={restartPlayback} aria-label={t("spine.restart")} title={t("spine.restart")}><IconRotate /></button>
             <input
               className="spine-scrubber"
               type="range"
@@ -627,58 +675,34 @@ export function Spine() {
               max={progress.duration || 0.01}
               step="0.01"
               value={Math.min(progress.time, progress.duration || 0.01)}
-              disabled={!meta || interactionMode === "interaction"}
+              disabled={!meta}
               onChange={(event) => viewportRef.current?.seek(Number(event.target.value))}
               aria-label={t("spine.scrubber")}
             />
             <span className="spine-time" aria-live="off">{formatSeconds(progress.time)} / {formatSeconds(progress.duration)}s</span>
-            <button className="spine-fullscreen-only spine-compact-button spine-controls-toggle" type="button" aria-expanded={showFullscreenControls} aria-controls="spine-playback-controls" onClick={() => setShowFullscreenControls((shown) => !shown)}>
-              {t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}
-            </button>
-            <button className="spine-fullscreen-only spine-compact-button" type="button" aria-expanded={showFullscreenOptions} aria-controls="spine-options" onClick={() => setShowFullscreenOptions((shown) => !shown)}>{t("spine.options")}</button>
-            <button className="spine-fullscreen-only spine-compact-button" type="button" onClick={() => void viewportRef.current?.toggleFullscreen()} aria-label={t("a11y.fullscreenExit")} title={t("a11y.fullscreenExit")}><IconCompress /></button>
-          </div>
-          <div id="spine-options" className="spine-control-row">
-            <label className="spine-field spine-mode-field">
-              <span>{t("spine.mode")}</span>
-              <select value={interactionMode} onChange={(event) => selectInteractionMode(event.target.value as SpineInteractionMode)} aria-label={t("spine.modeAria")}>
-                <option value="free">{t("spine.mode.free")}</option>
-                <option value="interaction">{t("spine.mode.interaction")}</option>
-              </select>
-            </label>
-            <label className="spine-field spine-animation-field">
-              <span>{t("spine.animation")}</span>
-              <select value={animation} onChange={(event) => selectAnimation(event.target.value)} disabled={!meta || interactionMode === "interaction"} aria-label={t("spine.animationAria")}>
-                {animationOptions.map((name) => <option key={name} value={name}>{name === INTRO_ANIMATION ? t("spine.introIdle") : name}</option>)}
-              </select>
-            </label>
-            <label className="spine-field spine-camera-field">
-              <span>{t("spine.camera")}</span>
-              <select value={interactionMode === "interaction" ? "game" : cameraMode} onChange={(event) => setCameraMode(event.target.value as SpineCameraMode)} disabled={interactionMode === "interaction"} aria-label={t("spine.cameraAria")}>
-                <option value="fill">{t("spine.camera.fill")}</option>
-                <option value="fit">{t("spine.camera.fit")}</option>
-                {(meta?.hasGameCamera || interactionMode === "interaction") && <option value="game">{t("spine.camera.game")}</option>}
-              </select>
-            </label>
-            <label className="spine-field spine-speed-field">
-              <span>{t("spine.speed")}</span>
-              <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))} disabled={interactionMode === "interaction"} aria-label={t("spine.speedAria")}>
-                {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}
-              </select>
-            </label>
-            <label className="spine-check"><input type="checkbox" checked={loop} disabled={interactionMode === "interaction"} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>
-            <label className="spine-check"><input type="checkbox" checked={showInteractionPoints} onChange={(event) => setShowInteractionPoints(event.target.checked)} />{t("spine.showInteractionPoints")}</label>
-            {interactionReady && meta?.interaction.talkCount ? <button className="btn ghost spine-action-button spine-interaction-action" type="button" onClick={() => viewportRef.current?.triggerTalk()} aria-label={t("spine.talkAria")}><span>{t("spine.talk")}</span><small>{meta.interaction.talkCount}</small></button> : null}
-            <label className="spine-field spine-effects-field">
-              <span>{t("spine.effects")}</span>
-              <input type="range" min="0" max="1" step="0.05" value={effectsStrength} onChange={(event) => setEffectsStrength(Number(event.target.value))} aria-label={t("spine.effects")} title={t("spine.effects.hint")} />
-              <output>{Math.round(effectsStrength * 100)}%</output>
-            </label>
-            <button className="btn ghost spine-action-button" type="button" disabled={interactionMode === "interaction"} onClick={() => viewportRef.current?.resetCamera()}><span>{t("spine.resetView")}</span></button>
-            <button className="btn ghost spine-action-button" type="button" onClick={() => void viewportRef.current?.toggleFullscreen()} aria-label={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")}>
-              <span>{fullscreen ? <IconCompress /> : <IconExpand />} {t("spine.fullscreen")}</span>
-            </button>
-          </div>
+          </div>}
+
+          {showOptions && <div id="spine-options" className="spine-settings-panel">
+            <div className="spine-settings-heading"><strong>{t("spine.options")}</strong><button type="button" onClick={() => setShowOptions(false)} aria-label={t("spine.options.close")} title={t("spine.options.close")}><IconClose /></button></div>
+            <div className="spine-settings-grid">
+              {interactionMode === "free" && <>
+                <label className="spine-setting-field spine-animation-field"><span>{t("spine.animation")}</span><select value={animation} onChange={(event) => selectAnimation(event.target.value)} disabled={!meta} aria-label={t("spine.animationAria")}>
+                  {animationOptions.map((name) => <option key={name} value={name}>{name === INTRO_ANIMATION ? t("spine.introIdle") : name}</option>)}
+                </select></label>
+                <label className="spine-setting-field"><span>{t("spine.camera")}</span><select value={cameraMode} onChange={(event) => setCameraMode(event.target.value as SpineCameraMode)} disabled={!meta} aria-label={t("spine.cameraAria")}>
+                  <option value="fill">{t("spine.camera.fill")}</option><option value="fit">{t("spine.camera.fit")}</option>{meta?.hasGameCamera && <option value="game">{t("spine.camera.game")}</option>}
+                </select></label>
+                <label className="spine-setting-field"><span>{t("spine.speed")}</span><select value={speed} onChange={(event) => setSpeed(Number(event.target.value))} aria-label={t("spine.speedAria")}>
+                  {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}
+                </select></label>
+                <label className="spine-check"><input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>
+              </>}
+              <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={skipIntro} onChange={(event) => toggleSkipIntro(event.target.checked)} />{t("spine.skipIntro")}</label>
+              <label className="spine-setting-field spine-effects-field"><span>{t("spine.effects")}</span><input type="range" min="0" max="1" step="0.05" value={effectsStrength} onChange={(event) => setEffectsStrength(Number(event.target.value))} aria-label={t("spine.effects")} title={t("spine.effects.hint")} /><output>{Math.round(effectsStrength * 100)}%</output></label>
+              <button className="spine-settings-action" type="button" disabled={!meta} onClick={() => viewportRef.current?.resetCamera()}><IconRotate /><span>{t("spine.resetView")}</span></button>
+              {interactionMode === "free" && meta?.introAnimation && meta.idleAnimation && <button className="spine-settings-action" type="button" onClick={() => { setAnimation(INTRO_ANIMATION); setProgress((current) => ({ ...current, time: 0 })); viewportRef.current?.replayIntro(); }}><IconRotate /><span>{t("spine.replayIntro")}</span></button>}
+            </div>
+          </div>}
         </div>
         <p className="spine-caption">{meta ? t("spine.loaded", { animations: meta.animations.length }) : t("spine.caption")}</p>
       </section>

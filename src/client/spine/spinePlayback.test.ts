@@ -52,6 +52,14 @@ describe("Spine restart playback", () => {
     expect(state.getCurrent(0)?.next).toBeNull();
   });
 
+  test("switches a loaded lobby from intro to idle when skip intro is enabled", () => {
+    const { renderer, state } = playback(INTRO_ANIMATION);
+    Object.assign(renderer, { skipIntro: false, interactionMode: "free" });
+    renderer.setSkipIntro(true);
+    expect(state.getCurrent(0)?.animation?.name).toBe("Idle_01");
+    expect((renderer as any).animationSelection).toBe("Idle_01");
+  });
+
   test("limits touch-target deformation when the pointer is far outside the rig", () => {
     const data = new SkeletonData();
     const root = new BoneData(0, "root", null);
