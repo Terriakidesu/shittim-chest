@@ -384,6 +384,8 @@ export const ko: Record<keyof typeof en, string> = {
 
   "spine.title": "Spine 로비 뷰어",
   "spine.subtitle": "로컬 자산 폴더에서 블루 아카이브 홈 애니메이션을 미리 봅니다.",
+  "spine.wip.title": "개발 중",
+  "spine.wip.body": "이 뷰어는 실험 버전이며 계속 다듬고 있습니다. 아직 완성되지 않은 상호작용과 컨트롤이 포함될 수 있습니다.",
   "spine.source.heading": "로컬 자산 폴더",
   "spine.source.ready": "이 기기에서 연결되었습니다. 캐릭터를 선택하세요.",
   "spine.source.hint": "내보낸 Spine 애니메이션 세트가 있는 폴더를 선택하세요.",

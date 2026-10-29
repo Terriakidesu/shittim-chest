@@ -400,6 +400,8 @@ export const en = {
   /* Spine lobby viewer ------------------------------------------------------------- */
   "spine.title": "Spine Lobby Viewer",
   "spine.subtitle": "Preview Blue Archive home animations from your own local asset folder.",
+  "spine.wip.title": "Work in progress",
+  "spine.wip.body": "This viewer is experimental and still being refined. Expect unfinished interactions and controls.",
   "spine.source.heading": "Local asset folder",
   "spine.source.ready": "Connected on this device. Select a character to begin.",
   "spine.source.hint": "Choose the folder containing your exported Spine animation sets.",

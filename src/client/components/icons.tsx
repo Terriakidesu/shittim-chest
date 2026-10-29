@@ -141,6 +141,10 @@ export function IconUsers(props: IconProps) {
   return <Base {...props}><circle cx="9" cy="8" r="3" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.9M16.5 13a4.5 4.5 0 0 1 4 4" /></Base>;
 }
 
+export function IconAlert(props: IconProps) {
+  return <Base {...props}><path d="m12 3 9 16H3Z" /><path d="M12 9v4M12 17h.01" /></Base>;
+}
+
 function Solid({
   size = "1em",
   className,

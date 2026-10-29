@@ -384,6 +384,8 @@ export const ja: Record<keyof typeof en, string> = {
 
   "spine.title": "Spineロビービューア",
   "spine.subtitle": "ローカルのアセットフォルダからブルーアーカイブのホームアニメーションを確認できます。",
+  "spine.wip.title": "開発中",
+  "spine.wip.body": "このビューアは試験版で、現在も調整中です。未完成のインタラクションやコントロールが含まれる場合があります。",
   "spine.source.heading": "ローカルアセットフォルダ",
   "spine.source.ready": "この端末で接続済みです。キャラクターを選択してください。",
   "spine.source.hint": "エクスポートしたSpineアニメーションセットのフォルダを選択してください。",

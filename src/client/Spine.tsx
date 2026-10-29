@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { IconClose, IconCompress, IconExpand, IconFolder, IconHand, IconMessage, IconPause, IconPlay, IconRotate, IconSearch, IconSliders, IconTarget, IconUsers } from "./components/icons";
+import { IconAlert, IconClose, IconCompress, IconExpand, IconFolder, IconHand, IconMessage, IconPause, IconPlay, IconRotate, IconSearch, IconSliders, IconTarget, IconUsers } from "./components/icons";
 import { LanguageSwitch } from "./components/LanguageSwitch";
 import { SiteNav } from "./components/SiteNav";
 import { ThemeSwitch } from "./components/ThemeSwitch";
@@ -519,6 +519,10 @@ export function Spine() {
 
   return <main className="spine-page">
     <SiteNav active="spine" />
+    <div className="spine-wip-banner" role="status">
+      <IconAlert />
+      <div><strong>{t("spine.wip.title")}</strong><span>{t("spine.wip.body")}</span></div>
+    </div>
     <header className="spine-header">
       <div className="spine-brand">
         <span className="spine-kicker">Shittim Chest / Spine 4.2</span>
