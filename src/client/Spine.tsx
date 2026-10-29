@@ -3,6 +3,7 @@ import { IconCompress, IconExpand, IconPause, IconPlay, IconRotate } from "./com
 import { LanguageSwitch } from "./components/LanguageSwitch";
 import { SiteNav } from "./components/SiteNav";
 import { ThemeSwitch } from "./components/ThemeSwitch";
+import { asset } from "./api";
 import { t, useLanguage } from "./i18n";
 import {
   INTRO_ANIMATION,
@@ -13,6 +14,7 @@ import {
   type SpineMeta,
   type SpineProgress,
 } from "./spine/spineRuntime";
+import type { SpineInteractionBundle, SpineInteractionProject } from "./spine/spineInteraction";
 import characterIndexJson from "./spine/characters.json";
 import { DEFAULT_EFFECTS_STRENGTH } from "./spine/spineEffects";
 
@@ -121,6 +123,7 @@ export interface SpineViewportHandle {
 interface SpineViewportProps {
   files: SpineFiles | null;
   directory: string;
+  interactionProject: SpineInteractionProject | null;
   animation: string;
   playing: boolean;
   speed: number;
@@ -138,6 +141,7 @@ interface SpineViewportProps {
 const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(function SpineViewport({
   files,
   directory,
+  interactionProject,
   animation,
   playing,
   speed,
@@ -183,9 +187,9 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
-    if (files) void renderer.load(files, directory);
+    if (files) void renderer.load(files, directory, interactionProject);
     else renderer.clear();
-  }, [files, directory]);
+  }, [files, directory, interactionProject]);
 
   useEffect(() => rendererRef.current?.setAnimation(animation), [animation]);
   useEffect(() => rendererRef.current?.setPlaying(playing), [playing]);
@@ -222,6 +226,17 @@ function formatSeconds(value: number) {
   return value.toFixed(2);
 }
 
+function interactionProjectMap(value: unknown): Map<string, SpineInteractionProject> {
+  if (!value || typeof value !== "object") return new Map();
+  const bundle = value as Partial<SpineInteractionBundle>;
+  if (!Array.isArray(bundle.projects)) return new Map();
+  return new Map(
+    bundle.projects
+      .filter((project): project is SpineInteractionProject => Boolean(project && typeof project === "object" && typeof project.assetDirectory === "string" && Array.isArray(project.interactions)))
+      .map((project) => [project.assetDirectory, project]),
+  );
+}
+
 export function Spine() {
   useLanguage();
   const firstCharacter = characterNames[0] ?? "";
@@ -231,6 +246,7 @@ export function Spine() {
   const [source, setSource] = useState<AssetSource | null>(null);
   const [availableDirectories, setAvailableDirectories] = useState<Set<string> | null>(null);
   const [setFiles, setSetFiles] = useState<SpineFiles | null>(null);
+  const [interactionProjects, setInteractionProjects] = useState<Map<string, SpineInteractionProject>>(() => new Map());
   const [setLoading, setSetLoading] = useState(false);
   const [rendererLoading, setRendererLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -255,6 +271,17 @@ export function Spine() {
   const freeLoop = useRef(true);
   const freeSpeed = useRef(1);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(asset("data/spine-interactions/spine-interactions.all.json"), { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error(`Interaction data: ${response.status}`)))
+      .then((value) => setInteractionProjects(interactionProjectMap(value)))
+      .catch((reason) => {
+        if (!(reason instanceof DOMException && reason.name === "AbortError")) setInteractionProjects(new Map());
+      });
+    return () => controller.abort();
+  }, []);
+
   // React's DOM typings do not expose the non-standard directory attribute,
   // and React may omit an unknown JSX prop. Set it on the actual input so the
   // fallback opens a directory chooser rather than a single-file chooser.
@@ -277,6 +304,7 @@ export function Spine() {
   }, [characterSearch, loadedCharacters]);
   const selectedVariant = variants.find((variant) => variant.directory === selectedDirectory) ?? variants[0];
   const selectedDirectoryName = selectedVariant?.directory ?? "";
+  const selectedInteractionProject = interactionProjects.get(selectedDirectoryName) ?? null;
   const isLoading = setLoading || rendererLoading || Boolean(source && !availableDirectories);
   const animationOptions = meta
     ? [
@@ -541,6 +569,7 @@ export function Spine() {
             ref={viewportRef}
             files={setFiles}
             directory={selectedDirectoryName}
+            interactionProject={selectedInteractionProject}
             animation={animation}
             playing={playing}
             speed={speed}

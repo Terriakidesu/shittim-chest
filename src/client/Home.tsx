@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { ThemeSwitch } from "./components/ThemeSwitch";
 import { LanguageSwitch } from "./components/LanguageSwitch";
-import { DecoShapes, IconPlay } from "./components/icons";
+import { IconPlay } from "./components/icons";
 import { api, asset } from "./api";
 import { link } from "./route";
 import { getResolvedTheme, subscribeTheme } from "./theme";
@@ -24,10 +24,11 @@ function LiveBannerHeads({ heads }: { heads: BannerHeads[] }) {
     </div>)}</div>;
 }
 
-const destinations: { href: string; nameKey: LangKey; detailKey: LangKey; image: string; className: string }[] = [
+const destinations: { href: string; nameKey: LangKey; detailKey: LangKey; image?: string; className: string }[] = [
   { href: link.calendar, nameKey: "lobby.name.calendar", detailKey: "lobby.detail.calendar", image: "calendar", className: "lobby-tile-calendar" },
   { href: link.simulator, nameKey: "lobby.name.gacha", detailKey: "lobby.detail.gacha", image: "gacha", className: "lobby-tile-gacha" },
   { href: link.about, nameKey: "lobby.name.about", detailKey: "lobby.detail.about", image: "about", className: "lobby-tile-about" },
+  { href: link.spine, nameKey: "lobby.name.spine", detailKey: "lobby.detail.spine", className: "lobby-tile-spine" },
 ];
 
 export function Home() {
@@ -81,15 +82,9 @@ export function Home() {
       </div>
 
       <nav className="lobby-destinations" aria-label={t("lobby.destinationsAria")}>
-        {destinations.slice(0, 2).map(item => <a key={item.href} className={`lobby-tile ${item.className}`} href={item.href}>
-          <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" />{item.image === "gacha" && heads.length > 0 && <LiveBannerHeads heads={heads} />}<div className="lobby-tile-caption"><strong>{t(item.nameKey)}</strong><span>{t(item.detailKey)}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
+        {destinations.map(item => <a key={item.href} className={`lobby-tile ${item.className}`} href={item.href}>
+          <div className="lobby-tile-inner">{item.image ? <img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" /> : <div className="lobby-spine-art" aria-hidden="true" />}{item.image === "gacha" && heads.length > 0 && <LiveBannerHeads heads={heads} />}<div className="lobby-tile-caption"><strong>{t(item.nameKey)}</strong><span>{t(item.detailKey)}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
         </a>)}
-        <div className="lobby-secondary-panel">
-          <div className="lobby-panel-decoration" aria-hidden="true"><span /><DecoShapes /></div>
-          {destinations.slice(2).map(item => <a key={item.href} className={`lobby-tile ${item.className}`} href={item.href}>
-            <div className="lobby-tile-inner"><img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" /><div className="lobby-tile-caption"><strong>{t(item.nameKey)}</strong><span>{t(item.detailKey)}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
-          </a>)}
-        </div>
       </nav>
     </section>
     <footer className="lobby-footer"><span>{t("footer.disclaimer")}</span><a href={link.about}>{t("lobby.footer.credits")}</a></footer>
