@@ -15,6 +15,10 @@ export interface AuthoredViewport extends SceneBounds {
 }
 
 const DEFAULT_ASPECT = 16 / 9;
+// The lobby exports use a 3464-unit-wide camera for the normal full scene.
+// Smaller split panels often need to be combined to recover that extent, but
+// a union much wider than a full camera is usually an offstage prop/cut.
+const TYPICAL_CAMERA_WIDTH = 3464;
 
 function finiteBounds(bounds: SceneBounds | null): bounds is SceneBounds {
   return Boolean(bounds && [bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) && bounds.width > 0 && bounds.height > 0);
@@ -24,9 +28,9 @@ function visibleAttachment(slot: Slot) {
   if (!slot.bone.active || slot.color.a * slot.getSkeleton().color.a <= 0.01 || slot.data.blendMode !== BlendMode.Normal) return null;
   const attachment = slot.getAttachment();
   if (!(attachment instanceof RegionAttachment || attachment instanceof MeshAttachment) || attachment.color.a <= 0.01) return null;
-  const name = `${slot.data.name}/${attachment.name}`;
+  const name = `${slot.data.name}/${attachment.name}/${boneNamePath(slot.bone)}`;
   // Some exported effects use normal blending rather than an additive slot.
-  if (/(^|[\/_\s-])(fx|vfx|bloom|flare|glow|light|effect)([\/_\s-]|\d|$)/i.test(name)) return null;
+  if (DECORATIVE_NAME.test(name) || /(?:^|[\/_\s-])(?:fx|vfx|effect|particle|fish|bubble)(?:[\/_\s-]|\d|$)/i.test(name)) return null;
   return attachment;
 }
 
@@ -57,6 +61,49 @@ function unionBounds(bounds: SceneBounds[]): SceneBounds | null {
   return finiteBounds(result) ? result : null;
 }
 
+function authoredBackdropExtent(bounds: SceneBounds[]): SceneBounds | null {
+  if (bounds.length === 0) return null;
+  const largest = [...bounds].sort((a, b) => {
+    const widthDelta = b.width - a.width;
+    return Math.abs(widthDelta) > 1 ? widthDelta : b.height - a.height;
+  })[0]!;
+  const compositeParts = bounds.filter((item) => {
+    if (item === largest) return true;
+    const widthRatio = item.width / largest.width;
+    const heightRatio = item.height / largest.height;
+    if (Math.min(widthRatio, heightRatio) > 0.25) return true;
+    const horizontalGap = Math.max(largest.x - (item.x + item.width), item.x - (largest.x + largest.width), 0);
+    const verticalGap = Math.max(largest.y - (item.y + item.height), item.y - (largest.y + largest.height), 0);
+    // Tiny named details attached to a camera-sized panel (`BG_detail`, a
+    // chair marker, etc.) are backdrop labels, not a second camera panel.
+    return horizontalGap > 1 || verticalGap > 1;
+  });
+  const composite = unionBounds(compositeParts);
+  if (!composite) return largest;
+  // Keep a composite when it is a set of small panels spanning one camera, or
+  // when the extra pieces are a modest extension of a dominant backdrop. If a
+  // full-sized panel is already present and the union grows by more than 25%,
+  // the distant pieces are staged scenery rather than viewport geometry.
+  const smallPanelComposite = largest.width <= TYPICAL_CAMERA_WIDTH * 0.75
+    && composite.width <= TYPICAL_CAMERA_WIDTH * 1.25;
+  const closeComposite = composite.width <= largest.width * 1.25;
+  return smallPanelComposite || closeComposite ? composite : largest;
+}
+
+const BACKDROP_NAME = /(^|[\/_\s-])(?:bg|background|backgroud|backgrund|back[ _-]?ground|backdrop|sky|ground|floor|wall|sea|stage|room|building|window|city|booth|ocean|river|bottom|blur)([\/_\s-]|\d|$)/i;
+const DECORATIVE_NAME = /(^|[\/_\s-])(?:fx|vfx|effect|bloom|flare|glow|light|lighting|beam\w*|sunlight|fish\w*|sardine\w*|turtle\w*|tetra\w*|moorish\w*|idol\w*|bird\w*|butterfly\w*|ladybug\w*|animal\w*|fauna\w*|insect\w*|coral\w*|cloud\w*|shooting[ _-]?star\w*|star\w*|bubble\w*|bokeh|particle|spark|dust|fog|rain|snow|steam|glitter)(?=[\/_\s-]|\d|$)/i;
+const CHARACTER_BONE = /^(?:pc(?:\d+|[ _-])?|char(?:acter)?(?:[ _-]|$)|player(?:[ _-]|$)|avatar(?:[ _-]|$)|hip(?:[ _-]|$)|torso(?:[ _-]|$)|spine(?:[ _-]|$)|neck(?:[ _-]|$)|head(?:[ _-]|$)|face(?:[ _-]|$)|body(?:[ _-]|$)|arm(?:[ _-]|$)|leg(?:[ _-]|$)|hand(?:[ _-]|$)|foot(?:[ _-]|$)|finger(?:[ _-]|$)|eye(?:[ _-]|$)|mouth(?:[ _-]|$)|hair(?:[ _-]|$)|skirt(?:[ _-]|$))/i;
+
+function boneNamePath(bone: Bone, stop: Bone | null = null): string {
+  const names: string[] = [];
+  for (let current: Bone | null = bone; current && current !== stop; current = current.parent) names.push(current.data.name);
+  return names.join("/");
+}
+
+function isBackgroundRootName(name: string): boolean {
+  return /^(?:bg|background|backgroud|backgrund|back[ _-]?ground|backdrop|sky|ground|floor|wall|sea|stage|room|building|window|city|booth|ocean|river|bottom)(?:\d+|$|[ _-])/i.test(name.trim());
+}
+
 /**
  * These are scene containers, not the many PC_Layer12/PC_Layer20 bones used
  * for character parts. Exporters use both underscore and compact spellings,
@@ -65,17 +112,27 @@ function unionBounds(bounds: SceneBounds[]): SceneBounds | null {
 function isSceneContainer(bone: Bone): boolean {
   const name = bone.data.name.trim();
   if (/^pc[ _-]?layer(?:$|[_-])/i.test(name)) return true;
-  if (/^(?:\d+[_ -])?all[ _-]?layer(?:$|[_-]|\d)/i.test(name)) return true;
-  if (/^(?:\d+[_ -])?(?:all[_ -]?camera(?:[_ -]?root)?|camera[_ -]?(?:pos|root)|main[_ -]?camera|background[_ -]?layer|full)$/i.test(name)) return true;
+  // Scene roots are often prefixed with the cut/home name (for example
+  // `2_home_All_Layer`, `Intro_All_Layer`, or `B_AllLayer`). Match the
+  // authored `AllLayer` token wherever it forms a bone-name boundary instead
+  // of assuming it starts at character zero.
+  if (/(?:^|[\/_ -])all[ _-]?layer(?:$|[\/_-]|\d)/i.test(name)) return true;
+  // Multi-cut exports also put complete scenes under neutral `Cut_00`,
+  // `cut_01`, or `intro_02` bones. They must be isolated from their parent
+  // layer or an offstage cut expands the Free bounds and wins the camera
+  // backdrop selection.
+  if (/^(?:cut|intro)[ _-]?\d+$/i.test(name)) return true;
+  // Intro art is sometimes a complete offstage scene without an
+  // `Intro_All_Layer` wrapper (`BG_Intro_F`, `Background_Intro`, ...).
+  // Treat that branch as a scene boundary when it owns a backdrop so it does
+  // not enlarge the normal home scene's camera.
+  if (/^(?:bg|background)[\/_ -].*intro/i.test(name)) return true;
+  // A few exports place an offstage blur/alternate background in a sibling
+  // such as `BG_Layer2`. It is a complete visual branch, not a child panel of
+  // the home scene; give it the same boundary treatment as named cuts.
+  if (/^(?:bg|background)[\/_ -].*layer\d*$/i.test(name)) return true;
+  if (/^(?:\d+[_ -])?(?:all[_ -]?cam(?:era)?(?:[_ -]?root)?|camera[_ -]?(?:pos|root)|main[_ -]?camera|background[_ -]?layer|full)$/i.test(name)) return true;
   return false;
-}
-
-function isBackdrop(slot: Slot): boolean {
-  // Do not use the owning bone here. A character can be parented under a
-  // bone named Background_Layer, and treating every child as background makes
-  // the inferred width grow to the character's hair or foreground FX.
-  const name = `${slot.data.name}/${slot.getAttachment()?.name ?? ""}`;
-  return /(^|[\/_\s-])(bg|background|backgroud|sky|ground|floor|wall|sea|window|stage|room|building)([\/_\s-]|\d|$)/i.test(name);
 }
 
 function descendantOf(bone: Bone, ancestor: Bone): boolean {
@@ -86,7 +143,65 @@ function descendantOf(bone: Bone, ancestor: Bone): boolean {
 }
 
 function isCharacterContainer(bone: Bone): boolean {
-  return /^(?:pc(?:[ _-]?layer)?|cha(?:racter)?[ _-]?root)$/i.test(bone.data.name.trim());
+  return /^(?:pc(?:\d+|[ _-]?(?:layer|root)(?:[ _-]?\d+)?)?|cha(?:racter)?[ _-]?root)$/i.test(bone.data.name.trim());
+}
+
+function hasCharacterBone(skeleton: Skeleton, container: Bone): boolean {
+  return skeleton.bones.some((bone) => descendantOf(bone, container) && CHARACTER_BONE.test(bone.data.name.trim()));
+}
+
+function isCharacterBranch(skeleton: Skeleton, bone: Bone, stop: Bone | null): boolean {
+  for (let current: Bone | null = bone; current; current = current.parent) {
+    const name = current.data.name.trim();
+    if (isCharacterContainer(current) || CHARACTER_BONE.test(name)) return true;
+    // A few exports put the character directly under the background root in a
+    // control bone (`BG_Crtl`, `BG_Ctrl`, ...), without a PC_Layer wrapper.
+    // Only treat it as a character branch when its descendants look like a
+    // rig; ordinary background control bones are still allowed through.
+    if (/(?:ctrl|crtl|control)$/i.test(name) && hasCharacterBone(skeleton, current)) return true;
+    if (current === stop) break;
+  }
+  return false;
+}
+
+function backgroundRoot(skeleton: Skeleton, slot: Slot, stop: Bone | null): Bone | null {
+  if (!slot.getAttachment()) return null;
+  for (let current: Bone | null = slot.bone; current; current = current.parent) {
+    if (isBackgroundRootName(current.data.name)) return current;
+    if (current === stop) break;
+  }
+  return null;
+}
+
+function isDecorative(skeleton: Skeleton, slot: Slot, stop: Bone | null): boolean {
+  const attachment = slot.getAttachment();
+  const names = `${slot.data.name}/${attachment?.name ?? ""}/${boneNamePath(slot.bone, stop)}`;
+  return DECORATIVE_NAME.test(names) || /(?:^|[\/_\s-])(?:fx|vfx|effect|particle|fish|bubble)(?:[\/_\s-]|\d|$)/i.test(names);
+}
+
+/**
+ * Background art is not consistently named. Newer exports have a `BG` or
+ * `Background` branch and attach perfectly ordinary names (`book6`, `tree`,
+ * `floor_tile`, ...) below it. Older exports put the marker on the slot
+ * itself. Keep both forms, but never let a character branch inherit the
+ * marker from its background parent.
+ */
+function isBackdrop(skeleton: Skeleton, slot: Slot, stop: Bone | null = null): boolean {
+  if (!slot.getAttachment() || isDecorative(skeleton, slot, stop)) return false;
+  const root = backgroundRoot(skeleton, slot, stop);
+  const attachmentName = `${slot.data.name}/${slot.getAttachment()?.name ?? ""}`;
+  const explicitlyNamed = BACKDROP_NAME.test(attachmentName);
+  // Some old exports put the background branch below `PC_Layer`. Once a
+  // genuine BG/Background root is found, only character bones between that
+  // root and the slot disqualify it; the parent PC container itself does not.
+  // An explicit background attachment is still authoritative when it is
+  // attached directly to a PC layer (`Back_Ground_01`, `BG_03`, ...).
+  if (!explicitlyNamed && (root ? isCharacterBranch(skeleton, slot.bone, root) : isCharacterBranch(skeleton, slot.bone, stop))) return false;
+  // When the scene container is itself named `BG_Layer`, the root marker is
+  // the only clue for generic art such as `BF_Blur`. Do not let an unrelated
+  // prop attached directly to that same container become a backdrop merely
+  // because it shares the parent bone.
+  return Boolean((root && root !== stop) || explicitlyNamed);
 }
 
 function interactionSlots(skeleton: Skeleton): Slot[] {
@@ -109,7 +224,7 @@ function boneDepth(bone: Bone): number {
 }
 
 function hasBackdrop(skeleton: Skeleton, container: Bone): boolean {
-  return skeleton.slots.some((slot) => descendantOf(slot.bone, container) && isBackdrop(slot) && slot.getAttachment() !== null);
+  return skeleton.slots.some((slot) => descendantOf(slot.bone, container) && isBackdrop(skeleton, slot, container) && attachmentBounds(slot) !== null);
 }
 
 function sceneSlots(skeleton: Skeleton, container: Bone): Slot[] {
@@ -134,27 +249,36 @@ function sceneInfo(skeleton: Skeleton, container: Bone) {
     const bounds = attachmentBounds(slot);
     if (!bounds) continue;
     visualBounds.push(bounds);
-    if (isBackdrop(slot)) backdropBounds.push(bounds);
+    if (isBackdrop(skeleton, slot, container)) backdropBounds.push(bounds);
   }
   return {
     container,
     slots,
     bounds: unionBounds(visualBounds),
-    // A scene can be assembled from several background pieces. The union is
-    // useful for artwork bounds, but the widest authored backdrop is the best
-    // signal for the camera width and avoids spanning decorative pieces or
-    // multiple cuts.
-    backdrop: backdropBounds.sort((a, b) => {
-      // Atlas/export rounding can make equal-width backdrop cuts differ by a
-      // fraction of a Spine unit. Do not let that noise beat the taller cut.
-      const widthDelta = b.width - a.width;
-      return Math.abs(widthDelta) > 1 ? widthDelta : b.height - a.height;
-    })[0] ?? null,
+    // A scene can be assembled from several background pieces. Their union is
+    // the authored camera extent; selecting only the widest piece crops split
+    // city windows, floors, bookshelves, and other composite backdrops.
+    // A named `BG_detail`/`BG_chair` attached directly to a scene layer is a
+    // marker, not a second camera-sized panel. Composite extents are reliable
+    // when the pieces belong to an authored background branch; otherwise keep
+    // the largest named panel as the legacy fallback.
+    backdrop: backdropBounds.length > 0
+      ? authoredBackdropExtent(backdropBounds)
+      : backdropBounds.sort((a, b) => {
+        const widthDelta = b.width - a.width;
+        return Math.abs(widthDelta) > 1 ? widthDelta : b.height - a.height;
+      })[0] ?? null,
     depth: boneDepth(container),
   };
 }
 
-function anchorPoint(skeleton: Skeleton): { x: number; y: number } {
+interface AnchorPoint {
+  x: number;
+  y: number;
+  bone: Bone | null;
+}
+
+function anchorPoint(skeleton: Skeleton): AnchorPoint {
   const root = skeleton.bones[0];
   // Some exports wrap the entire scene rig in a Scale/offset bone. Searching
   // only root children silently anchors those lobbies at (0, 0), below the
@@ -168,7 +292,7 @@ function anchorPoint(skeleton: Skeleton): { x: number; y: number } {
     .sort(byHierarchy)[0];
   const layerRoot = containers.sort(byHierarchy)[0];
   const point = cameraRoot ?? layerRoot ?? root;
-  return { x: point?.worldX ?? 0, y: point?.worldY ?? 0 };
+  return { x: point?.worldX ?? 0, y: point?.worldY ?? 0, bone: point ?? null };
 }
 
 function activeScene(skeleton: Skeleton, anchor: { x: number; y: number }) {
@@ -179,14 +303,35 @@ function activeScene(skeleton: Skeleton, anchor: { x: number; y: number }) {
     // still being only one child of the lobby. Require an owned backdrop so a
     // character layer never wins the same-anchor/deeper-container tie.
     .filter((info) => info.bounds && info.backdrop)
+    .filter((info) => !isCharacterContainer(info.container) || !hasBackdropSceneAncestor(skeleton, info.container))
     .sort((a, b) => {
-      const distanceA = Math.hypot(a.container.worldX - anchor.x, a.container.worldY - anchor.y);
-      const distanceB = Math.hypot(b.container.worldX - anchor.x, b.container.worldY - anchor.y);
+      // A child background layer can have an arbitrary transform while its
+      // authored backdrop is centered on the parent camera (for example a
+      // desk scene whose wall is on `All_Layer3`). Rank by the visual
+      // backdrop center before falling back to the bone origin, otherwise a
+      // tiny foreground fragment on the parent wins over the real scene.
+      const distanceA = Math.hypot(
+        (a.backdrop!.x + a.backdrop!.width / 2) - anchor.x,
+        (a.backdrop!.y + a.backdrop!.height / 2) - anchor.y,
+      );
+      const distanceB = Math.hypot(
+        (b.backdrop!.x + b.backdrop!.width / 2) - anchor.x,
+        (b.backdrop!.y + b.backdrop!.height / 2) - anchor.y,
+      );
       // A child scene at the same authored anchor is more specific than the
       // layer that contains it. This is what separates All_Layer_00/01 cuts.
       return distanceA - distanceB || b.depth - a.depth || (b.backdrop?.width ?? 0) - (a.backdrop?.width ?? 0);
     });
   return candidates[0] ?? null;
+}
+
+function hasBackdropSceneAncestor(skeleton: Skeleton, container: Bone): boolean {
+  for (let current = container.parent; current; current = current.parent) {
+    if (isCharacterContainer(current) || !isSceneContainer(current)) continue;
+    const info = sceneInfo(skeleton, current);
+    if (info.bounds && info.backdrop) return true;
+  }
+  return false;
 }
 
 /** Frame the active authored scene, not the offstage siblings in a multi-cut lobby. */
@@ -203,9 +348,12 @@ export function sceneBounds(skeleton: Skeleton): SceneBounds {
     minY = Math.min(minY, bounds.y);
     maxX = Math.max(maxX, bounds.x + bounds.width);
     maxY = Math.max(maxY, bounds.y + bounds.height);
-    if (isBackdrop(slot)) backgrounds.push(bounds);
+    if (isBackdrop(skeleton, slot)) backgrounds.push(bounds);
   }
-  const mainBackground = backgrounds.sort((a, b) => b.width * b.height - a.width * a.height)[0];
+  const mainBackground = backgrounds.sort((a, b) => {
+    const areaDelta = b.width * b.height - a.width * a.height;
+    return Math.abs(areaDelta) > 1 ? areaDelta : b.width - a.width;
+  })[0];
   if (mainBackground) return mainBackground;
   if (![minX, minY, maxX, maxY].every(Number.isFinite) || maxX <= minX || maxY <= minY) return skeleton.getBoundsRect();
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
@@ -213,8 +361,9 @@ export function sceneBounds(skeleton: Skeleton): SceneBounds {
 
 /** Bounds used for game-like taps, excluding authored backdrops and FX. */
 export function interactionBounds(skeleton: Skeleton): SceneBounds | null {
+  const scene = activeScene(skeleton, anchorPoint(skeleton));
   const bounds = interactionSlots(skeleton)
-    .filter((slot) => !isBackdrop(slot))
+    .filter((slot) => !isBackdrop(skeleton, slot, scene?.container ?? null))
     .map(attachmentBounds)
     .filter((item): item is SceneBounds => Boolean(item));
   return unionBounds(bounds);
@@ -222,8 +371,9 @@ export function interactionBounds(skeleton: Skeleton): SceneBounds | null {
 
 /** Test a world-space pointer against the authored character attachments. */
 export function interactionHit(skeleton: Skeleton, x: number, y: number): boolean {
+  const scene = activeScene(skeleton, anchorPoint(skeleton));
   return interactionSlots(skeleton)
-    .filter((slot) => !isBackdrop(slot))
+    .filter((slot) => !isBackdrop(skeleton, slot, scene?.container ?? null))
     .map((slot) => attachmentBounds(slot))
     .some((bounds) => Boolean(bounds && x >= bounds.x && x <= bounds.x + bounds.width && y >= bounds.y && y <= bounds.y + bounds.height));
 }
@@ -242,16 +392,18 @@ export function authoredViewport(skeleton: Skeleton, anchorSkeleton: Skeleton = 
   const anchorBackdrop = setupContainer && anchorSkeleton !== skeleton
     ? sceneInfo(anchorSkeleton, setupContainer).backdrop ?? backdrop : backdrop;
   const fallback = scene?.bounds ?? sceneBounds(skeleton);
-  // Older lobbies place independent character/background/FX layers at staging
-  // offsets, not at the camera center. If the chosen rig origin is outside its
-  // backdrop, it cannot frame that scene. Recover the missing coordinate from
-  // the main backdrop, not from the union of offstage props and effect pieces.
-  const anchor = {
-    x: anchorBackdrop && (rigAnchor.x < anchorBackdrop.x - 0.01 || rigAnchor.x > anchorBackdrop.x + anchorBackdrop.width + 0.01)
-      ? anchorBackdrop.x + anchorBackdrop.width / 2 : rigAnchor.x,
-    y: anchorBackdrop && (rigAnchor.y < anchorBackdrop.y - 0.01 || rigAnchor.y > anchorBackdrop.y + anchorBackdrop.height + 0.01)
-      ? anchorBackdrop.y + anchorBackdrop.height / 2 : rigAnchor.y,
-  };
+  // The layer/camera rig is the authored camera anchor. A backdrop is often a
+  // single sky, floor, or wall strip, so its own bounds do not describe the
+  // camera center. The one exception is an export whose only detected rig is
+  // itself a Background layer, or whose selected complete cut is staged away
+  // from the outer rig; there the cut backdrop center is the only usable
+  // camera coordinate.
+  const backgroundOnlyAnchor = rigAnchor.bone && /^(?:background|back[ _-]?ground|bg)(?:[ _-]?layer)?$/i.test(rigAnchor.bone.data.name.trim());
+  const translatedCut = scene && rigAnchor.bone && setupContainer && setupContainer.data.index !== rigAnchor.bone.data.index
+    && Math.hypot(setupContainer.worldX - rigAnchor.x, setupContainer.worldY - rigAnchor.y) > 1;
+  const anchor = (backgroundOnlyAnchor || translatedCut) && anchorBackdrop
+    ? { x: anchorBackdrop.x + anchorBackdrop.width / 2, y: anchorBackdrop.y + anchorBackdrop.height / 2 }
+    : rigAnchor;
   const width = backdrop?.width ?? fallback.width;
   const height = width / DEFAULT_ASPECT;
   return {

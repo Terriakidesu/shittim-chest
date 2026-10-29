@@ -138,6 +138,89 @@ describe("Spine scene framing", () => {
     expect(viewport.height).toBeCloseTo(200 * 9 / 16);
   });
 
+  test("combines separated panels from one background branch", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const layer = new BoneData(1, "All_Layer", root);
+    layer.y = 962;
+    const background = new BoneData(2, "BG", layer);
+    data.bones.push(root, layer, background);
+    data.slots.push(new SlotData(0, "left panel", background), new SlotData(1, "right panel", background));
+    const skeleton = new Skeleton(data);
+    const panel = (name: string, x: number) => {
+      const attachment = new RegionAttachment(name, name);
+      attachment.offset = [x, 0, x, 100, x + 200, 100, x + 200, 0];
+      return attachment;
+    };
+    skeleton.slots[0]!.setAttachment(panel("left", -200));
+    skeleton.slots[1]!.setAttachment(panel("right", 0));
+    skeleton.updateWorldTransform(Physics.update);
+    const viewport = authoredViewport(skeleton);
+    expect(viewport.authored).toBe(true);
+    expect(viewport.width).toBeCloseTo(400);
+    expect(viewport.x).toBeCloseTo(-200);
+    expect(viewport.anchorY).toBeCloseTo(962);
+  });
+
+  test("ignores normal-blend clouds and other detached decoration", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const layer = new BoneData(1, "All_Layer", root);
+    layer.y = 962;
+    const background = new BoneData(2, "BG", layer);
+    data.bones.push(root, layer, background);
+    data.slots.push(new SlotData(0, "wall", background), new SlotData(1, "Cloud", background));
+    const skeleton = new Skeleton(data);
+    const wall = new RegionAttachment("wall", "wall");
+    wall.offset = [-200, 0, -200, 100, 200, 100, 200, 0];
+    const cloud = new RegionAttachment("Cloud", "Cloud");
+    cloud.offset = [-2000, -500, -2000, 500, 2000, 500, 2000, -500];
+    skeleton.slots[0]!.setAttachment(wall);
+    skeleton.slots[1]!.setAttachment(cloud);
+    skeleton.updateWorldTransform(Physics.update);
+    const scene = sceneBounds(skeleton);
+    const viewport = authoredViewport(skeleton);
+    expect(scene.width).toBeCloseTo(400);
+    expect(viewport.width).toBeCloseTo(400);
+  });
+
+  test("accepts a generic attachment below a named background root", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const layer = new BoneData(1, "All_Layer", root);
+    layer.y = 962;
+    const background = new BoneData(2, "Background_Root", layer);
+    data.bones.push(root, layer, background);
+    data.slots.push(new SlotData(0, "art", background));
+    const skeleton = new Skeleton(data);
+    const art = new RegionAttachment("art", "art");
+    art.offset = [-150, 0, -150, 100, 150, 100, 150, 0];
+    skeleton.slots[0]!.setAttachment(art);
+    skeleton.updateWorldTransform(Physics.update);
+    const viewport = authoredViewport(skeleton);
+    expect(viewport.authored).toBe(true);
+    expect(viewport.width).toBeCloseTo(300);
+  });
+
+  test("recognizes an explicitly named backdrop attached to a PC layer", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const layer = new BoneData(1, "All_Layer", root);
+    layer.y = 962;
+    const characterLayer = new BoneData(2, "PC_Layer", layer);
+    data.bones.push(root, layer, characterLayer);
+    data.slots.push(new SlotData(0, "Back_Ground_01", characterLayer));
+    const skeleton = new Skeleton(data);
+    const background = new RegionAttachment("Back_Ground_01", "Back_Ground_01");
+    background.offset = [-160, 0, -160, 100, 160, 100, 160, 0];
+    skeleton.slots[0]!.setAttachment(background);
+    skeleton.updateWorldTransform(Physics.update);
+    const viewport = authoredViewport(skeleton);
+    expect(viewport.authored).toBe(true);
+    expect(viewport.width).toBeCloseTo(320);
+    expect(viewport.anchorY).toBeCloseTo(962);
+  });
+
   test("keeps the authored anchor fixed when a scene parent is animated", () => {
     const setup = authoredScene();
     const animated = authoredScene();

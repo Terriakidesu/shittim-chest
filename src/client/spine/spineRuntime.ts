@@ -756,7 +756,7 @@ export class SpineRenderer {
     const bundle = this.bundle;
     if (!bundle || this.renderer.camera.viewportWidth <= 0 || this.renderer.camera.viewportHeight <= 0) return;
     const camera = this.renderer.camera;
-    const bounds = this.cameraMode === "game" ? bundle.viewport : bundle.bounds;
+    const bounds = this.cameraMode === "game" && bundle.meta.hasGameCamera ? bundle.viewport : bundle.bounds;
     const fit = fitScene(bounds, camera.viewportWidth, camera.viewportHeight, this.cameraMode !== "fit");
     this.fitCameraPose = {
       x: fit.x,
