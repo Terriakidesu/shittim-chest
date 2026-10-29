@@ -46,6 +46,7 @@ export const en = {
   "lobby.detail.gacha": "Recruitment simulator",
   "lobby.detail.about": "Sources & credits",
   "lobby.detail.spine": "Interactive lobby animations",
+  "lobby.wip": "Work in progress",
   "lobby.aria.day": "Arona in the Shittim Chest classroom",
   "lobby.aria.night": "Plana in the Shittim Chest classroom",
   "lobby.sceneAria": "S.C.H.A.L.E. classroom",

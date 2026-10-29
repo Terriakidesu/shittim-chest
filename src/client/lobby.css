@@ -81,6 +81,8 @@
 .lobby-spine-art::before { width: 72%; height: 150%; left: 8%; top: -45%; }
 .lobby-spine-art::after { width: 45%; height: 115%; right: 6%; top: -22%; border-color: #4daec277; }
 :root[data-theme="dark"] .lobby-spine-art { background: radial-gradient(circle at 82% 16%, #9ae7fa66 0 8%, transparent 30%), linear-gradient(135deg, #17465c, #276b7d 48%, #183e56); }
+.lobby-tile-wip { position: absolute; z-index: 3; top: 12px; left: 13%; max-width: 72%; padding: 4px 8px; border: 1px solid #b18b20; border-radius: 4px; background: #fff3bde8; color: #624d0d; font-size: clamp(9px, .8vw, 12px); font-weight: 850; line-height: 1.2; box-shadow: 0 2px 5px #174f7b26; }
+:root[data-theme="dark"] .lobby-tile-wip { border-color: #f5d35c; background: #17384ce8; color: #ffe58a; }
 .lobby-banner-heads { position: absolute; z-index: 1; inset: 8px 12% auto; display: flex; justify-content: center; gap: clamp(8px, 1.5vw, 22px); }
 .lobby-head-group { display: grid; justify-items: center; gap: 3px; }
 .lobby-head-server { padding: 1px 8px; border-radius: 3px; background: #17627edd; color: #fff; font-size: 10px; font-weight: 850; letter-spacing: .08em; }

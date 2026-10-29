@@ -38,6 +38,7 @@ export const ja: Record<keyof typeof en, string> = {
   "lobby.detail.gacha": "募集シミュレーター",
   "lobby.detail.about": "出典とクレジット",
   "lobby.detail.spine": "ロビーアニメーションを操作",
+  "lobby.wip": "開発中",
   "lobby.aria.day": "シッティムチェストの教室にいるアロナ",
   "lobby.aria.night": "シッティムチェストの教室にいるプラナ",
   "lobby.sceneAria": "S.C.H.A.L.E.の教室",

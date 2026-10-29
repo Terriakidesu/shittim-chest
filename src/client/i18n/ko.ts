@@ -38,6 +38,7 @@ export const ko: Record<keyof typeof en, string> = {
   "lobby.detail.gacha": "모집 시뮬레이터",
   "lobby.detail.about": "출처와 크레딧",
   "lobby.detail.spine": "로비 애니메이션 상호작용",
+  "lobby.wip": "개발 중",
   "lobby.aria.day": "시팅 체스트 교실의 아로나",
   "lobby.aria.night": "시팅 체스트 교실의 플라나",
   "lobby.sceneAria": "S.C.H.A.L.E. 교실",

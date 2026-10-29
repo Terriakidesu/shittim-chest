@@ -24,11 +24,11 @@ function LiveBannerHeads({ heads }: { heads: BannerHeads[] }) {
     </div>)}</div>;
 }
 
-const destinations: { href: string; nameKey: LangKey; detailKey: LangKey; image?: string; className: string }[] = [
+const destinations: { href: string; nameKey: LangKey; detailKey: LangKey; image?: string; className: string; wip?: boolean }[] = [
   { href: link.calendar, nameKey: "lobby.name.calendar", detailKey: "lobby.detail.calendar", image: "calendar", className: "lobby-tile-calendar" },
   { href: link.simulator, nameKey: "lobby.name.gacha", detailKey: "lobby.detail.gacha", image: "gacha", className: "lobby-tile-gacha" },
   { href: link.about, nameKey: "lobby.name.about", detailKey: "lobby.detail.about", image: "about", className: "lobby-tile-about" },
-  { href: link.spine, nameKey: "lobby.name.spine", detailKey: "lobby.detail.spine", className: "lobby-tile-spine" },
+  { href: link.spine, nameKey: "lobby.name.spine", detailKey: "lobby.detail.spine", className: "lobby-tile-spine", wip: true },
 ];
 
 export function Home() {
@@ -83,7 +83,7 @@ export function Home() {
 
       <nav className="lobby-destinations" aria-label={t("lobby.destinationsAria")}>
         {destinations.map(item => <a key={item.href} className={`lobby-tile ${item.className}`} href={item.href}>
-          <div className="lobby-tile-inner">{item.image ? <img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" /> : <div className="lobby-spine-art" aria-hidden="true" />}{item.image === "gacha" && heads.length > 0 && <LiveBannerHeads heads={heads} />}<div className="lobby-tile-caption"><strong>{t(item.nameKey)}</strong><span>{t(item.detailKey)}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
+          <div className="lobby-tile-inner">{item.image ? <img src={asset(`ba-lobby/${item.image}.webp`)} alt="" width="504" height="389" /> : <div className="lobby-spine-art" aria-hidden="true" />}{item.image === "gacha" && heads.length > 0 && <LiveBannerHeads heads={heads} />}{item.wip && <span className="lobby-tile-wip">{t("lobby.wip")}</span>}<div className="lobby-tile-caption"><strong>{t(item.nameKey)}</strong><span>{t(item.detailKey)}</span></div><span className="lobby-tile-arrow" aria-hidden="true"><IconPlay /></span></div>
         </a>)}
       </nav>
     </section>
