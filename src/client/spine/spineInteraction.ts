@@ -70,6 +70,25 @@ export interface SpineInteractionProfile {
   talks: SpineAnimationPair[];
 }
 
+/** Short crossfades keep authored start/follow/release phases from hard-cutting. */
+export const INTERACTION_PHASE_MIX = 0.14;
+
+export function setInteractionTrack(state: AnimationState, track: number, name: string, loop: boolean): TrackEntry | null {
+  if (!name) return null;
+  const entry = state.setAnimation(track, name, loop);
+  entry.mixDuration = INTERACTION_PHASE_MIX;
+  return entry;
+}
+
+export function clearInteractionTrack(state: AnimationState, track: number, smooth = true): void {
+  if (smooth && state.getCurrent(track)) state.setEmptyAnimation(track, INTERACTION_PHASE_MIX);
+  else state.clearTrack(track);
+}
+
+export function queueInteractionFadeOut(state: AnimationState, track: number): void {
+  state.addEmptyAnimation(track, INTERACTION_PHASE_MIX, 0);
+}
+
 function exactAnimation(animations: string[], wanted: string): string | null {
   const lower = wanted.toLocaleLowerCase();
   return animations.find((name) => name.toLocaleLowerCase() === lower) ?? null;
@@ -288,3 +307,4 @@ export function authoredRegions(project?: SpineInteractionProject | null): Spine
       : [];
   });
 }
+import type { AnimationState, TrackEntry } from "@esotericsoftware/spine-core";

@@ -1,6 +1,6 @@
 import { Physics, type AnimationState, type Skeleton } from "@esotericsoftware/spine-core";
 import type { EditorInteraction } from "./editorModel";
-import { interactionKind } from "../../../src/client/spine/spineInteraction";
+import { clearInteractionTrack, interactionKind, setInteractionTrack } from "../../../src/client/spine/spineInteraction";
 import {
   applyInteractionMotion,
   beforeInteractionMotion,
@@ -68,9 +68,9 @@ export class InteractionPreview {
     this.duration = 0;
     for (const [track, name] of [[1, main], [2, face]] as const) {
       if (name && state.data.skeletonData.findAnimation(name)) {
-        const entry = state.setAnimation(track, name, phase === "holding");
-        this.duration = Math.max(this.duration, entry.animation?.duration ?? 0);
-      } else state.clearTrack(track);
+        const entry = setInteractionTrack(state, track, name, phase === "holding");
+        this.duration = Math.max(this.duration, entry?.animation?.duration ?? 0);
+      } else clearInteractionTrack(state, track);
     }
   }
 

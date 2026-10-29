@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { findInteractionProfile, profileFromProject } from "./spineInteraction";
+import { Animation, AnimationState, AnimationStateData, BoneData, Skeleton, SkeletonData } from "@esotericsoftware/spine-core";
+import { findInteractionProfile, INTERACTION_PHASE_MIX, profileFromProject, setInteractionTrack } from "./spineInteraction";
 
 describe("Spine lobby interaction data", () => {
   test("pairs the game start, follow and release tracks", () => {
@@ -78,6 +79,19 @@ describe("Spine lobby interaction data", () => {
       follow: { main: "Pat_02_M", face: null },
       release: { main: "CustomPatEnd_M", face: null },
     });
+  });
+
+  test("crossfades when an interaction changes phase", () => {
+    const data = new SkeletonData();
+    data.bones.push(new BoneData(0, "root", null));
+    data.animations.push(new Animation("start", [], 0.3), new Animation("follow", [], 0.5));
+    const state = new AnimationState(new AnimationStateData(data));
+    const skeleton = new Skeleton(data);
+    setInteractionTrack(state, 3, "start", false);
+    state.apply(skeleton);
+    const next = setInteractionTrack(state, 3, "follow", true)!;
+    expect(next.mixDuration).toBe(INTERACTION_PHASE_MIX);
+    expect(next.mixingFrom?.animation?.name).toBe("start");
   });
 
   test("ignores developer and nested duplicate talk tracks when root tracks exist", () => {

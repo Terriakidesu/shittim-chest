@@ -18,7 +18,7 @@ import {
 } from "@esotericsoftware/spine-webgl";
 import { authoredViewport, fitScene, interactionKindAtPoint, interactionZonesForDisplay, sceneBounds, type InteractionHitKind, type SceneBounds } from "./spineCamera";
 import { DEFAULT_EFFECTS_STRENGTH, drawWithEffectsStrength } from "./spineEffects";
-import { authoredInteraction, authoredRegions, profileFromProject, type SpineAnimationPair, type SpineInteractionAction, type SpineInteractionProfile, type SpineInteractionProject, type SpineAuthoredRegion } from "./spineInteraction";
+import { authoredInteraction, authoredRegions, clearInteractionTrack, profileFromProject, queueInteractionFadeOut, setInteractionTrack, type SpineAnimationPair, type SpineInteractionAction, type SpineInteractionProfile, type SpineInteractionProject, type SpineAuthoredRegion } from "./spineInteraction";
 import {
   applyInteractionMotion,
   beforeInteractionMotion,
@@ -724,25 +724,25 @@ export class SpineRenderer {
     return this.interactionMotionState;
   }
 
-  private clearOverlay(track: number) {
+  private clearOverlay(track: number, smooth = false) {
     const state = this.bundle?.state;
     if (!state) return;
-    state.clearTrack(track);
+    clearInteractionTrack(state, track, smooth);
   }
 
   private playOverlayPair(pair: SpineAnimationPair, mainTrack: number, faceTrack: number, loop: boolean, clearAfter: boolean) {
     const bundle = this.bundle;
     if (!bundle) return;
-    const main = bundle.state.setAnimation(mainTrack, pair.main, loop);
-    if (clearAfter && !loop) bundle.state.addEmptyAnimation(mainTrack, 0, 0);
+    const main = setInteractionTrack(bundle.state, mainTrack, pair.main, loop);
+    if (clearAfter && !loop) queueInteractionFadeOut(bundle.state, mainTrack);
     if (pair.face) {
-      bundle.state.setAnimation(faceTrack, pair.face, loop);
-      if (clearAfter && !loop) bundle.state.addEmptyAnimation(faceTrack, 0, 0);
+      setInteractionTrack(bundle.state, faceTrack, pair.face, loop);
+      if (clearAfter && !loop) queueInteractionFadeOut(bundle.state, faceTrack);
     } else {
-      bundle.state.clearTrack(faceTrack);
+      clearInteractionTrack(bundle.state, faceTrack);
     }
     // Keep the local variable meaningful for zero-duration authored poses.
-    main.trackTime = Math.max(0, main.trackTime);
+    if (main) main.trackTime = Math.max(0, main.trackTime);
   }
 
   private beginLook() {
@@ -764,8 +764,8 @@ export class SpineRenderer {
       this.interactionTrackName = end.main;
       this.playOverlayPair(end, 1, 2, false, true);
     } else {
-      this.clearOverlay(1);
-      this.clearOverlay(2);
+      this.clearOverlay(1, true);
+      this.clearOverlay(2, true);
       this.interactionState = "idle";
       this.interactionTrackName = null;
     }
@@ -793,8 +793,8 @@ export class SpineRenderer {
       this.interactionTrackName = release.main;
       this.playOverlayPair(release, 3, 4, false, true);
     } else {
-      this.clearOverlay(3);
-      this.clearOverlay(4);
+      this.clearOverlay(3, true);
+      this.clearOverlay(4, true);
       this.interactionState = "idle";
       this.interactionTrackName = null;
     }
