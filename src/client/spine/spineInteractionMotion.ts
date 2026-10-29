@@ -61,6 +61,18 @@ function finitePositive(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+/** Keep headpat motion from pulling beyond the next rig bone's local Y range. */
+function limitHeadpatLocalY(target: Bone, world: Vector2, limitY: number): Vector2 {
+  if (target.children.length === 0) return world;
+  const next = target.children[0]!;
+  const origin = next.localToWorld(new Vector2(0, 0));
+  const local = next.worldToLocal(new Vector2(origin.x + world.x, origin.y + world.y));
+  const constrainedY = Math.max(-limitY, Math.min(limitY, local.y));
+  if (constrainedY === local.y) return world;
+  const constrained = next.localToWorld(new Vector2(local.x, constrainedY));
+  return new Vector2(constrained.x - origin.x, constrained.y - origin.y);
+}
+
 function defaultInteraction(fallbackLimits?: SpineMotionPoint): SpineMotionInteraction {
   return {
     startAnimation: "",
@@ -190,12 +202,13 @@ export function applyInteractionMotion(
   const sensitivity = target.legacyCheek && interaction.sensitivity === DEFAULT_SENSITIVITY && interaction.limitX === DEFAULT_LIMIT_X && interaction.limitY === DEFAULT_LIMIT_Y
     ? 1
     : finitePositive(interaction.sensitivity, DEFAULT_SENSITIVITY);
-  const world = new Vector2(
+  let world = new Vector2(
     (pointer.x - origin.x) * sensitivity,
     (pointer.y - origin.y) * sensitivity,
   );
   let limitX = finitePositive(interaction.limitX, fallbackLimits?.x ?? DEFAULT_LIMIT_X);
   let limitY = finitePositive(interaction.limitY, fallbackLimits?.y ?? DEFAULT_LIMIT_Y);
+  if (state.kind === "pat") world = limitHeadpatLocalY(target.bone, world, limitY);
   const cheeks = target.directCheek ? cheekBones(skeleton) : [];
   const other = target.directCheek ? (cheeks.find((bone) => bone !== target.bone) ?? target.bone.parent ?? null) : null;
   if (other) {
