@@ -37,6 +37,11 @@ function displayName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
+function nativePath(root: string, relativePath: string): string {
+  const separator = root.includes("\\") ? "\\" : "/";
+  return `${root.replace(/[\\/]+$/, "")}${separator}${relativePath.replaceAll("/", separator)}`;
+}
+
 function readStoredViewSettings(): EditorViewSettings {
   try {
     const stored = localStorage.getItem(EDITOR_VIEW_SETTINGS_KEY);
@@ -256,7 +261,9 @@ export function Editor() {
   const [speed, setSpeed] = useState(1);
   const [selectedAnimation, setSelectedAnimation] = useState("");
   const [project, setProject] = useState<EditorProject | null>(null);
-  const timelineSaveRef = useRef<(() => Promise<void>) | null>(null);
+  const timelineSaveRef = useRef<((getProject: () => EditorProject | null) => Promise<string[]>) | null>(null);
+  const sourceRef = useRef<DesktopAssetSource | null>(source);
+  const projectSaveQueueRef = useRef(Promise.resolve());
   const [viewSettings, setViewSettings] = useState<EditorViewSettings>(() => readStoredViewSettings());
   const [undo, setUndo] = useState<EditorProject[]>([]);
   const [redo, setRedo] = useState<EditorProject[]>([]);
@@ -273,6 +280,7 @@ export function Editor() {
   projectRef.current = project;
   directoryRef.current = directory;
   metaRef.current = meta;
+  sourceRef.current = source;
   const viewSettingsRef = useRef<EditorViewSettings>(viewSettings);
   viewSettingsRef.current = viewSettings;
 
@@ -570,22 +578,36 @@ export function Editor() {
     setSaveState("dirty");
   }
 
-  async function saveProject(skipTimeline = false) {
-    const current = projectRef.current ?? project;
-    if (!current || !source) return;
-    setSaveState("saving");
-    setError(null);
-    try {
-      if (!skipTimeline) await timelineSaveRef.current?.();
-      const safeName = directory.replace(/[^A-Za-z0-9._-]+/g, "-") || "project";
-      await source.saveText(`.shittim-spine-editor/${safeName}.spine-project.json`, `${JSON.stringify(projectRef.current ?? current, null, 2)}\n`);
-      setSaveState("saved");
-      setSavedAt(Date.now());
-      setStatus("Saved project and linked subtitle files to the selected asset root.");
-    } catch (value) {
-      setSaveState("error");
-      setError(value instanceof Error ? value.message : String(value));
-    }
+  async function saveProject() {
+    const save = async () => {
+      const current = projectRef.current ?? project;
+      const saveSource = sourceRef.current;
+      const saveDirectory = directoryRef.current;
+      if (!current || !saveSource || current.assetDirectory !== saveDirectory) return;
+      setSaveState("saving");
+      setError(null);
+      try {
+        const getCurrentProject = () => projectRef.current ?? current;
+        const subtitlePaths = await timelineSaveRef.current?.(getCurrentProject) ?? [];
+        const latest = getCurrentProject();
+        if (sourceRef.current !== saveSource || directoryRef.current !== saveDirectory || latest.assetDirectory !== saveDirectory) return;
+        const safeName = saveDirectory.replace(/[^A-Za-z0-9._-]+/g, "-") || "project";
+        const projectPath = `.shittim-spine-editor/${safeName}.spine-project.json`;
+        await saveSource.saveText(projectPath, `${JSON.stringify(latest, null, 2)}\n`);
+        setSaveState("saved");
+        setSavedAt(Date.now());
+        const subtitleMessage = subtitlePaths.length > 0
+          ? ` · Linked subtitles: ${subtitlePaths.map((path) => nativePath(saveSource.rootPath, path)).join(", ")}`
+          : " · No linked subtitle files";
+        setStatus(`Saved project: ${nativePath(saveSource.rootPath, projectPath)}${subtitleMessage}`);
+      } catch (value) {
+        setSaveState("error");
+        setError(value instanceof Error ? value.message : String(value));
+      }
+    };
+    const queued = projectSaveQueueRef.current.then(save, save);
+    projectSaveQueueRef.current = queued.then(() => undefined, () => undefined);
+    return queued;
   }
 
   const selectedInteraction = project?.interactions.find((item) => item.id === project.selectedInteractionId) ?? null;
@@ -1023,7 +1045,7 @@ export function Editor() {
           </section>}
         </aside>
       </main>
-      {workspace === "timeline" && assetLoaded && <TimelineWorkspace source={source} directory={directory} directories={directories} project={project} onMutate={mutate} onLive={live} onBeginEdit={beginTimelineEdit} onSave={() => saveProject(true)} onRegisterSave={(callback) => { timelineSaveRef.current = callback; }} onStatus={setStatus} onError={setError} />}
+      {workspace === "timeline" && assetLoaded && <TimelineWorkspace source={source} directory={directory} directories={directories} project={project} onMutate={mutate} onLive={live} onBeginEdit={beginTimelineEdit} onSave={() => saveProject()} onRegisterSave={(callback) => { timelineSaveRef.current = callback; }} onStatus={setStatus} onError={setError} />}
       <footer className="editor-statusbar">
         <span className={error ? "editor-error" : ""}>{error ?? status}</span>
         <span>{directory ? `${displayName(directory)} · ${files?.size ?? 0} files` : "No asset loaded"} · {testing ? "TEST MODE" : workspace === "timeline" ? "TIMELINE" : "EDIT MODE"}</span>

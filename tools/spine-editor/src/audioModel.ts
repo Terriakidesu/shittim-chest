@@ -1,14 +1,13 @@
 export interface DecodedAudioTiming {
   end: number;
-  duration: number;
 }
 
-/** Expand an imported timeline to fit the real decoded audio instead of a guessed two-second block. */
-export function decodedAudioTiming(start: number, decodedDuration: number, timelineDuration: number): DecodedAudioTiming | null {
+/** Replace an audio clip's guessed end with the real decoded duration. */
+export function decodedAudioTiming(start: number, decodedDuration: number): DecodedAudioTiming | null {
   if (!Number.isFinite(start) || !Number.isFinite(decodedDuration) || decodedDuration <= 0) return null;
   const safeStart = Math.max(0, start);
   const end = Math.max(safeStart + 0.01, safeStart + decodedDuration);
-  return { end, duration: Math.max(1, timelineDuration, end) };
+  return { end };
 }
 
 export interface AudioPlaybackDecision {

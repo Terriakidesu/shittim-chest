@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { audioPlaybackDecision, decodedAudioTiming } from "./audioModel";
 
-test("decoded audio timing replaces the guessed block and expands the sequence", () => {
-  expect(decodedAudioTiming(2, 4.25, 5)).toEqual({ end: 6.25, duration: 6.25 });
-  expect(decodedAudioTiming(2, 0, 5)).toBeNull();
-  expect(decodedAudioTiming(Number.NaN, 2, 5)).toBeNull();
+test("decoded audio timing replaces only the guessed clip end", () => {
+  expect(decodedAudioTiming(2, 4.25)).toEqual({ end: 6.25 });
+  expect(decodedAudioTiming(2, 0)).toBeNull();
+  expect(decodedAudioTiming(Number.NaN, 2)).toBeNull();
 });
 
 test("ended audio does not restart until the playhead re-enters or rewinds", () => {

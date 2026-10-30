@@ -6,6 +6,20 @@ export function animationEndForLayer(layer: Pick<EditorTimelineLayer, "start" | 
   return Math.max(layer.start + 0.01, layer.start + Math.max(0.01, animationDuration - Math.max(0, layer.animationOffset)));
 }
 
+/** Talk playback is bounded by its character animations, never by subtitle/audio clips. */
+export function talkSequenceDuration(
+  layers: readonly EditorTimelineLayer[],
+  animationDurations: Readonly<Record<string, number>>,
+  animationForLayer: (layer: EditorTimelineLayer) => string,
+): number {
+  const characters = layers.filter((layer) => layer.role === "character");
+  if (characters.length === 0) return 1;
+  return Math.max(1, ...characters.map((layer) => animationEndForLayer(
+    layer.endMode === "manual" ? layer : { ...layer, loop: false },
+    animationDurations[`${layer.id}:${animationForLayer(layer)}`] ?? 0,
+  )));
+}
+
 export function talkSequenceId(animation: string): string {
   const number = animation.match(/talk[_ -]?(\d+)/i)?.[1];
   return number ? `talk-${Number(number)}` : "opening";
@@ -13,8 +27,9 @@ export function talkSequenceId(animation: string): string {
 
 export function switchSequence(project: EditorProject, id: string, animations: string[], directories: string[]): EditorProject {
   const previousId = project.timeline.sequenceId ?? "legacy";
-  const sequences = { ...project.sequences, [previousId]: structuredClone(project.timeline) };
-  let next = sequences[id];
+  const sequences = { ...project.sequences };
+  if (previousId !== id) sequences[previousId] = structuredClone(project.timeline);
+  let next = previousId === id ? structuredClone(project.timeline) : sequences[id];
   if (!next) {
     const number = id.replace("talk-", "");
     const main = animations.find((name) => talkSequenceId(name) === id && /_m$/i.test(name));
@@ -25,6 +40,12 @@ export function switchSequence(project: EditorProject, id: string, animations: s
       openingMode: "direct", sceneDuration: 3,
       subtitles: [], audio: [], selectedCueId: null,
       layers: project.timeline.layers.map((layer) => ({ ...layer, start: 0, end: 12, animation: layer.role === "character" ? animation : "", faceAnimation: layer.role === "character" ? face ?? "" : "", loop: id === "opening" })),
+    };
+  }
+  if (id.startsWith("talk-")) {
+    next = {
+      ...next,
+      layers: next.layers.map((layer) => layer.role === "character" && layer.endMode !== "manual" ? { ...layer, loop: false } : layer),
     };
   }
   return { ...project, sequences, timeline: ensureTimelineLayers(next, project.assetDirectory, directories) };

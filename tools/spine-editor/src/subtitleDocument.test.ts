@@ -29,4 +29,8 @@ test("subtitle direct-save serialization updates matching parts without mutating
   expect(saved.characters[0]!.lines[0]!.markers).toEqual([0.25, 1.6]);
   expect(saved.characters[0]!.lines[1]!.subtitle).toMatchObject({ en: "Moved" });
   expect(document.characters[0]!.lines[0]!.parts![0]!.subtitle).toEqual({ en: "Old one" });
+
+  first.subtitles[0]!.text.en = "Newest one";
+  const savedAgain = JSON.parse(serializeSubtitleDocument(saved, "Airi_home", [first, second])) as typeof saved;
+  expect(savedAgain.characters[0]!.lines[0]!.parts![0]!.subtitle).toMatchObject({ en: "Newest one" });
 });

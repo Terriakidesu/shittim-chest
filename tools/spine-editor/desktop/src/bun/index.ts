@@ -126,7 +126,7 @@ async function api(request: Request, url: URL): Promise<Response> {
       const body = await request.json() as { path?: unknown; content?: unknown };
       if (typeof body.path !== "string" || typeof body.content !== "string") return errorResponse("A relative path and text content are required.");
       const full = rootRelativePath(body.path);
-      const temporary = `${full}.shittim-tmp-${process.pid}`;
+      const temporary = `${full}.shittim-tmp-${process.pid}-${crypto.randomUUID()}`;
       await mkdir(resolve(full, ".."), { recursive: true });
       await writeFile(temporary, body.content, "utf8");
       await rename(temporary, full);

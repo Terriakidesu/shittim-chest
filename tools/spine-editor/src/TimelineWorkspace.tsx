@@ -13,7 +13,7 @@ import {
 } from "./editorModel";
 import type { DesktopAssetSource } from "./desktopSource";
 import { audioPlaybackDecision, decodedAudioTiming } from "./audioModel";
-import { animationEndForLayer, snapToTargets, splitCue, switchSequence, talkSequenceId } from "./sequenceModel";
+import { animationEndForLayer, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
 import { serializeSubtitleDocument } from "./subtitleDocument";
 
 const TIMELINE_SCALE = 96;
@@ -54,7 +54,7 @@ interface TimelineWorkspaceProps {
   onLive: (mutator: (current: EditorProject) => EditorProject) => void;
   onBeginEdit: () => void;
   onSave: () => void | Promise<void>;
-  onRegisterSave: (callback: (() => Promise<void>) | null) => void;
+  onRegisterSave: (callback: ((getProject: () => EditorProject | null) => Promise<string[]>) | null) => void;
   onStatus: (value: string) => void;
   onError: (value: string | null) => void;
 }
@@ -139,7 +139,9 @@ function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, refe
   const useIntro = opening && openingMode !== "skip" && layer.role === "character" && currentTime - introStart < introLength;
   const animation = useIntro ? intro! : layer.animation || meta?.idleAnimation || meta?.animations[0] || "";
   const animationDuration = rendererRef.current?.getEditorAnimationInfo(animation).duration ?? 0;
-  const layerEnd = animationEndForLayer(layer, animationDuration);
+  const talkCharacter = sequenceId?.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
+  const effectiveLoop = talkCharacter ? false : layer.loop;
+  const layerEnd = animationEndForLayer(talkCharacter ? { ...layer, loop: false } : layer, animationDuration);
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !meta || !animation) return;
@@ -156,9 +158,9 @@ function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, refe
     if (!meta) return;
     const renderer = rendererRef.current;
     const time = opening && layer.role === "character" ? Math.max(0, currentTime - introStart - (useIntro ? 0 : introLength)) : Math.max(0, currentTime - layer.start + layer.animationOffset);
-    renderer?.sampleEditorAnimation(animation, layer.faceAnimation ?? "", time, layer.loop, /^talk/i.test(animation));
+     renderer?.sampleEditorAnimation(animation, layer.faceAnimation ?? "", time, effectiveLoop, /^talk/i.test(animation));
     if (referenceCamera) onMarkers(renderer?.getEditorAnimationInfo(animation).markers ?? []);
-  }, [animation, currentTime, layer, meta, opening, introStart, introLength, useIntro]);
+  }, [animation, currentTime, effectiveLoop, layer, meta, opening, introStart, introLength, useIntro]);
 
   useEffect(() => {
     if (!referenceCamera && sharedCameraPose) rendererRef.current?.setCameraPose(sharedCameraPose);
@@ -301,9 +303,13 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   const dragRef = useRef<{ kind: "layer" | "cue" | "cue-start" | "cue-end" | "audio"; id: string; x: number; start: number; end: number } | null>(null);
   const initializedLayersRef = useRef("");
   const subtitleDocumentsRef = useRef<Record<string, Record<string, unknown>>>({});
+  const projectRef = useRef<EditorProject | null>(project);
+  const sourceRef = useRef<DesktopAssetSource | null>(source);
+  const subtitleSaveQueueRef = useRef(Promise.resolve());
+  projectRef.current = project;
+  sourceRef.current = source;
 
   const timeline = project?.timeline ?? null;
-  const duration = Math.max(MIN_TIMELINE_DURATION, timeline?.duration ?? 12);
   const discovered = useMemo(() => directory ? compositionDirectories(directory, directories) : [], [directory, directories]);
   const displayLayers = useMemo(() => [...(timeline?.layers ?? [])].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)), [timeline?.layers]);
   const selectedLayer = timeline?.layers.find((layer) => layer.id === timeline.selectedLayerId) ?? null;
@@ -311,7 +317,6 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   const selectedCueIndex = selectedCue && timeline ? timeline.subtitles.findIndex((cue) => cue.id === selectedCue.id) : -1;
   const selectedAudio = timeline?.audio.find((clip) => clip.id === selectedAudioId) ?? null;
   const layerDirectoriesKey = displayLayers.map((layer) => layer.directory).join("|");
-  const trackWidth = Math.max(640, duration * TIMELINE_SCALE * zoom + 48);
   const characterMeta = displayLayers.map((layer) => layer.role === "character" ? metas[layer.id] : null).find(Boolean);
   const animations = characterMeta?.animations ?? [];
   const sequenceIds = [...new Set(["opening", ...animations.filter((name) => /talk[_ -]?\d+/i.test(name)).map(talkSequenceId), ...Object.keys(project?.sequences ?? {}).filter((id) => id !== "legacy")])];
@@ -321,21 +326,40 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   }
 
   function layerEnd(layer: EditorTimelineLayer): number {
-    return animationEndForLayer(layer, animationDurations[`${layer.id}:${layerAnimation(layer)}`] ?? 0);
+    const animationDuration = animationDurations[`${layer.id}:${layerAnimation(layer)}`] ?? 0;
+    const talkCharacter = timeline?.sequenceId?.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
+    return animationEndForLayer(talkCharacter ? { ...layer, loop: false } : layer, animationDuration);
   }
+
+  const talkLayers = timeline?.sequenceId?.startsWith("talk-") ? displayLayers.filter((layer) => layer.role === "character") : [];
+  const duration = talkLayers.length > 0
+    ? talkSequenceDuration(talkLayers, animationDurations, layerAnimation)
+    : Math.max(MIN_TIMELINE_DURATION, timeline?.duration ?? 12, ...displayLayers.map(layerEnd));
+  const trackWidth = Math.max(640, duration * TIMELINE_SCALE * zoom + 48);
 
   function onAnimationDuration(layerId: string, animation: string, animationDuration: number) {
     const key = `${layerId}:${animation}`;
     setAnimationDurations((value) => value[key] === animationDuration ? value : { ...value, [key]: animationDuration });
     const currentTimeline = timeline;
     const currentLayer = currentTimeline?.layers.find((layer) => layer.id === layerId);
-    if (!currentTimeline || !currentLayer || currentLayer.loop || currentLayer.endMode === "manual") return;
-    const nextEnd = animationEndForLayer(currentLayer, animationDuration);
-    if (Math.abs(currentLayer.end - nextEnd) < 0.01 && currentTimeline.duration >= nextEnd) return;
+    if (!currentTimeline || !currentLayer || currentLayer.endMode === "manual") return;
+    const talkCharacter = currentTimeline.sequenceId?.startsWith("talk-") && currentLayer.role === "character";
+    const effectiveLayer = talkCharacter ? { ...currentLayer, loop: false } : currentLayer;
+    const nextEnd = animationEndForLayer(effectiveLayer, animationDuration);
+    const currentTalkDuration = talkCharacter
+      ? Math.max(MIN_TIMELINE_DURATION, ...currentTimeline.layers.filter((layer) => layer.role === "character").map((layer) => layer.id === layerId ? nextEnd : layer.end))
+      : 0;
+    const layerNeedsUpdate = Math.abs(currentLayer.end - nextEnd) >= 0.01 || (talkCharacter && currentLayer.loop);
+    const durationNeedsUpdate = talkCharacter
+      ? Math.abs(currentTimeline.duration - currentTalkDuration) >= 0.01
+      : currentTimeline.duration < nextEnd;
+    if (!layerNeedsUpdate && !durationNeedsUpdate) return;
     updateTimeline((value) => ({
       ...value,
-      duration: Math.max(value.duration, nextEnd),
-      layers: value.layers.map((layer) => layer.id === layerId && !layer.loop && layer.endMode !== "manual" ? { ...layer, end: animationEndForLayer(layer, animationDuration) } : layer),
+      duration: talkCharacter
+        ? Math.max(MIN_TIMELINE_DURATION, ...value.layers.filter((layer) => layer.role === "character").map((layer) => layer.id === layerId ? nextEnd : layer.end))
+        : Math.max(value.duration, nextEnd),
+      layers: value.layers.map((layer) => layer.id === layerId && layer.endMode !== "manual" ? { ...layer, loop: talkCharacter ? false : layer.loop, end: nextEnd } : layer),
     }), false);
   }
 
@@ -429,12 +453,11 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
     const clip = currentTimeline?.audio.find((item) => item.id === id);
     if (!currentTimeline) return;
     if (!clip?.autoEnd) return;
-    const timing = decodedAudioTiming(clip.start, decodedDuration, currentTimeline.duration);
+    const timing = decodedAudioTiming(clip.start, decodedDuration);
     if (!timing) return;
-    if (Math.abs(clip.end - timing.end) < 0.01 && currentTimeline.duration >= timing.duration) return;
+    if (Math.abs(clip.end - timing.end) < 0.01) return;
     updateTimeline((value) => ({
       ...value,
-      duration: Math.max(value.duration, timing.duration),
       audio: value.audio.map((item) => item.id === id ? { ...item, end: timing.end } : item),
     }), false);
   }
@@ -495,32 +518,52 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
     setCurrentTime((value) => Math.min(value, duration));
   }, [directory, duration, timeline]);
 
-  function projectTimelines() {
-    return project ? [project.timeline, ...Object.values(project.sequences ?? {})] : [];
+  function projectTimelines(current: EditorProject) {
+    return [current.timeline, ...Object.values(current.sequences ?? {})];
   }
 
-  async function saveSubtitleDocuments() {
-    if (!project || !source) return;
-    const timelines = projectTimelines();
-    const paths = new Set(timelines.map((item) => item.subtitlePath).filter((path): path is string => Boolean(path)));
-    for (const path of paths) {
-      const document = subtitleDocumentsRef.current[path];
-      if (document) await source.saveText(path, serializeSubtitleDocument(document, directory, timelines));
-    }
+  async function saveSubtitleDocuments(getProject: () => EditorProject | null = () => projectRef.current): Promise<string[]> {
+    const save = async (): Promise<string[]> => {
+      const current = getProject();
+      const currentSource = sourceRef.current;
+      if (!current || !currentSource) return [];
+      const timelines = projectTimelines(current);
+      const paths = new Set(timelines.map((item) => item.subtitlePath).filter((path): path is string => Boolean(path)));
+      const saved: string[] = [];
+      for (const path of paths) {
+        let document = subtitleDocumentsRef.current[path];
+        if (!document) {
+          const file = await currentSource.getFile(path);
+          if (!file) throw new Error(`Linked subtitle file not found: ${path}`);
+          const parsed = JSON.parse(await file.text()) as unknown;
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`Linked subtitle file is not a JSON object: ${path}`);
+          document = parsed as Record<string, unknown>;
+          subtitleDocumentsRef.current[path] = structuredClone(document);
+        }
+        await currentSource.saveText(path, serializeSubtitleDocument(document, current.assetDirectory, timelines));
+        saved.push(path);
+      }
+      return saved;
+    };
+    const queued = subtitleSaveQueueRef.current.then(save, save);
+    subtitleSaveQueueRef.current = queued.then(() => undefined, () => undefined);
+    return queued;
   }
 
   useEffect(() => {
-    onRegisterSave(saveSubtitleDocuments);
+    onRegisterSave((getProject) => saveSubtitleDocuments(getProject));
     return () => onRegisterSave(null);
   });
 
   useEffect(() => {
     if (!project || !source || Object.keys(subtitleDocumentsRef.current).length === 0) return;
     const timer = window.setTimeout(() => {
-      void saveSubtitleDocuments().then(() => onStatus("Subtitle changes saved directly to the source JSON."));
+      void saveSubtitleDocuments().then((paths) => {
+        if (paths.length > 0) onStatus("Subtitle changes saved directly to the source JSON.");
+      }).catch((value) => onError(value instanceof Error ? value.message : String(value)));
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [onStatus, project, source]);
+  }, [onError, onStatus, project, source]);
 
   function updateTimeline(mutator: (timeline: EditorProject["timeline"]) => EditorProject["timeline"], history = true) {
     const callback = history ? onMutate : onLive;
@@ -761,7 +804,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
       if ((event.target as HTMLElement)?.closest("input, textarea, select, [contenteditable=true]")) return;
       const key = event.key.toLowerCase();
       if ((event.ctrlKey || event.metaKey) && ["z", "y"].includes(key)) return;
-      if ((event.ctrlKey || event.metaKey) && key === "s") { event.preventDefault(); void saveSubtitleDocuments().then(() => onSave()); }
+      if ((event.ctrlKey || event.metaKey) && key === "s") { event.preventDefault(); void onSave(); }
       else if (key === " ") { event.preventDefault(); setPlaying((value) => !value); }
       else if (key === "arrowleft" || key === "arrowright") { event.preventDefault(); setPlaying(false); setCurrentTime((value) => Math.max(0, Math.min(duration, value + (key === "arrowright" ? 1 : -1) * (event.shiftKey ? 10 : 1) / 60))); }
       else if (key === "home" || key === "end") { event.preventDefault(); setPlaying(false); setCurrentTime(key === "home" ? 0 : duration); }

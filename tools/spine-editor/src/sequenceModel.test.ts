@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createProject, normalizeProject } from "./editorModel";
-import { animationEndForLayer, snapToTargets, splitCue, switchSequence, talkSequenceId } from "./sequenceModel";
+import { animationEndForLayer, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
 
 test("talk sequences pair body and face and isolate subtitle clocks", () => {
   const animations = ["Idle_01", "Talk_01_M", "Talk_01_A", "Talk_02_M", "Talk_02_A"];
@@ -15,6 +15,17 @@ test("talk sequences pair body and face and isolate subtitle clocks", () => {
   const restored = normalizeProject(JSON.parse(JSON.stringify(project)), "Airi_home")!;
   expect(restored.timeline.sequenceId).toBe("talk-1");
   expect(restored.sequences?.["talk-2"]?.layers[0]?.faceAnimation).toBe("Talk_02_A");
+});
+
+test("reselecting a talk sequence keeps its current imported edits", () => {
+  const animations = ["Idle_01", "Talk_01_M", "Talk_01_A"];
+  let project = switchSequence(createProject("Airi_home", animations, []), "talk-1", animations, []);
+  project.timeline.subtitles = [{ id: "latest", lineId: "talk-1", start: 0, end: 2, enabled: true, text: { en: "Latest", ja: "", ko: "" } }];
+  project.timeline.audio = [{ id: "long-audio", lineId: "talk-1", name: "voice.ogg", path: "voice.ogg", start: 0, end: 20, enabled: true, volume: 1 }];
+  project = switchSequence(project, "talk-1", animations, []);
+  expect(project.timeline.subtitles[0]?.text.en).toBe("Latest");
+  expect(project.timeline.audio[0]?.end).toBe(20);
+  expect(project.timeline.layers[0]?.loop).toBe(false);
 });
 
 test("opening choices persist and old compositions remain recoverable", () => {
@@ -48,4 +59,9 @@ test("non-looping timeline layers follow the real Spine duration unless manually
   expect(animationEndForLayer({ ...layer, animationOffset: 1 }, 4.5)).toBe(4.5);
   expect(animationEndForLayer({ ...layer, loop: true }, 4.5)).toBe(12);
   expect(animationEndForLayer({ ...layer, endMode: "manual", end: 3 }, 4.5)).toBe(3);
+});
+
+test("talk playback duration follows character animation instead of a long audio clip", () => {
+  const layer = { ...createProject("Airi_home", [], []).timeline.layers[0]!, animation: "Talk_01_M", end: 20, loop: true };
+  expect(talkSequenceDuration([layer], { [`${layer.id}:Talk_01_M`]: 2.75 }, () => "Talk_01_M")).toBe(2.75);
 });
