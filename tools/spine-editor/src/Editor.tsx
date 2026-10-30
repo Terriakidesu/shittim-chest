@@ -3,6 +3,7 @@ import {
   SpineRenderer,
   type SpineEditorFrame,
   type SpineFiles,
+  type SpineLoadProgress,
   type SpineMeta,
   type SpineProgress,
 } from "../../../src/client/spine/spineRuntime";
@@ -264,6 +265,8 @@ export function Editor() {
   const [interactionSearch, setInteractionSearch] = useState("");
   const [status, setStatus] = useState("Open a Spine asset folder to begin.");
   const [error, setError] = useState<string | null>(null);
+  const [assetLoading, setAssetLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState<SpineLoadProgress>({ loaded: 0, total: 1, label: "Preparing asset set" });
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
   const [savedAt, setSavedAt] = useState<number | null>(null);
 
@@ -345,8 +348,15 @@ export function Editor() {
       },
       onMeta: (value) => callbacksRef.current.onMeta(value),
       onProgress: () => {},
-      onLoading: (value) => { if (value) setStatus("Loading Spine asset…"); },
-      onError: (value) => setError(value?.message ?? null),
+      onLoading: (value) => {
+        setAssetLoading(value);
+        if (value) setStatus("Loading Spine asset…");
+      },
+      onLoadProgress: (value) => setLoadProgress(value),
+      onError: (value) => {
+        setAssetLoading(false);
+        setError(value?.message ?? null);
+      },
       onEditorFrame: (value) => callbacksRef.current.onFrame(value),
     });
     rendererRef.current = renderer;
@@ -362,8 +372,15 @@ export function Editor() {
     setTesting(false);
     previewRef.current.reset();
     rendererRef.current?.clear();
+    setAssetLoading(true);
+    setLoadProgress({ loaded: 0, total: 1, label: "Reading asset files" });
     setFiles(null);
-    void source.getSetFiles(directory).then((value) => { if (!cancelled) setFiles(value); }).catch((value) => { if (!cancelled) setError(String(value)); });
+    void source.getSetFiles(directory).then((value) => { if (!cancelled) setFiles(value); }).catch((value) => {
+      if (!cancelled) {
+        setAssetLoading(false);
+        setError(value instanceof Error ? value.message : String(value));
+      }
+    });
     return () => { cancelled = true; };
   }, [source, directory]);
 
@@ -768,6 +785,7 @@ export function Editor() {
   }
 
   const assetLoaded = Boolean(source && directory && files && frame && project);
+  const loadPercent = Math.round(Math.max(0, Math.min(1, loadProgress.total > 0 ? loadProgress.loaded / loadProgress.total : 0)) * 100);
   const saveLabel = saveState === "saving"
     ? "Saving…"
     : saveState === "dirty"
@@ -788,7 +806,7 @@ export function Editor() {
         <div className="editor-actions">
           <div className="editor-workspace-tabs" role="tablist" aria-label="Editor workspace">
             <button className={`editor-button${workspace === "interaction" ? " active" : ""}`} role="tab" aria-selected={workspace === "interaction"} onClick={() => setWorkspace("interaction")}>Interactions</button>
-            <button className={`editor-button${workspace === "timeline" ? " active" : ""}`} role="tab" aria-selected={workspace === "timeline"} onClick={() => setWorkspace("timeline")}>Timeline</button>
+            <button className={`editor-button${workspace === "timeline" ? " active" : ""}`} role="tab" aria-selected={workspace === "timeline"} onClick={() => setWorkspace("timeline")} disabled={!assetLoaded}>Timeline</button>
           </div>
           <label className="editor-asset-picker"><span>Set</span><select aria-label="Character or asset set" value={directory} onChange={(event) => changeDirectory(event.target.value)} disabled={!directories.length}>
             {!directories.length && <option value="">Open a folder…</option>}
@@ -802,15 +820,8 @@ export function Editor() {
       </header>
 
       {help && <div className="editor-help" role="region" aria-label="Editor help"><strong>Shortcuts</strong>{workspace === "timeline" ? <span>Space Play/pause · ←/→ Frame · Shift+←/→ 10 frames · Home/End · S Split subtitle · Ctrl/⌘ D Duplicate · Delete Remove · F Fit · Ctrl/⌘ S Save</span> : <><span>Draw a hit region → choose animations → Test → press, hold, drag, release.</span><span>V Select · H Pan · R Draw · T Test · F Fit · B Bones · Space Play/pause · Esc Idle/Edit</span><span>Ctrl/⌘ Z Undo · Shift Z Redo · Ctrl/⌘ D Duplicate · Delete Remove region · Ctrl/⌘ S Save</span></>}<button className="editor-button" onClick={() => setHelp(false)}>Close</button></div>}
-      {!assetLoaded ? <section className="editor-start" aria-live="polite">
-        <div className="editor-start-card">
-          <span className="editor-kicker">DESKTOP WORKSPACE</span>
-          <strong>{source && directory ? "Loading asset set…" : "Open a Spine asset folder"}</strong>
-          <span>{source && directory ? "Reading the selected .atlas, .skel, and texture files." : "Choose the local folder containing your Spine lobby assets to begin."}</span>
-          <button className="editor-button editor-start-button" onClick={openFolder}>{source && directory ? "Choose another folder" : "Open asset folder"}</button>
-        </div>
-      </section> : workspace === "interaction" ? <main className={`editor-layout${leftHidden ? " hide-left" : ""}${rightHidden ? " hide-right" : ""}`} style={{ gridTemplateColumns: `${leftHidden ? "" : `${leftWidth}px `}minmax(180px, 1fr)${rightHidden ? "" : ` ${rightWidth}px`}` }}>
-        {(["left", "right"] as const).filter((side) => side === "left" ? !leftHidden : !rightHidden).map((side) => <div key={side} className={`editor-panel-resizer ${side}`} role="separator" aria-label={`Resize ${side} panel`} aria-orientation="vertical" tabIndex={0} style={side === "left" ? { left: leftWidth + 7 } : { right: rightWidth + 7 }} onDoubleClick={() => side === "left" ? setLeftWidth(220) : setRightWidth(320)} onKeyDown={(event) => {
+      <main className={`editor-layout${leftHidden ? " hide-left" : ""}${rightHidden ? " hide-right" : ""}${!assetLoaded ? " is-loading" : ""}`} style={{ position: workspace === "timeline" ? "absolute" : undefined, visibility: workspace === "timeline" ? "hidden" : undefined, inset: workspace === "timeline" ? "100px 0 40px" : undefined, pointerEvents: workspace === "timeline" ? "none" : undefined, gridTemplateColumns: `${leftHidden ? "" : `${leftWidth}px `}minmax(180px, 1fr)${rightHidden ? "" : ` ${rightWidth}px`}` }}>
+        {assetLoaded && (["left", "right"] as const).filter((side) => side === "left" ? !leftHidden : !rightHidden).map((side) => <div key={side} className={`editor-panel-resizer ${side}`} role="separator" aria-label={`Resize ${side} panel`} aria-orientation="vertical" tabIndex={0} style={side === "left" ? { left: leftWidth + 7 } : { right: rightWidth + 7 }} onDoubleClick={() => side === "left" ? setLeftWidth(220) : setRightWidth(320)} onKeyDown={(event) => {
           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
           event.preventDefault(); const delta = event.key === "ArrowRight" ? 10 : -10;
           side === "left" ? setLeftWidth((value) => Math.max(160, Math.min(380, value + delta))) : setRightWidth((value) => Math.max(260, Math.min(460, value - delta)));
@@ -820,7 +831,7 @@ export function Editor() {
           const dx = event.clientX - drag.x;
           drag.side === "left" ? setLeftWidth(Math.max(160, Math.min(380, drag.width + dx))) : setRightWidth(Math.max(260, Math.min(460, drag.width - dx)));
         }} onPointerUp={() => { panelDragRef.current = null; }} onPointerCancel={() => { panelDragRef.current = null; }} />)}
-        <aside className="editor-panel editor-left-panel" hidden={leftHidden}>
+        <aside className="editor-panel editor-left-panel" hidden={!assetLoaded || leftHidden}>
           <section className="editor-section editor-bone-section">
             <div className="editor-section-title"><strong>Rig hierarchy</strong><span>{visibleBones.length}/{frame?.bones.length ?? 0}</span></div>
             <input className="editor-search" value={boneSearch} onChange={(event) => setBoneSearch(event.target.value)} placeholder="Search bones…" />
@@ -849,6 +860,18 @@ export function Editor() {
         </aside>
 
         <section className="editor-center">
+          {!assetLoaded && <div className="editor-start editor-start-overlay" aria-live="polite">
+            <div className="editor-start-card">
+              <span className="editor-kicker">DESKTOP WORKSPACE</span>
+              <strong>{error && source && directory ? "Could not load asset set" : source && directory ? "Loading asset set…" : "Open a Spine asset folder"}</strong>
+              <span>{error && source && directory ? error : source && directory ? "Reading the selected .atlas, .skel, and texture files." : "Choose the local folder containing your Spine lobby assets to begin."}</span>
+              {source && directory && !error && <div className="editor-load-progress" role="progressbar" aria-label="Asset loading progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loadPercent}>
+                <progress value={loadPercent} max={100} />
+                <span>{loadProgress.label} · {loadPercent}%</span>
+              </div>}
+              <button className="editor-button editor-start-button" onClick={openFolder}>{source && directory ? "Choose another folder" : "Open asset folder"}</button>
+            </div>
+          </div>}
           <div className="editor-toolbar" role="toolbar" aria-label="Canvas tools">
             <button className="editor-button" onClick={() => setLeftHidden((value) => !value)} title="Toggle bone panel">☰ Bones</button>
             <button className={`editor-button${!testing && tool === "select" ? " active" : ""}`} onClick={() => { setTesting(false); setTool("select"); }} title="Select and transform regions (V)">Select</button>
@@ -898,7 +921,7 @@ export function Editor() {
           </div>
         </section>
 
-        <aside className={`editor-panel editor-right-panel tab-${inspectorTab}`} hidden={rightHidden}>
+        <aside className={`editor-panel editor-right-panel tab-${inspectorTab}`} hidden={!assetLoaded || rightHidden}>
           <nav className="editor-tabs" aria-label="Inspector sections">{(["region", "animation", "movement"] as const).map((tab) => <button key={tab} aria-pressed={inspectorTab === tab} onClick={(event) => { setInspectorTab(tab); event.currentTarget.closest("aside")?.scrollTo({ top: 0 }); }}>{tab === "region" ? "Regions" : tab === "animation" ? "Animations" : "Movement"}</button>)}</nav>
           <section className="editor-section editor-interactions-section">
             <div className="editor-section-title"><strong>Interactions</strong><button onClick={addInteraction} disabled={!project || !frame}>＋ Add</button></div>
@@ -963,7 +986,8 @@ export function Editor() {
              <p className="editor-muted">Select a bone on the canvas or in the left panel, then anchor here. Resize and rotate using canvas handles.</p>
           </section>}
         </aside>
-      </main> : <TimelineWorkspace source={source} directory={directory} directories={directories} project={project} onMutate={mutate} onLive={live} onBeginEdit={beginTimelineEdit} onSave={() => saveProject(true)} onRegisterSave={(callback) => { timelineSaveRef.current = callback; }} help={help} onStatus={setStatus} onError={setError} />}
+      </main>
+      {workspace === "timeline" && assetLoaded && <TimelineWorkspace source={source} directory={directory} directories={directories} project={project} onMutate={mutate} onLive={live} onBeginEdit={beginTimelineEdit} onSave={() => saveProject(true)} onRegisterSave={(callback) => { timelineSaveRef.current = callback; }} help={help} onStatus={setStatus} onError={setError} />}
       <footer className="editor-statusbar">
         <span className={error ? "editor-error" : ""}>{error ?? status}</span>
         <span>{directory ? `${displayName(directory)} · ${files?.size ?? 0} files` : "No asset loaded"} · {testing ? "TEST MODE" : workspace === "timeline" ? "TIMELINE" : "EDIT MODE"}</span>

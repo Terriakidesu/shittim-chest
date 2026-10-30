@@ -61,6 +61,12 @@ export interface SpineProgress {
   animation: string | null;
 }
 
+export interface SpineLoadProgress {
+  loaded: number;
+  total: number;
+  label: string;
+}
+
 export interface SpineCameraPose {
   x: number;
   y: number;
@@ -144,6 +150,7 @@ export interface SpineRendererCallbacks {
   onMeta: (meta: SpineMeta | null) => void;
   onProgress: (progress: SpineProgress) => void;
   onLoading: (loading: boolean) => void;
+  onLoadProgress?: (progress: SpineLoadProgress) => void;
   onError: (error: Error | null) => void;
   onCameraMode?: (mode: SpineCameraMode) => void;
   onInteractionPoints?: (overlay: SpineInteractionOverlay) => void;
@@ -395,14 +402,17 @@ function touchTargetState(skeleton: Skeleton, bounds: SceneBounds | null): Inter
   );
 }
 
-async function loadBundle(files: SpineFiles, directoryName: string, renderer: SceneRenderer, context: ManagedWebGLRenderingContext, project?: SpineInteractionProject | null): Promise<LoadedBundle> {
+async function loadBundle(files: SpineFiles, directoryName: string, renderer: SceneRenderer, context: ManagedWebGLRenderingContext, project?: SpineInteractionProject | null, onLoadProgress?: (progress: SpineLoadProgress) => void): Promise<LoadedBundle> {
   const atlasFile = filesWithExtension(files, ".atlas")[0];
   if (!atlasFile) throw new Error("This set does not contain an .atlas file.");
 
+  onLoadProgress?.({ loaded: 0, total: 1, label: "Reading atlas" });
   const atlas = new TextureAtlas(await atlasFile.text());
+  const total = Math.max(1, atlas.pages.length + 1);
+  onLoadProgress?.({ loaded: 0, total, label: atlas.pages.length ? `Loading textures (0/${atlas.pages.length})` : "Parsing skeleton" });
   const images: Array<HTMLImageElement | ImageBitmap> = [];
   try {
-    for (const page of atlas.pages) {
+    for (const [index, page] of atlas.pages.entries()) {
       const imageFile = fileNamed(files, page.name);
       if (!imageFile) throw new Error(`The atlas page “${page.name}” is missing.`);
       const image = await loadImage(imageFile);
@@ -416,8 +426,10 @@ async function loadBundle(files: SpineFiles, directoryName: string, renderer: Sc
       texture.setWraps(page.uWrap, page.vWrap);
       page.setTexture(texture);
       images.push(image);
+      onLoadProgress?.({ loaded: index + 1, total, label: `Loading textures (${index + 1}/${atlas.pages.length})` });
     }
 
+    onLoadProgress?.({ loaded: atlas.pages.length, total, label: "Parsing skeleton" });
     const { skeleton, animations } = await readSkeleton(files, atlas, directoryName);
     skeleton.setToSetupPose();
     skeleton.updateWorldTransform(Physics.update);
@@ -481,6 +493,7 @@ async function loadBundle(files: SpineFiles, directoryName: string, renderer: Sc
     const touchTarget = touchTargetState(skeleton, bounds);
     const eyeTarget = eyeTargetState(skeleton, touchTarget);
     renderer.resize(ResizeMode.Expand);
+    onLoadProgress?.({ loaded: total, total, label: "Finalizing asset" });
     return { atlas, images, skeleton, state, meta, bounds, viewport, interaction, project: project ?? null, authoredRegions: configuredRegions, eyeTarget, touchTarget };
   } catch (error) {
     atlas.dispose();
@@ -559,6 +572,7 @@ export class SpineRenderer {
     this.callbacks.onMeta(null);
     this.callbacks.onError(null);
     this.callbacks.onLoading(true);
+    this.callbacks.onLoadProgress?.({ loaded: 0, total: 1, label: "Preparing asset set" });
     this.callbacks.onInteractionPoints?.({ canvasWidth: 0, canvasHeight: 0, points: [] });
     this.animationSelection = "";
     this.talkIndex = 0;
@@ -570,7 +584,7 @@ export class SpineRenderer {
     this.introEventIndex = 0;
 
     try {
-      const bundle = await loadBundle(files, directoryName, this.renderer, this.context, project);
+      const bundle = await loadBundle(files, directoryName, this.renderer, this.context, project, (progress) => this.callbacks.onLoadProgress?.(progress));
       if (serial !== this.loadSerial || this.destroyed) {
         disposeBundle(bundle);
         return;
@@ -589,6 +603,7 @@ export class SpineRenderer {
         this.applyBaseAnimation(bundle.meta.idleAnimation, true);
       }
       this.callbacks.onMeta(bundle.meta);
+      this.callbacks.onLoadProgress?.({ loaded: 1, total: 1, label: "Ready" });
       this.callbacks.onLoading(false);
     } catch (error) {
       if (serial !== this.loadSerial || this.destroyed) return;

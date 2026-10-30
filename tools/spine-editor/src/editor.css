@@ -48,6 +48,11 @@ button:disabled { cursor: default; opacity: .4; }
 .editor-start-card strong { color: var(--editor-text); font-size: 21px; letter-spacing: -.4px; }
 .editor-start-card > span:not(.editor-kicker) { max-width: 360px; color: var(--editor-muted); }
 .editor-start-button { min-width: 170px; margin-top: 7px; border-color: var(--editor-cyan); background: #16536b; }
+.editor-load-progress { display: grid; gap: 6px; width: min(340px, 100%); margin-top: 8px; color: var(--editor-cyan); font-size: 10px; font-variant-numeric: tabular-nums; }
+.editor-load-progress progress { width: 100%; height: 8px; overflow: hidden; border: 1px solid var(--editor-line); border-radius: 999px; background: #08121b; accent-color: var(--editor-cyan); }
+.editor-load-progress progress::-webkit-progress-bar { background: #08121b; }
+.editor-load-progress progress::-webkit-progress-value { border-radius: 999px; background: linear-gradient(90deg, #1f9cc2, var(--editor-cyan)); }
+.editor-load-progress progress::-moz-progress-bar { border-radius: 999px; background: linear-gradient(90deg, #1f9cc2, var(--editor-cyan)); }
 
 .editor-layout { display: grid; grid-template-columns: 240px minmax(220px, 1fr) 340px; flex: 1; min-height: 0; gap: 6px; padding: 6px; }
 .editor-panel, .editor-center { min-width: 0; border: 1px solid var(--editor-line); background: #102131cc; }
@@ -90,7 +95,12 @@ input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid
 .editor-validation-list b { color: var(--editor-yellow); font-size: 9px; text-transform: uppercase; }
 .editor-validation-list span { overflow-wrap: anywhere; }
 
-.editor-center { display: flex; flex-direction: column; overflow: hidden; }
+.editor-center { position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.editor-layout.is-loading { grid-template-columns: 1fr !important; }
+.editor-layout.is-loading .editor-panel-resizer { display: none; }
+.editor-layout.is-loading .editor-toolbar, .editor-layout.is-loading .editor-timeline { display: none; }
+.editor-layout.is-loading .editor-stage { visibility: hidden; }
+.editor-start-overlay { position: absolute; inset: 0; z-index: 30; flex: none; background: radial-gradient(circle at 50% 35%, #153348 0, transparent 48%), #08121b; }
 .editor-stage { position: relative; min-height: 0; flex: 1; overflow: hidden; background: #08121b; background-image: linear-gradient(45deg, #ffffff05 25%, transparent 25%), linear-gradient(-45deg, #ffffff05 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ffffff05 75%), linear-gradient(-45deg, transparent 75%, #ffffff05 75%); background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0; }
 .editor-stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; }
 .editor-overlay { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
