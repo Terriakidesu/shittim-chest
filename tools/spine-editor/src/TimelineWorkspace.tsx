@@ -16,6 +16,7 @@ import { audioPlaybackDecision, decodedAudioTiming } from "./audioModel";
 import { animationEndForLayer, openingPhaseTimings, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
 import { serializeSubtitleDocument } from "./subtitleDocument";
 import type { RecentFile } from "./recentFiles";
+import { AssetPickerModal } from "./AssetPickerModal";
 
 const TIMELINE_SCALE = 96;
 const MIN_TIMELINE_DURATION = 1;
@@ -304,6 +305,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrubRef = useRef(false);
   const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
+  const [layerPickerOpen, setLayerPickerOpen] = useState(false);
   const audioElementsRef = useRef<Record<string, HTMLAudioElement | null>>({});
   const audioUrlsRef = useRef<Record<string, string>>({});
   const audioStartedRef = useRef<Record<string, boolean>>({});
@@ -907,7 +909,9 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
 
   if (!project || !timeline) return <div className="timeline-empty"><strong>Open a Spine asset folder first</strong><span>The timeline uses the selected character set plus matching <code>_bg</code> and <code>_scene</code> directories.</span></div>;
 
-  return (
+  const availableLayerDirectories = directories.filter((item) => !timeline.layers.some((layer) => layer.directory === item));
+
+  return <>
     <div className="timeline-workspace">
       <aside className="editor-panel sequence-browser">
         <div className="editor-section">
@@ -994,10 +998,10 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
              <div className="timeline-add-menu-popover">
                <button className="editor-button" onClick={addCue}>Subtitle cue</button>
                <button className="editor-button" onClick={() => void importAudio()}>Audio files</button>
-               <button className="editor-button" onClick={() => void importSubtitles()}>Import subtitles</button>
-               <label>Spine layer<select value="" onChange={(event) => { addLayer(event.target.value); event.target.value = ""; }}><option value="">Choose layer…</option>{directories.filter((item) => !timeline.layers.some((layer) => layer.directory === item)).map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-             </div>
-           </details>
+                <button className="editor-button" onClick={() => void importSubtitles()}>Import subtitles</button>
+                <button className="editor-button" onClick={() => setLayerPickerOpen(true)} disabled={!availableLayerDirectories.length}>Choose Spine layer…</button>
+              </div>
+            </details>
          </div>
       </section>
 
@@ -1058,5 +1062,6 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
         {((inspector === "layer" && !selectedLayer) || (inspector === "cue" && !selectedCue) || (inspector === "audio" && !selectedAudio)) && <div className="timeline-empty timeline-inspector-empty"><strong>Select a clip</strong><span>Choose a layer, subtitle, or audio clip in the timeline.</span></div>}
       </aside>
     </div>
-  );
+    <AssetPickerModal open={layerPickerOpen} title="Add Spine layer" eyebrow="TIMELINE LAYER" description="Search the loaded catalog and add another background, scene, character, or overlay set." directories={availableLayerDirectories} emptyLabel="Every available asset set is already on this timeline." onClose={() => setLayerPickerOpen(false)} onSelect={(next) => { setLayerPickerOpen(false); addLayer(next); }} />
+  </>;
 }

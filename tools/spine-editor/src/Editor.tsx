@@ -33,6 +33,7 @@ import { TimelineWorkspace } from "./TimelineWorkspace";
 import { LEGACY_PROJECT_STORAGE_PREFIX } from "./editorModel";
 import { chooseDesktopProject, chooseDesktopSource, chooseDesktopSourceAt, type DesktopAssetSource } from "./desktopSource";
 import { normalizeRecentFiles, RECENT_FILES_KEY, rememberRecentFile, removeRecentFile, type RecentFile, type RecentFileKind } from "./recentFiles";
+import { AssetPickerModal } from "./AssetPickerModal";
 
 function displayName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -263,6 +264,7 @@ export function Editor() {
   const [rightHidden, setRightHidden] = useState(false);
   const [help, setHelp] = useState(false);
   const [workspace, setWorkspace] = useState<"interaction" | "timeline">("interaction");
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [previewStatus, setPreviewStatus] = useState("Idle");
   const [source, setSource] = useState<DesktopAssetSource | null>(null);
   const [directories, setDirectories] = useState<string[]>([]);
@@ -993,10 +995,7 @@ export function Editor() {
             <button className={`editor-button${workspace === "interaction" ? " active" : ""}`} role="tab" aria-selected={workspace === "interaction"} onClick={() => setWorkspace("interaction")}>Interactions</button>
             <button className={`editor-button${workspace === "timeline" ? " active" : ""}`} role="tab" aria-selected={workspace === "timeline"} onClick={() => setWorkspace("timeline")} disabled={!assetLoaded}>Timeline</button>
           </div>
-          <label className="editor-asset-picker"><span>Set</span><select aria-label="Character or asset set" value={directory} onChange={(event) => changeDirectory(event.target.value)} disabled={!directories.length}>
-            {!directories.length && <option value="">Open a folder…</option>}
-            {directories.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select></label>
+          <div className="editor-asset-picker"><span>Set</span><button className="editor-asset-picker-button" type="button" aria-haspopup="dialog" aria-expanded={assetPickerOpen} onClick={() => setAssetPickerOpen(true)} disabled={!directories.length} title={directory || "Open a folder first"}><span>{directory || "Open a folder…"}</span><b aria-hidden="true">⌄</b></button></div>
           <details className="editor-open-menu">
             <summary className="editor-button">Open ▾</summary>
             <div className="editor-open-menu-popover">
@@ -1011,6 +1010,7 @@ export function Editor() {
           <button className="editor-button" onClick={() => setHelp((value) => !value)} title="Keyboard shortcuts (?)">? Help</button>
         </div>
       </header>
+      <AssetPickerModal open={assetPickerOpen} title="Switch character or asset set" eyebrow="CHARACTER / ASSET SET" description="Search the loaded Spine catalog, then choose the set to edit." directories={directories} selected={directory} onClose={() => setAssetPickerOpen(false)} onSelect={(next) => { setAssetPickerOpen(false); changeDirectory(next); }} />
 
       {help && <div className="editor-help" role="region" aria-label="Editor help"><strong>Shortcuts</strong>{workspace === "timeline" ? <span>Space Play/pause · ←/→ Frame · Shift+←/→ 10 frames · Home/End · S Split subtitle · Ctrl/⌘ D Duplicate · Delete Remove · F Fit · Ctrl/⌘ S Save</span> : <><span>Draw a hit region → choose animations → Test → press, hold, drag, release.</span><span>V Select · H Pan · R Draw · T Test · F Fit · B Bones · Space Play/pause · Esc Idle/Edit</span><span>Ctrl/⌘ Z Undo · Shift Z Redo · Ctrl/⌘ D Duplicate · Delete Remove region · Ctrl/⌘ S Save</span></>}<button className="editor-button" onClick={() => setHelp(false)}>Close</button></div>}
       <main className={`editor-layout${leftHidden ? " hide-left" : ""}${rightHidden ? " hide-right" : ""}${!assetLoaded ? " is-loading" : ""}`} style={{ position: workspace === "timeline" ? "absolute" : undefined, visibility: workspace === "timeline" ? "hidden" : undefined, inset: workspace === "timeline" ? "100px 0 40px" : undefined, pointerEvents: workspace === "timeline" ? "none" : undefined, gridTemplateColumns: `${leftHidden ? "" : `${leftWidth}px `}minmax(180px, 1fr)${rightHidden ? "" : ` ${rightWidth}px`}` }}>
