@@ -310,7 +310,12 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--editor-cy
 .timeline-audio-clip.is-disabled { opacity: .4; }
 .timeline-audio-clip span { display: block; overflow: hidden; padding: 4px 7px; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
 .timeline-clip-start-handle { position: absolute; top: 0; bottom: 0; left: 0; z-index: 2; width: 7px; padding: 0; border: 0; border-right: 1px solid #ffffff88; border-radius: 0; background: #ffffff22; cursor: ew-resize; }
-.timeline-clip-start-handle:hover, .timeline-clip-start-handle:focus-visible { background: #ffffff66; outline: 0; }
+.timeline-clip-end-handle { position: absolute; top: 0; right: 0; bottom: 0; z-index: 2; width: 7px; padding: 0; border: 0; border-left: 1px solid #ffffff88; border-radius: 0; background: #ffffff22; cursor: ew-resize; }
+.timeline-clip-start-handle:hover, .timeline-clip-start-handle:focus-visible, .timeline-clip-end-handle:hover, .timeline-clip-end-handle:focus-visible { background: #ffffff66; outline: 0; }
+.timeline-layer-phase { position: absolute; top: 0; bottom: 0; z-index: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0 7px; color: #d9f6ff; font: 8px ui-monospace, monospace; font-style: normal; font-weight: 800; letter-spacing: .04em; pointer-events: none; }
+.timeline-layer-phase.intro { background: #2a7894aa; }
+.timeline-layer-phase.idle { background: #1b627b66; }
+.timeline-layer-name { position: relative; z-index: 1; }
 .timeline-stage audio { display: none; }
 .timeline-cue-handle { position: absolute; top: 0; bottom: 0; width: 7px; padding: 0; border: 0; background: #ffffff88; cursor: ew-resize; z-index: 2; }
 .timeline-cue-handle.left { left: 0; }

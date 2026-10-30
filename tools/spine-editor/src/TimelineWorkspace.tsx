@@ -78,7 +78,6 @@ interface TimelineLayerCanvasProps {
   files: SpineFiles | null;
   currentTime: number;
   openingMode?: "scene-first" | "direct" | "skip";
-  sceneDuration?: number;
   sequenceId?: string;
   onMarkers: (markers: number[]) => void;
   sharedCameraPose: SpineCameraPose | null;
@@ -97,7 +96,7 @@ function localTime(layer: EditorTimelineLayer, currentTime: number, meta: SpineM
   return layer.loop ? elapsed % duration : Math.min(elapsed, duration);
 }
 
-function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, referenceCamera, onMeta, onCameraPose, onAnimationDuration, onError, openingMode, sceneDuration = 3, sequenceId, onMarkers }: TimelineLayerCanvasProps) {
+function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, referenceCamera, onMeta, onCameraPose, onAnimationDuration, onError, openingMode, sequenceId, onMarkers }: TimelineLayerCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<SpineRenderer | null>(null);
   const [meta, setMeta] = useState<SpineMeta | null>(null);
@@ -118,6 +117,11 @@ function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, refe
         setMeta(value);
         onMetaRef.current(layer.id, value);
         if (value) {
+          for (const animation of [value.introAnimation, value.idleAnimation]) {
+            if (!animation) continue;
+            const duration = renderer.getEditorAnimationInfo(animation).duration;
+            if (duration > 0) onAnimationDurationRef.current(layer.id, animation, duration);
+          }
           renderer.setCameraMode("fit");
           if (referenceCamera) requestAnimationFrame(() => {
             const pose = renderer.getCameraPose();
@@ -147,10 +151,10 @@ function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, refe
   }, [files, layer.directory]);
 
   const opening = sequenceId === "opening";
-  const introStart = openingMode === "scene-first" ? sceneDuration : 0;
+  const openingCharacter = opening && layer.role === "character";
   const intro = meta?.introAnimation;
   const introLength = intro ? rendererRef.current?.getEditorAnimationInfo(intro).duration ?? 0 : 0;
-  const useIntro = opening && openingMode !== "skip" && layer.role === "character" && currentTime - introStart < introLength;
+  const useIntro = openingCharacter && openingMode !== "skip" && currentTime >= layer.start && currentTime - layer.start < introLength;
   const animation = useIntro ? intro! : layer.animation || meta?.idleAnimation || meta?.animations[0] || "";
   const animationDuration = rendererRef.current?.getEditorAnimationInfo(animation).duration ?? 0;
   const talkCharacter = sequenceId?.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
@@ -171,16 +175,19 @@ function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, refe
   useEffect(() => {
     if (!meta) return;
     const renderer = rendererRef.current;
-    const time = opening && layer.role === "character" ? Math.max(0, currentTime - introStart - (useIntro ? 0 : introLength)) : Math.max(0, currentTime - layer.start + layer.animationOffset);
+   const elapsed = Math.max(0, currentTime - layer.start);
+   const time = openingCharacter && openingMode !== "skip"
+     ? useIntro ? elapsed : Math.max(0, elapsed - introLength + layer.animationOffset)
+     : elapsed + layer.animationOffset;
      renderer?.sampleEditorAnimation(animation, layer.faceAnimation ?? "", time, effectiveLoop, /^talk/i.test(animation));
     if (referenceCamera) onMarkers(renderer?.getEditorAnimationInfo(animation).markers ?? []);
-  }, [animation, currentTime, effectiveLoop, layer, meta, opening, introStart, introLength, useIntro]);
+  }, [animation, currentTime, effectiveLoop, layer, meta, openingCharacter, openingMode, introLength, useIntro]);
 
   useEffect(() => {
     if (!referenceCamera && sharedCameraPose) rendererRef.current?.setCameraPose(sharedCameraPose);
   }, [referenceCamera, sharedCameraPose]);
 
-  const visible = layer.enabled && currentTime >= layer.start && currentTime <= layerEnd && !(opening && openingMode === "scene-first" && layer.role === "character" && currentTime < sceneDuration);
+  const visible = layer.enabled && currentTime >= layer.start && currentTime <= layerEnd;
   const style: CSSProperties = {
     zIndex: layer.order,
     opacity: visible ? layer.opacity : 0,
@@ -199,7 +206,7 @@ function snapTime(value: number, snap: number, duration: number): number {
   return Math.max(0, Math.min(duration, Number(next.toFixed(3))));
 }
 
-type TimelineDragKind = "layer" | "layer-start" | "cue" | "cue-start" | "cue-end" | "audio" | "audio-start";
+type TimelineDragKind = "layer" | "layer-start" | "layer-end" | "cue" | "cue-start" | "cue-end" | "audio" | "audio-start" | "audio-end";
 
 function cueText(cue: EditorSubtitleCue, language: TimelineLanguage): string {
   return cue.text[language] || cue.text.en || cue.text.ja || cue.text.ko || "Untitled subtitle";
@@ -388,9 +395,12 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   const openingMode = timeline?.openingMode ?? "direct";
   const introAnimation = characterMeta?.introAnimation ?? "";
   const introDuration = characterLayer && introAnimation ? animationDurations[`${characterLayer.id}:${introAnimation}`] ?? 0 : 0;
+  const openingIntroStart = timeline?.sequenceId === "opening"
+    ? Math.max(0, characterLayer?.start ?? timeline?.sceneDuration ?? 0)
+    : 0;
   const openingIdleDuration = Math.max(0, timeline?.openingIdleDuration ?? 3);
-  const openingAutoDuration = Math.max(MIN_TIMELINE_DURATION, (openingMode === "scene-first" ? Math.max(0, timeline?.sceneDuration ?? 3) : 0) + (openingMode === "skip" ? 0 : introDuration) + openingIdleDuration);
-  const openingPhases = timeline?.sequenceId === "opening" ? openingPhaseTimings(openingMode, timeline.sceneDuration ?? 3, introDuration, duration) : [];
+  const openingAutoDuration = Math.max(MIN_TIMELINE_DURATION, openingIntroStart + (openingMode === "skip" ? 0 : introDuration) + openingIdleDuration);
+  const openingPhases = timeline?.sequenceId === "opening" ? openingPhaseTimings(openingMode, timeline.sceneDuration ?? 3, introDuration, duration, openingIntroStart) : [];
 
   useEffect(() => {
     if (!timeline || timeline.sequenceId !== "opening" || timeline.durationMode !== "auto" || !characterMeta || (introAnimation && introDuration <= 0)) return;
@@ -669,7 +679,16 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   }
 
   function updateLayer(id: string, patch: Partial<EditorTimelineLayer>, history = true) {
-    updateTimeline((value) => ({ ...value, layers: value.layers.map((layer) => layer.id === id ? { ...layer, ...patch } : layer) }), history);
+    updateTimeline((value) => {
+      const selected = value.layers.find((layer) => layer.id === id);
+      const layers = value.layers.map((layer) => layer.id === id ? { ...layer, ...patch } : layer);
+      const openingCharacter = value.sequenceId === "opening" && selected?.role === "character" && patch.start !== undefined;
+      return {
+        ...value,
+        layers,
+        ...(openingCharacter && value.openingMode === "scene-first" ? { sceneDuration: Math.max(0, patch.start ?? selected.start) } : {}),
+      };
+    }, history);
   }
 
   function updateCue(id: string, patch: Partial<EditorSubtitleCue>, history = true) {
@@ -866,12 +885,16 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     const snap = (value: number) => Math.max(0, Math.min(duration, snapToTargets(value, event.altKey ? 0 : timeline.snap, event.altKey ? [] : targets)));
     if (drag.kind === "layer-start") {
       updateLayer(drag.id, { start: Math.min(snap(drag.start + delta), drag.end - 0.01) }, false);
+    } else if (drag.kind === "layer-end") {
+      updateLayer(drag.id, { endMode: "manual", end: Math.max(drag.start + 0.01, snap(drag.end + delta)) }, false);
     } else if (drag.kind === "layer") {
       const length = drag.end - drag.start;
       const start = Math.min(duration - length, snap(drag.start + delta));
       updateLayer(drag.id, { start: Math.max(0, start), end: Math.max(start + 0.01, start + length) }, false);
     } else if (drag.kind === "audio-start") {
       updateAudio(drag.id, { start: Math.min(snap(drag.start + delta), drag.end - 0.01) }, false);
+    } else if (drag.kind === "audio-end") {
+      updateAudio(drag.id, { autoEnd: false, end: Math.max(drag.start + 0.01, snap(drag.end + delta)) }, false);
     } else if (drag.kind === "audio") {
       const length = drag.end - drag.start;
       const start = Math.min(duration - length, snap(drag.start + delta));
@@ -974,7 +997,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
          </div>}
         <div className="timeline-stage-wrap">
           <div className="timeline-stage">
-             {displayLayers.map((layer) => <TimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} sceneDuration={timeline.sceneDuration} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
+              {displayLayers.map((layer) => <TimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
             {timeline.audio.map((clip) => <audio key={clip.id} ref={(element) => { audioElementsRef.current[clip.id] = element; }} src={audioUrls[clip.id]} preload="auto" onLoadedMetadata={(event) => applyDecodedAudioDuration(clip.id, event.currentTarget.duration)} />)}
              {activeSubtitleTexts.length > 0 && <div className="timeline-subtitle-preview" aria-live="polite">
                {activeSubtitleTexts.map((text, index) => <div key={`${index}-${text}`}>{text}</div>)}
@@ -1005,11 +1028,16 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
           <div className="timeline-track-rows" style={{ minWidth: trackWidth + 116 }} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
                 {displayLayers.map((layer) => <div className="timeline-row" key={layer.id}>
                <div className="timeline-track-label" title={layer.directory}><b>{roleLabel(layer.role)}</b><span>{layer.name}</span></div>
-               <div className={`timeline-track timeline-layer-track${layer.id === timeline.selectedLayerId ? " is-selected" : ""}`} onPointerDown={seekFromEvent}>
-                  <div className="timeline-layer-clip" title="Drag to move the layer; drag the left edge to change its start" style={{ left: layer.start * TIMELINE_SCALE * zoom, width: Math.max(8, (layerEnd(layer) - layer.start) * TIMELINE_SCALE * zoom), zIndex: layer.order }} onPointerDown={(event) => { setSelectedLayer(layer.id); beginDrag(event, "layer", layer.id, layer.start, layerEnd(layer)); }}>
-                    <button type="button" className="timeline-clip-start-handle" aria-label={`Move ${layer.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); setSelectedLayer(layer.id); beginDrag(event, "layer-start", layer.id, layer.start, layerEnd(layer)); }} />
-                    <span>{layer.animation || metas[layer.id]?.idleAnimation || "Animation"}</span>
-                  </div>
+                <div className={`timeline-track timeline-layer-track${layer.id === timeline.selectedLayerId ? " is-selected" : ""}`} onPointerDown={seekFromEvent}>
+                   <div className="timeline-layer-clip" title="Drag to move the layer; drag an edge to change its timing" style={{ left: layer.start * TIMELINE_SCALE * zoom, width: Math.max(8, (layerEnd(layer) - layer.start) * TIMELINE_SCALE * zoom), zIndex: layer.order }} onPointerDown={(event) => { setSelectedLayer(layer.id); beginDrag(event, "layer", layer.id, layer.start, layerEnd(layer)); }}>
+                     {timeline.sequenceId === "opening" && layer.role === "character" && introDuration > 0 && <>
+                       <i className="timeline-layer-phase intro" style={{ width: Math.min(layerEnd(layer) - layer.start, introDuration) * TIMELINE_SCALE * zoom }} title={`Intro · ${seconds(introDuration)} actual Spine duration`}>INTRO</i>
+                       <i className="timeline-layer-phase idle" style={{ left: introDuration * TIMELINE_SCALE * zoom, width: Math.max(0, layerEnd(layer) - layer.start - introDuration) * TIMELINE_SCALE * zoom }} title="Idle hold">IDLE</i>
+                     </>}
+                     <button type="button" className="timeline-clip-start-handle" aria-label={`Move ${layer.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); setSelectedLayer(layer.id); beginDrag(event, "layer-start", layer.id, layer.start, layerEnd(layer)); }} />
+                     <button type="button" className="timeline-clip-end-handle" aria-label={`Move ${layer.name} end`} title="Drag to change end time" onPointerDown={(event) => { event.stopPropagation(); setSelectedLayer(layer.id); beginDrag(event, "layer-end", layer.id, layer.start, layerEnd(layer)); }} />
+                     <span className="timeline-layer-name">{layer.animation || metas[layer.id]?.idleAnimation || "Animation"}</span>
+                   </div>
                  <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
                </div>
               </div>)}
@@ -1027,7 +1055,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
             <div className="timeline-row audio-row">
               <div className="timeline-track-label"><b>AUDIO</b><span>{timeline.audio.length} clip{timeline.audio.length === 1 ? "" : "s"}</span></div>
               <div className="timeline-track timeline-audio-track" onPointerDown={seekFromEvent}>
-                 {timeline.audio.map((clip) => <div key={clip.id} className={`timeline-audio-clip${clip.id === selectedAudio?.id ? " is-selected" : ""}${clip.enabled ? "" : " is-disabled"}`} title="Drag to move the audio; drag the left edge to change its start" style={{ left: clip.start * TIMELINE_SCALE * zoom, width: Math.max(12, (clip.end - clip.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { setSelectedAudio(clip.id); beginDrag(event, "audio", clip.id, clip.start, clip.end); }}><button type="button" className="timeline-clip-start-handle" aria-label={`Move ${clip.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); setSelectedAudio(clip.id); beginDrag(event, "audio-start", clip.id, clip.start, clip.end); }} /><AudioWaveform url={audioUrls[clip.id]} onDuration={(value) => applyDecodedAudioDuration(clip.id, value)} /><span>♫ {clip.name}</span></div>)}
+                 {timeline.audio.map((clip) => <div key={clip.id} className={`timeline-audio-clip${clip.id === selectedAudio?.id ? " is-selected" : ""}${clip.enabled ? "" : " is-disabled"}`} title="Drag to move the audio; drag an edge to change its timing" style={{ left: clip.start * TIMELINE_SCALE * zoom, width: Math.max(12, (clip.end - clip.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { setSelectedAudio(clip.id); beginDrag(event, "audio", clip.id, clip.start, clip.end); }}><button type="button" className="timeline-clip-start-handle" aria-label={`Move ${clip.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); setSelectedAudio(clip.id); beginDrag(event, "audio-start", clip.id, clip.start, clip.end); }} /><button type="button" className="timeline-clip-end-handle" aria-label={`Move ${clip.name} end`} title="Drag to change end time" onPointerDown={(event) => { event.stopPropagation(); setSelectedAudio(clip.id); beginDrag(event, "audio-end", clip.id, clip.start, clip.end); }} /><AudioWaveform url={audioUrls[clip.id]} onDuration={(value) => applyDecodedAudioDuration(clip.id, value)} /><span>♫ {clip.name}</span></div>)}
                 <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
               </div>
             </div>
@@ -1057,10 +1085,21 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
            {timeline.sequenceId === "opening" && <div className="opening-flow-editor">
              <div className="editor-subheading">Opening flow</div>
              <p className="editor-muted">Preview and tune each phase without guessing where the character entrance begins.</p>
-             <label>Flow preset<select value={timeline.openingMode ?? "direct"} onChange={(event) => updateTimeline((value) => ({ ...value, openingMode: event.target.value as "direct" | "scene-first" | "skip" }))}><option value="scene-first">Scene → Intro → Idle</option><option value="direct">Intro → Idle</option><option value="skip">Idle only</option></select></label>
-             {timeline.openingMode === "scene-first" && <label>Scene lead-in (s)<input type="number" min="0" step="0.1" value={Number((timeline.sceneDuration ?? 3).toFixed(3))} onChange={(event) => updateTimeline((value) => ({ ...value, sceneDuration: Math.max(0, Number(event.target.value) || 0) }))} /></label>}
+              <label>Flow preset<select value={timeline.openingMode ?? "direct"} onChange={(event) => updateTimeline((value) => {
+                const openingMode = event.target.value as "direct" | "scene-first" | "skip";
+                const start = Math.max(0, value.sceneDuration ?? 3);
+                return { ...value, openingMode, layers: openingMode === "scene-first" ? value.layers.map((layer) => layer.role === "character" ? { ...layer, start } : layer) : value.layers };
+              })}><option value="scene-first">Scene → Intro → Idle</option><option value="direct">Intro → Idle</option><option value="skip">Idle only</option></select></label>
+              {timeline.openingMode === "scene-first" && <label>Scene lead-in / intro start (s)<input type="number" min="0" step="0.1" value={Number((characterLayer?.start ?? timeline.sceneDuration ?? 0).toFixed(3))} onChange={(event) => updateTimeline((value) => {
+                const start = Math.max(0, Number(event.target.value) || 0);
+                return { ...value, sceneDuration: start, layers: value.layers.map((layer) => layer.role === "character" ? { ...layer, start } : layer) };
+              })} /></label>}
              <div className="opening-intro-card"><span>Character intro animation</span><strong>{introAnimation || "No intro animation"}</strong><small>{introAnimation ? introDuration > 0 ? `${seconds(introDuration)} actual Spine duration` : "Reading Spine animation duration…" : "This asset set will go straight to idle."}</small></div>
-             <div className="editor-two-fields"><label>Idle hold (s)<input type="number" min="0" step="0.1" value={Number(openingIdleDuration.toFixed(3))} onChange={(event) => updateTimeline((value) => ({ ...value, openingIdleDuration: Math.max(0, Number(event.target.value) || 0), duration: value.durationMode === "auto" ? value.duration : Math.max(1, (value.openingMode === "scene-first" ? value.sceneDuration ?? 3 : 0) + (value.openingMode === "skip" ? 0 : introDuration) + Math.max(0, Number(event.target.value) || 0)) }))} /></label><label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: event.target.checked ? "auto" : "manual", duration: event.target.checked ? openingAutoDuration : value.duration }))} /> Automatic total</span><small className="editor-field-hint">{timeline.durationMode === "auto" ? `Updates to ${seconds(openingAutoDuration)}` : "Manual override"}</small></label></div>
+              <div className="editor-two-fields"><label>Idle hold (s)<input type="number" min="0" step="0.1" value={Number(openingIdleDuration.toFixed(3))} onChange={(event) => updateTimeline((value) => {
+                const idle = Math.max(0, Number(event.target.value) || 0);
+                const start = value.layers.find((layer) => layer.role === "character")?.start ?? value.sceneDuration ?? 0;
+                return { ...value, openingIdleDuration: idle, duration: value.durationMode === "auto" ? value.duration : Math.max(1, start + (value.openingMode === "skip" ? 0 : introDuration) + idle) };
+              })} /></label><label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: event.target.checked ? "auto" : "manual", duration: event.target.checked ? openingAutoDuration : value.duration }))} /> Automatic total</span><small className="editor-field-hint">{timeline.durationMode === "auto" ? `Updates to ${seconds(openingAutoDuration)}` : "Manual override"}</small></label></div>
              <div className="opening-phase-summary">{openingPhases.map((phase) => <button key={phase.id} onClick={() => previewOpeningPhase(phase)}><b>{openingPhaseLabel(phase.id)}</b><span>{seconds(phase.end - phase.start)}</span></button>)}</div>
            </div>}
           <div className="timeline-context-summary"><span>Layers <b>{displayLayers.length}</b></span><span>Subtitles <b>{timeline.subtitles.length}</b></span><span>Audio <b>{timeline.audio.length}</b></span></div>
@@ -1095,7 +1134,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
         {inspector === "audio" && selectedAudio && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Audio clip</strong><span>{seconds(selectedAudio.start)}–{seconds(selectedAudio.end)}</span></div>
           <label>Name<input value={selectedAudio.name} onChange={(event) => updateAudio(selectedAudio.id, { name: event.target.value })} /></label>
-          <div className="editor-two-fields"><label>Start (s)<input type="number" min="0" step="0.001" value={Number(selectedAudio.start.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { start: Math.max(0, Math.min(selectedAudio.end - 0.01, Number(event.target.value) || 0)) })} /></label><label>End (s)<input type="number" min="0.01" step="0.001" value={Number(selectedAudio.end.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { end: Math.max(selectedAudio.start + 0.01, Math.min(duration, Number(event.target.value) || selectedAudio.start + 0.01)) })} /></label></div>
+           <div className="editor-two-fields"><label>Start (s)<input type="number" min="0" step="0.001" value={Number(selectedAudio.start.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { start: Math.max(0, Math.min(selectedAudio.end - 0.01, Number(event.target.value) || 0)) })} /></label><label>End (s)<input type="number" min="0.01" step="0.001" value={Number(selectedAudio.end.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { autoEnd: false, end: Math.max(selectedAudio.start + 0.01, Math.min(duration, Number(event.target.value) || selectedAudio.start + 0.01)) })} /></label></div>
           <label>Volume · {Math.round(selectedAudio.volume * 100)}%<input type="range" min="0" max="1" step="0.01" value={selectedAudio.volume} onChange={(event) => updateAudio(selectedAudio.id, { volume: Number(event.target.value) })} /></label>
           <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAudio.enabled} onChange={(event) => updateAudio(selectedAudio.id, { enabled: event.target.checked })} /> Enabled</span></label>
           {missingAudio.includes(selectedAudio.path) && <><p className="editor-error">Audio file is missing from the selected asset root.</p><button className="editor-button" onClick={() => void relinkAudio()}>Relink audio</button></>}

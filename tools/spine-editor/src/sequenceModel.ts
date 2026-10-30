@@ -28,14 +28,14 @@ export function talkSequenceDuration(
   )));
 }
 
-export function openingPhaseTimings(mode: "scene-first" | "direct" | "skip", sceneDuration: number, introDuration: number, totalDuration: number): OpeningPhaseTiming[] {
+export function openingPhaseTimings(mode: "scene-first" | "direct" | "skip", sceneDuration: number, introDuration: number, totalDuration: number, introStartOverride?: number): OpeningPhaseTiming[] {
   const phases: OpeningPhaseTiming[] = [];
   const safeScene = Math.max(0, sceneDuration);
   const safeIntro = mode === "skip" ? 0 : Math.max(0, introDuration);
-  let cursor = 0;
-  if (mode === "scene-first" && safeScene > 0) {
-    phases.push({ id: "scene", start: 0, end: safeScene });
-    cursor = safeScene;
+  const sceneEnd = Math.max(0, introStartOverride ?? safeScene);
+  let cursor = mode === "scene-first" ? sceneEnd : Math.max(0, introStartOverride ?? 0);
+  if (mode === "scene-first" && sceneEnd > 0) {
+    phases.push({ id: "scene", start: 0, end: sceneEnd });
   }
   if (safeIntro > 0) {
     phases.push({ id: "intro", start: cursor, end: cursor + safeIntro });

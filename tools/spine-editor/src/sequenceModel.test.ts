@@ -74,3 +74,15 @@ test("opening phases keep scene, intro, and idle boundaries explicit", () => {
   ]);
   expect(openingPhaseTimings("skip", 3, 2.5, 4)).toEqual([{ id: "idle", start: 0, end: 4 }]);
 });
+
+test("opening phases follow the character clip start instead of a fixed lead-in", () => {
+  expect(openingPhaseTimings("scene-first", 3, 2.5, 10, 1.5)).toEqual([
+    { id: "scene", start: 0, end: 1.5 },
+    { id: "intro", start: 1.5, end: 4 },
+    { id: "idle", start: 4, end: 10 },
+  ]);
+  expect(openingPhaseTimings("direct", 0, 2.5, 10, 1.5)).toEqual([
+    { id: "intro", start: 1.5, end: 4 },
+    { id: "idle", start: 4, end: 10 },
+  ]);
+});
