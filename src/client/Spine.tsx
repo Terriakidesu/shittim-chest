@@ -4,7 +4,7 @@ import { LanguageSwitch } from "./components/LanguageSwitch";
 import { SiteNav } from "./components/SiteNav";
 import { ThemeSwitch } from "./components/ThemeSwitch";
 import { asset } from "./api";
-import { t, useLanguage } from "./i18n";
+import { t, useLanguage, type LangKey } from "./i18n";
 import {
   INTRO_ANIMATION,
   SpineRenderer,
@@ -17,94 +17,56 @@ import {
 } from "./spine/spineRuntime";
 import type { SpineInteractionBundle, SpineInteractionProject } from "./spine/spineInteraction";
 import characterIndexJson from "./spine/characters.json";
+import {
+  sourceFromDirectory,
+  sourceFromInput,
+  indexedAssets,
+  type AssetSource,
+  type CharacterIndex,
+  type IndexedAsset,
+} from "./spine/spineAssets";
 import { DEFAULT_EFFECTS_STRENGTH } from "./spine/spineEffects";
-
-interface CharacterVariant {
-  variant: string;
-  directory: string;
-  assetId?: string;
-  devName?: string;
-}
-
-interface CharacterIndex {
-  schemaVersion: number;
-  characters: Record<string, CharacterVariant[]>;
-}
+import {
+  dialogueForVoiceLine,
+  introVoiceLineForCharacter,
+  parseVoiceCatalog,
+  parseVoiceCharacterFile,
+  parseVoiceManifest,
+  playableVoiceLines,
+  voiceLineForLanguage,
+  voiceLineIndexForAnimation,
+  voiceCatalogEntryForDirectory,
+  voiceCharacterForDirectory,
+  type SpineVoiceCatalog,
+  type SpineVoiceCharacter,
+  type SpineVoiceManifest,
+  type SpineVoiceLine,
+} from "./spine/spineVoicelines";
 
 const characterIndex = characterIndexJson as CharacterIndex;
 const characterNames = Object.keys(characterIndex.characters).sort((a, b) => a.localeCompare(b));
 
-interface AssetSource {
-  getSetFiles: (directory: string) => Promise<SpineFiles>;
-  getDirectories: () => Promise<string[]>;
+function extraLabel(type: string): string {
+  const key: LangKey | null = type === "alternate-home"
+    ? "spine.extra.alternateHome"
+    : type === "background"
+      ? "spine.extra.background"
+      : type === "multi-lobby"
+        ? "spine.extra.multiLobby"
+        : type === "scene"
+          ? "spine.extra.scene"
+          : null;
+  return key ? t(key) : type;
 }
 
 type DirectoryPickerWindow = Window & {
   showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
 };
 
-// The async iterator is implemented by Chromium's File System Access API, but
-// older TypeScript DOM declarations omit it from FileSystemDirectoryHandle.
-type DirectoryHandleWithEntries = FileSystemDirectoryHandle & {
-  entries: () => AsyncIterableIterator<[string, FileSystemHandle]>;
-};
-
-type WebkitFile = File & { webkitRelativePath?: string };
-
 function errorMessage(value: unknown): string {
   return value instanceof Error ? value.message : t("spine.error.unknown");
 }
 
-function sourceFromDirectory(handle: FileSystemDirectoryHandle): AssetSource {
-  return {
-    getDirectories: async () => {
-      const directories: string[] = [];
-      let hasAssetFiles = false;
-      for await (const [name, entry] of (handle as DirectoryHandleWithEntries).entries()) {
-        if (entry.kind === "directory") directories.push(name);
-        else if (/\.(?:atlas|skel)$/i.test(name)) hasAssetFiles = true;
-      }
-      if (hasAssetFiles) directories.unshift(handle.name);
-      return directories.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-    },
-    getSetFiles: async (directory) => {
-      const set = handle.name === directory ? handle : await handle.getDirectoryHandle(directory);
-      const files: SpineFiles = new Map();
-      for await (const [name, entry] of (set as DirectoryHandleWithEntries).entries()) {
-        if (entry.kind === "file") files.set(name, await (entry as FileSystemFileHandle).getFile());
-      }
-      return files;
-    },
-  };
-}
-
-function sourceFromInput(fileList: FileList): AssetSource {
-  const rootName = (fileList[0] as WebkitFile | undefined)?.webkitRelativePath?.split("/")[0];
-  const files = [...fileList].map((file) => {
-    const path = (file as WebkitFile).webkitRelativePath || file.name;
-    const slash = path.indexOf("/");
-    return { path: slash === -1 ? path : path.slice(slash + 1), file };
-  });
-  return {
-    getDirectories: async () => {
-      const directories = new Set<string>();
-      for (const { path } of files) {
-        const slash = path.indexOf("/");
-        directories.add(slash === -1 ? rootName ?? "" : path.slice(0, slash));
-      }
-      directories.delete("");
-      return [...directories].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-    },
-    getSetFiles: async (directory) => {
-      const prefix = `${directory}/`;
-      return new Map(
-        files
-          .filter(({ path }) => rootName === directory || path.startsWith(prefix))
-          .map(({ path, file }) => [rootName === directory ? path : path.slice(prefix.length), file]),
-      );
-    },
-  };
-}
 
 export interface SpineViewportHandle {
   resetCamera: () => void;
@@ -115,7 +77,9 @@ export interface SpineViewportHandle {
   setLoop: (loop: boolean) => void;
   setCameraMode: (mode: SpineCameraMode) => void;
   setInteractionMode: (mode: SpineInteractionMode) => void;
-  triggerTalk: () => void;
+  setTalkAudioPending: (pending: boolean) => void;
+  triggerTalk: (animation?: string) => void;
+  startIntroAudio: () => void;
   replayIntro: () => void;
   restartPlayback: () => void;
   seek: (time: number) => void;
@@ -139,6 +103,10 @@ interface SpineViewportProps {
   onLoading: (loading: boolean) => void;
   onError: (error: Error | null) => void;
   onCameraMode: (mode: SpineCameraMode) => void;
+  onTalk: (index: number, animation: string, eventCount: number) => boolean;
+  onTalkClip: (index: number, clipIndex: number) => void;
+  onIntro: (animation: string, eventCount: number) => boolean;
+  onIntroClip: (clipIndex: number) => void;
 }
 
 const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(function SpineViewport({
@@ -159,13 +127,17 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   onLoading,
   onError,
   onCameraMode,
+  onTalk,
+  onTalkClip,
+  onIntro,
+  onIntroClip,
 }, ref) {
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<SpineRenderer | null>(null);
   const [interactionOverlay, setInteractionOverlay] = useState<SpineInteractionOverlay>({ canvasWidth: 0, canvasHeight: 0, points: [] });
-  const callbacks = useRef({ onMeta, onProgress, onLoading, onError, onCameraMode });
-  callbacks.current = { onMeta, onProgress, onLoading, onError, onCameraMode };
+  const callbacks = useRef({ onMeta, onProgress, onLoading, onError, onCameraMode, onTalk, onTalkClip, onIntro, onIntroClip });
+  callbacks.current = { onMeta, onProgress, onLoading, onError, onCameraMode, onTalk, onTalkClip, onIntro, onIntroClip };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -179,6 +151,10 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
         onLoading: (loading) => callbacks.current.onLoading(loading),
         onError: (error) => callbacks.current.onError(error),
         onCameraMode: (mode) => callbacks.current.onCameraMode(mode),
+        onTalk: (index, animation, eventCount) => callbacks.current.onTalk(index, animation, eventCount),
+        onTalkClip: (index, clipIndex) => callbacks.current.onTalkClip(index, clipIndex),
+        onIntro: (animation, eventCount) => callbacks.current.onIntro(animation, eventCount),
+        onIntroClip: (clipIndex) => callbacks.current.onIntroClip(clipIndex),
         onInteractionPoints: (overlay) => setInteractionOverlay(overlay),
       });
       rendererRef.current = renderer;
@@ -222,7 +198,9 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
     setLoop: (value) => rendererRef.current?.setLoop(value),
     setCameraMode: (value) => rendererRef.current?.setCameraMode(value),
     setInteractionMode: (value) => rendererRef.current?.setInteractionMode(value),
-    triggerTalk: () => rendererRef.current?.triggerTalk(),
+    setTalkAudioPending: (value) => rendererRef.current?.setTalkAudioPending(value),
+    triggerTalk: (value) => rendererRef.current?.triggerTalk(value),
+    startIntroAudio: () => rendererRef.current?.startIntroAudio(),
     replayIntro: () => rendererRef.current?.replayIntro(),
     restartPlayback: () => rendererRef.current?.restartPlayback(),
     seek: (value) => rendererRef.current?.seek(value),
@@ -262,11 +240,28 @@ function interactionProjectMap(value: unknown): Map<string, SpineInteractionProj
   );
 }
 
+interface VoiceSession {
+  kind: "talk" | "intro";
+  run: number;
+  talkIndex: number;
+  lineIndex: number;
+  line: SpineVoiceLine;
+  eventCount: number;
+  started: Set<number>;
+  files: Promise<Array<File | null>>;
+}
+
+function voiceAnimationForLine(line: SpineVoiceLine): string | undefined {
+  if (line.animation) return line.animation;
+  const number = Number(line.id.match(/(\d+)$/)?.[1] ?? Number.NaN);
+  return Number.isFinite(number) ? `Talk_${String(number).padStart(2, "0")}_M` : undefined;
+}
+
 export function Spine() {
-  useLanguage();
+  const language = useLanguage();
   const firstCharacter = characterNames[0] ?? "";
   const [selectedCharacter, setSelectedCharacter] = useState(firstCharacter);
-  const [selectedDirectory, setSelectedDirectory] = useState(characterIndex.characters[firstCharacter]?.[0]?.directory ?? "");
+  const [selectedDirectory, setSelectedDirectory] = useState(characterIndex.characters[firstCharacter]?.variants[0]?.directory ?? "");
   const [characterSearch, setCharacterSearch] = useState("");
   const [source, setSource] = useState<AssetSource | null>(null);
   const [availableDirectories, setAvailableDirectories] = useState<Set<string> | null>(null);
@@ -290,13 +285,31 @@ export function Spine() {
   const [fullscreen, setFullscreen] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showOptions, setShowOptions] = useState(false);
+  const [voiceCatalog, setVoiceCatalog] = useState<SpineVoiceCatalog | null>(null);
+  const [voiceManifest, setVoiceManifest] = useState<SpineVoiceManifest | null>(null);
+  const [voiceCharacter, setVoiceCharacter] = useState<SpineVoiceCharacter | null>(null);
+  const [voiceLineIndex, setVoiceLineIndex] = useState<number | null>(null);
+  const [voiceClipIndex, setVoiceClipIndex] = useState(0);
+  const [selectedVoiceLineIndex, setSelectedVoiceLineIndex] = useState<number | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [showDialogue, setShowDialogue] = useState(true);
+  const [voicePlaying, setVoicePlaying] = useState(false);
+  const [talkAutoplay, setTalkAutoplay] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<SpineViewportHandle>(null);
+  const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
+  const voiceUrlRef = useRef<string | null>(null);
+  const voiceRunRef = useRef(0);
+  const voiceSessionRef = useRef<VoiceSession | null>(null);
+  const autoPlayTimerRef = useRef<number | null>(null);
+  const talkAutoplayRef = useRef(false);
   const stagePointer = useRef<{ x: number; y: number } | null>(null);
   const freeCameraMode = useRef<SpineCameraMode>("fill");
   const freePlaying = useRef(true);
   const freeLoop = useRef(true);
   const freeSpeed = useRef(1);
+
+  talkAutoplayRef.current = talkAutoplay;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -316,14 +329,40 @@ export function Spine() {
     inputRef.current?.setAttribute("webkitdirectory", "");
   }, []);
 
-  const allVariants = characterIndex.characters[selectedCharacter] ?? [];
+  useEffect(() => {
+    let live = true;
+    setVoiceCatalog(null);
+    setVoiceManifest(null);
+    setVoiceCharacter(null);
+    if (!source) return () => { live = false; };
+    const readJson = async (path: string): Promise<unknown | null> => {
+      const file = await source.getFile(path);
+      if (!file) return null;
+      try {
+        return JSON.parse(await file.text());
+      } catch {
+        return null;
+      }
+    };
+    void Promise.all([
+      readJson("audios/voicelines/index.json"),
+      readJson("audios/voicelines/voicelines.json"),
+    ]).then(([catalog, manifest]) => {
+      if (!live) return;
+      setVoiceCatalog(parseVoiceCatalog(catalog));
+      setVoiceManifest(parseVoiceManifest(manifest));
+    });
+    return () => { live = false; };
+  }, [source]);
+
+  const allVariants = indexedAssets(characterIndex.characters[selectedCharacter]);
   const variants = source && availableDirectories
     ? allVariants.filter((variant) => availableDirectories.has(variant.directory))
     : [];
   const loadedCharacters = useMemo(() => {
     if (!source) return [];
     if (!availableDirectories) return [];
-    return characterNames.filter((name) => characterIndex.characters[name]?.some((variant) => availableDirectories.has(variant.directory)));
+    return characterNames.filter((name) => indexedAssets(characterIndex.characters[name]).some((variant) => availableDirectories.has(variant.directory)));
   }, [availableDirectories, source]);
   const filteredCharacters = useMemo(() => {
     const query = characterSearch.trim().toLocaleLowerCase();
@@ -332,6 +371,40 @@ export function Spine() {
   const selectedVariant = variants.find((variant) => variant.directory === selectedDirectory) ?? variants[0];
   const selectedDirectoryName = selectedVariant?.directory ?? "";
   const selectedInteractionProject = interactionProjects.get(selectedDirectoryName) ?? null;
+  const legacyVoiceCharacter = voiceCharacterForDirectory(voiceManifest, selectedDirectoryName);
+  const selectedVoiceCharacter = voiceCharacter ?? legacyVoiceCharacter;
+  const voiceLines = useMemo(
+    () => playableVoiceLines(selectedVoiceCharacter).map((line) => voiceLineForLanguage(line, language)),
+    [language, selectedVoiceCharacter],
+  );
+  const introVoiceLine = useMemo(() => {
+    const line = introVoiceLineForCharacter(voiceCharacter) ?? introVoiceLineForCharacter(legacyVoiceCharacter);
+    return line ? voiceLineForLanguage(line, language) : undefined;
+  }, [language, legacyVoiceCharacter, voiceCharacter]);
+  const activeVoiceLine = voiceLineIndex === null
+    ? undefined
+    : voiceLineIndex < 0
+      ? introVoiceLine
+      : voiceLines.length > 0 ? voiceLines[voiceLineIndex % voiceLines.length] : undefined;
+  const activeDialogue = activeVoiceLine ? dialogueForVoiceLine(activeVoiceLine, language, voiceClipIndex) : "";
+
+  useEffect(() => {
+    let live = true;
+    setVoiceCharacter(null);
+    if (!source || !selectedDirectoryName || !voiceCatalog) return () => { live = false; };
+    const entry = voiceCatalogEntryForDirectory(voiceCatalog, selectedDirectoryName);
+    if (!entry) return () => { live = false; };
+    void source.getFile(`audios/voicelines/${entry.file}`).then(async (file) => {
+      if (!live || !file) return;
+      try {
+        setVoiceCharacter(parseVoiceCharacterFile(JSON.parse(await file.text()), entry.audioDirectory));
+      } catch {
+        setVoiceCharacter(null);
+      }
+    });
+    return () => { live = false; };
+  }, [source, selectedDirectoryName, voiceCatalog]);
+
   const isLoading = setLoading || rendererLoading || Boolean(source && !availableDirectories);
   const animationOptions = meta
     ? [
@@ -339,6 +412,210 @@ export function Spine() {
       ...meta.animations,
     ]
     : [];
+
+  const clearVoiceAudio = () => {
+    const audio = voiceAudioRef.current;
+    if (audio) {
+      audio.onplay = null;
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+    }
+    voiceAudioRef.current = null;
+    if (voiceUrlRef.current) URL.revokeObjectURL(voiceUrlRef.current);
+    voiceUrlRef.current = null;
+  };
+
+  const clearAutoPlayTimer = () => {
+    if (autoPlayTimerRef.current !== null) window.clearTimeout(autoPlayTimerRef.current);
+    autoPlayTimerRef.current = null;
+  };
+
+  const queueNextAutoTalk = (lineIndex: number, run: number, attempt = 0) => {
+    clearAutoPlayTimer();
+    autoPlayTimerRef.current = window.setTimeout(() => {
+      autoPlayTimerRef.current = null;
+      if (run !== voiceRunRef.current || !talkAutoplayRef.current) return;
+      const line = voiceLines[lineIndex];
+      if (!line || !interactionReady || attempt >= 20) {
+        talkAutoplayRef.current = false;
+        setTalkAutoplay(false);
+        return;
+      }
+      viewportRef.current?.triggerTalk(voiceAnimationForLine(line));
+      // A talk animation may still be finishing its authored fade when the
+      // last audio clip ends. Retry briefly rather than dropping the sequence.
+      if (voiceSessionRef.current?.lineIndex !== lineIndex) queueNextAutoTalk(lineIndex, run, attempt + 1);
+    }, attempt === 0 ? 180 : 80);
+  };
+
+  const finishVoicePlayback = (run: number) => {
+    if (run !== voiceRunRef.current) return;
+    const session = voiceSessionRef.current;
+    voiceSessionRef.current = null;
+    if (session?.kind === "talk") viewportRef.current?.setTalkAudioPending(false);
+    setVoicePlaying(false);
+    setVoiceLineIndex(null);
+    setVoiceClipIndex(0);
+    if (session?.kind === "talk" && talkAutoplayRef.current) {
+      const nextIndex = session.lineIndex + 1;
+      if (nextIndex < voiceLines.length) queueNextAutoTalk(nextIndex, run);
+      else {
+        // Auto-play is deliberately a one-shot tour of the available talks.
+        clearAutoPlayTimer();
+        talkAutoplayRef.current = false;
+        setTalkAutoplay(false);
+      }
+    }
+  };
+
+  const stopVoice = (updateState = true, cancelAutoPlay = true) => {
+    voiceRunRef.current += 1;
+    voiceSessionRef.current = null;
+    clearAutoPlayTimer();
+    if (cancelAutoPlay) talkAutoplayRef.current = false;
+    clearVoiceAudio();
+    viewportRef.current?.setTalkAudioPending(false);
+    if (updateState) {
+      setVoicePlaying(false);
+      setVoiceLineIndex(null);
+      setVoiceClipIndex(0);
+      if (cancelAutoPlay) setTalkAutoplay(false);
+    }
+  };
+
+  const playVoiceClip = async (session: VoiceSession, clipIndex: number): Promise<void> => {
+    if (session.run !== voiceRunRef.current || voiceSessionRef.current !== session || clipIndex >= session.line.audio.length) return;
+    const files = await session.files;
+    if (session.run !== voiceRunRef.current || voiceSessionRef.current !== session) return;
+    const file = files[clipIndex] ?? null;
+    const continueMissingClip = () => {
+      if (session.run !== voiceRunRef.current || voiceSessionRef.current !== session) return;
+      setVoicePlaying(false);
+      setVoiceLineIndex(null);
+      if (clipIndex + 1 >= session.line.audio.length) finishVoicePlayback(session.run);
+      else if (clipIndex + 1 >= session.eventCount) void playVoiceClip(session, clipIndex + 1);
+    };
+    if (!file) {
+      continueMissingClip();
+      return;
+    }
+
+    clearVoiceAudio();
+    const url = URL.createObjectURL(file);
+    const audio = new Audio(url);
+    voiceAudioRef.current = audio;
+    voiceUrlRef.current = url;
+    audio.onplay = () => {
+      if (session.run !== voiceRunRef.current || voiceSessionRef.current !== session || voiceAudioRef.current !== audio) return;
+      setVoiceLineIndex(session.lineIndex);
+      setVoiceClipIndex(clipIndex);
+      setVoicePlaying(true);
+    };
+    const ended = () => {
+      if (session.run !== voiceRunRef.current || voiceSessionRef.current !== session || voiceAudioRef.current !== audio) return;
+      clearVoiceAudio();
+      setVoicePlaying(false);
+      setVoiceLineIndex(null);
+      if (clipIndex + 1 >= session.line.audio.length) finishVoicePlayback(session.run);
+      else if (clipIndex + 1 >= session.eventCount) void playVoiceClip(session, clipIndex + 1);
+    };
+    audio.onended = ended;
+    audio.onerror = ended;
+    try {
+      await audio.play();
+    } catch {
+      if (session.run === voiceRunRef.current && voiceSessionRef.current === session && voiceAudioRef.current === audio) stopVoice();
+    }
+  };
+
+  const beginVoiceSession = (index: number, animation: string, eventCount: number): boolean => {
+    if (!voiceEnabled || !source || voiceLines.length === 0) return false;
+    const lineIndex = voiceLineIndexForAnimation(voiceLines, animation, index);
+    const line = voiceLines[lineIndex];
+    if (!line || line.audio.length === 0) return false;
+    stopVoice(true, false);
+    const run = voiceRunRef.current;
+    const files = Promise.all(line.audio.map(async (path) => {
+      try {
+        return await source.getFile(`audios/voicelines/${path}`);
+      } catch {
+        return null;
+      }
+    }));
+    const session: VoiceSession = { kind: "talk", run, talkIndex: index, lineIndex, line, eventCount, started: new Set(), files };
+    voiceSessionRef.current = session;
+    setSelectedVoiceLineIndex(lineIndex);
+    if (eventCount === 0) {
+      session.started.add(0);
+      void playVoiceClip(session, 0);
+    }
+    return true;
+  };
+
+  const beginIntroVoiceSession = (_animation: string, eventCount: number): boolean => {
+    if (!voiceEnabled || !source || !introVoiceLine || introVoiceLine.audio.length === 0) return false;
+    stopVoice(true, false);
+    const run = voiceRunRef.current;
+    const files = Promise.all(introVoiceLine.audio.map(async (path) => {
+      try {
+        return await source.getFile(`audios/voicelines/${path}`);
+      } catch {
+        return null;
+      }
+    }));
+    const session: VoiceSession = {
+      kind: "intro",
+      run,
+      talkIndex: -1,
+      lineIndex: -1,
+      line: introVoiceLine,
+      eventCount,
+      started: new Set(),
+      files,
+    };
+    voiceSessionRef.current = session;
+    if (eventCount === 0) {
+      session.started.add(0);
+      void playVoiceClip(session, 0);
+    }
+    return true;
+  };
+
+  const playVoiceEvent = (index: number, clipIndex: number) => {
+    const session = voiceSessionRef.current;
+    if (!session || session.kind !== "talk" || session.run !== voiceRunRef.current || session.talkIndex !== index || session.started.has(clipIndex)) return;
+    session.started.add(clipIndex);
+    void playVoiceClip(session, clipIndex);
+  };
+
+  const playIntroVoiceEvent = (clipIndex: number) => {
+    const session = voiceSessionRef.current;
+    if (!session || session.kind !== "intro" || session.run !== voiceRunRef.current || session.started.has(clipIndex)) return;
+    session.started.add(clipIndex);
+    void playVoiceClip(session, clipIndex);
+  };
+
+  useEffect(() => {
+    stopVoice();
+    setVoiceLineIndex(null);
+    setVoiceClipIndex(0);
+    setSelectedVoiceLineIndex(null);
+  }, [language, selectedDirectoryName, source]);
+
+  useEffect(() => {
+    if (!voiceEnabled) stopVoice();
+  }, [voiceEnabled]);
+
+  useEffect(() => () => stopVoice(false), []);
+
+  useEffect(() => {
+    if (meta?.introAnimation && voiceSessionRef.current?.kind === "intro" && progress.animation !== meta.introAnimation) stopVoice(false, false);
+  }, [meta?.introAnimation, progress.animation]);
+
+  useEffect(() => {
+    if (progress.animation === meta?.introAnimation && introVoiceLine) viewportRef.current?.startIntroAudio();
+  }, [introVoiceLine, meta?.introAnimation, progress.animation, voiceEnabled]);
 
   useEffect(() => {
     if (!source) {
@@ -386,10 +663,10 @@ export function Spine() {
 
   useEffect(() => {
     if (!source || !availableDirectories) return;
-    const nextCharacter = characterNames.find((name) => characterIndex.characters[name]?.some((variant) => availableDirectories.has(variant.directory)));
-    const selectedIsLoaded = characterIndex.characters[selectedCharacter]?.some((variant) => availableDirectories.has(variant.directory));
+    const nextCharacter = characterNames.find((name) => indexedAssets(characterIndex.characters[name]).some((variant) => availableDirectories.has(variant.directory)));
+    const selectedIsLoaded = indexedAssets(characterIndex.characters[selectedCharacter]).some((variant) => availableDirectories.has(variant.directory));
     if (selectedIsLoaded) return;
-    const nextVariant = nextCharacter ? characterIndex.characters[nextCharacter]?.find((variant) => availableDirectories.has(variant.directory)) : undefined;
+    const nextVariant = nextCharacter ? indexedAssets(characterIndex.characters[nextCharacter]).find((variant) => availableDirectories.has(variant.directory)) : undefined;
     setSelectedCharacter(nextCharacter ?? "");
     setSelectedDirectory(nextVariant?.directory ?? "");
     setMeta(null);
@@ -411,21 +688,6 @@ export function Spine() {
   useEffect(() => {
     if (window.matchMedia("(max-width: 900px)").matches) setShowSidebar(false);
   }, []);
-
-  useEffect(() => {
-    if (!fullscreen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("input, select, textarea, [contenteditable]")) return;
-      if (event.key.toLowerCase() === "h") {
-        event.preventDefault();
-        setShowFullscreenControls((shown) => !shown);
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [fullscreen]);
 
   const chooseFolder = async () => {
     const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
@@ -460,7 +722,8 @@ export function Spine() {
   };
 
   const selectCharacter = (name: string) => {
-    const first = characterIndex.characters[name]?.find((variant) => !availableDirectories || availableDirectories.has(variant.directory));
+    const first = indexedAssets(characterIndex.characters[name]).find((variant) => !availableDirectories || availableDirectories.has(variant.directory));
+    stopVoice();
     setSelectedCharacter(name);
     setSelectedDirectory(first?.directory ?? "");
     setMeta(null);
@@ -468,12 +731,14 @@ export function Spine() {
   };
 
   const selectAnimation = (value: string) => {
+    stopVoice();
     setAnimation(value);
     viewportRef.current?.setAnimation(value);
     setProgress((current) => ({ ...current, time: 0 }));
   };
 
   const toggleSkipIntro = (value: boolean) => {
+    if (interactionMode === "interaction") stopVoice();
     setSkipIntro(value);
     if (!meta) return;
     if (interactionMode === "interaction") {
@@ -485,6 +750,7 @@ export function Spine() {
 
   const selectInteractionMode = (value: SpineInteractionMode) => {
     if (value === interactionMode) return;
+    stopVoice();
     if (value === "interaction") {
       freeCameraMode.current = cameraMode;
       freePlaying.current = playing;
@@ -509,13 +775,82 @@ export function Spine() {
     && progress.animation !== null
     && (skipIntro || !(meta?.introAnimation && meta.idleAnimation) || progress.animation !== meta.introAnimation);
 
+  const playTalk = (line?: SpineVoiceLine, preserveAutoplay = false) => {
+    if (!interactionReady) return;
+    stopVoice(true, !preserveAutoplay);
+    viewportRef.current?.triggerTalk(line ? voiceAnimationForLine(line) : undefined);
+  };
+
+  const selectDialogue = (value: string) => {
+    const index = value === "" ? null : Number(value);
+    setSelectedVoiceLineIndex(Number.isInteger(index) && index !== null && index >= 0 && index < voiceLines.length ? index : null);
+    if (index === null || !Number.isInteger(index)) return;
+    const line = voiceLines[index];
+    if (line) playTalk(line, talkAutoplay);
+  };
+
+  const toggleTalkAutoplay = () => {
+    if (talkAutoplay) {
+      stopVoice();
+      return;
+    }
+    if (!interactionReady || voiceLines.length === 0) return;
+    const startIndex = selectedVoiceLineIndex !== null && selectedVoiceLineIndex < voiceLines.length ? selectedVoiceLineIndex : 0;
+    stopVoice(true, false);
+    talkAutoplayRef.current = true;
+    setTalkAutoplay(true);
+    setSelectedVoiceLineIndex(startIndex);
+    queueNextAutoTalk(startIndex, voiceRunRef.current);
+  };
+
   const togglePlayback = () => setPlaying((value) => !value);
 
   const restartPlayback = () => {
+    stopVoice();
     setPlaying(true);
     setProgress((current) => ({ ...current, time: 0 }));
     viewportRef.current?.restartPlayback();
   };
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, select, textarea, button, a, [contenteditable]")) return;
+      const key = event.key.toLowerCase();
+
+      if (event.code === "Space") {
+        if (interactionMode !== "free" || !meta) return;
+        event.preventDefault();
+        togglePlayback();
+        return;
+      }
+      if (key === "r" && meta) {
+        event.preventDefault();
+        restartPlayback();
+      } else if (key === "t" && interactionReady) {
+        event.preventDefault();
+        playTalk();
+      } else if (key === "f") {
+        event.preventDefault();
+        void viewportRef.current?.toggleFullscreen();
+      } else if (key === "i") {
+        event.preventDefault();
+        selectInteractionMode("interaction");
+      } else if (key === "p") {
+        event.preventDefault();
+        selectInteractionMode("free");
+      } else if (key === "o") {
+        event.preventDefault();
+        setShowOptions((shown) => !shown);
+      } else if (key === "h" && fullscreen) {
+        event.preventDefault();
+        setShowFullscreenControls((shown) => !shown);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [cameraMode, fullscreen, interactionMode, interactionReady, loop, meta, playing, speed]);
 
   return <main className="spine-page">
     <SiteNav active="spine" />
@@ -571,7 +906,7 @@ export function Spine() {
           </label>
           <div className="spine-character-list" role="listbox" aria-label={t("spine.charactersAria")}>
             {filteredCharacters.map((name) => {
-              const count = characterIndex.characters[name]?.filter((variant) => availableDirectories?.has(variant.directory)).length ?? 0;
+              const count = indexedAssets(characterIndex.characters[name]).filter((variant) => availableDirectories?.has(variant.directory)).length;
               return <button
                 key={name}
                 type="button"
@@ -588,9 +923,14 @@ export function Spine() {
           <div className="spine-variant-picker">
             <label className="spine-field">
               <span>{t("spine.variant")}</span>
-              <select value={selectedDirectoryName} onChange={(event) => { setSelectedDirectory(event.target.value); setMeta(null); }} aria-label={t("spine.variantAria")}>
-                {variants.map((variant) => <option key={variant.directory} value={variant.directory}>{variant.variant}</option>)}
-              </select>
+                <select value={selectedDirectoryName} onChange={(event) => { stopVoice(); setSelectedDirectory(event.target.value); setMeta(null); }} aria-label={t("spine.variantAria")}>
+                 {variants.some((variant) => !variant.extraType) && <optgroup label={t("spine.variant")}>
+                   {variants.filter((variant) => !variant.extraType).map((variant) => <option key={variant.directory} value={variant.directory}>{variant.variant}</option>)}
+                 </optgroup>}
+                 {variants.some((variant) => variant.extraType) && <optgroup label={t("spine.extras")}>
+                   {variants.filter((variant) => variant.extraType).map((variant) => <option key={variant.directory} value={variant.directory}>{extraLabel(variant.extraType!)}</option>)}
+                 </optgroup>}
+               </select>
             </label>
             <details className="spine-set-meta"><summary>{t("spine.assetDetails")}</summary><div>
               <code>{selectedDirectoryName}</code>
@@ -602,7 +942,7 @@ export function Spine() {
 
       <section className={`spine-workspace${showFullscreenControls ? "" : " spine-controls-hidden"}`} aria-label={t("spine.viewerAria")}>
         <div className="spine-workspace-heading">
-          <div className="spine-workspace-identity"><strong>{selectedCharacter}</strong><span>{selectedVariant?.variant}</span></div>
+           <div className="spine-workspace-identity"><strong>{selectedCharacter}</strong><span>{selectedVariant?.extraType ? extraLabel(selectedVariant.extraType) : selectedVariant?.variant}</span></div>
           <div className="spine-workspace-status">
             <small>{t(meta ? "spine.preview.ready" : "spine.preview.waiting")}</small>
             <button className="spine-sidebar-toggle" type="button" aria-expanded={showSidebar} aria-controls="spine-sidebar" onClick={() => setShowSidebar((shown) => !shown)} title={t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}>
@@ -641,9 +981,14 @@ export function Spine() {
             }}
             onProgress={setProgress}
             onLoading={setRendererLoading}
-            onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
-            onCameraMode={(mode) => setCameraMode(interactionMode === "interaction" ? "game" : mode)}
-          />
+             onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
+             onCameraMode={(mode) => setCameraMode(interactionMode === "interaction" ? "game" : mode)}
+             onTalk={(index, animation, eventCount) => beginVoiceSession(index, animation, eventCount)}
+             onTalkClip={playVoiceEvent}
+             onIntro={(intro, eventCount) => beginIntroVoiceSession(intro, eventCount)}
+             onIntroClip={playIntroVoiceEvent}
+           />
+          {showDialogue && activeVoiceLine && activeDialogue && <div className="spine-dialogue" aria-live="polite">{activeDialogue}</div>}
           {!source && <div className="spine-stage-empty"><strong>{t("spine.empty.heading")}</strong><span>{t("spine.empty.body")}</span></div>}
           {source && !setFiles && !error && <div className="spine-stage-empty"><strong>{isLoading ? t("spine.loading") : t("spine.empty.set")}</strong><span>{isLoading ? t("spine.loadingDetail") : selectedDirectoryName}</span></div>}
           {isLoading && setFiles && <div className="spine-loading" aria-live="polite">{t("spine.loading")}</div>}
@@ -658,16 +1003,28 @@ export function Spine() {
               <button className={interactionMode === "free" ? "is-selected" : undefined} type="button" aria-pressed={interactionMode === "free"} onClick={() => selectInteractionMode("free")}><IconPlay /><span>{t("spine.mode.free")}</span></button>
             </div>
             <div className="spine-toolbar-actions">
-              {interactionReady && meta?.interaction.talkCount ? <button className="spine-tool-button" type="button" onClick={() => viewportRef.current?.triggerTalk()} aria-label={t("spine.talkAria")} title={t("spine.talkAria")}><IconMessage /><span>{t("spine.talk")}</span><small>{meta.interaction.talkCount}</small></button> : null}
+              {interactionReady && meta?.interaction.talkCount ? <button className="spine-tool-button" type="button" onClick={() => playTalk()} aria-label={t("spine.talkAria")} title={t("spine.talkAria")}><IconMessage /><span>{t("spine.talk")}</span><small>{meta.interaction.talkCount}</small></button> : null}
+              {interactionReady && voiceLines.length > 0 ? <button className={`spine-tool-button${talkAutoplay ? " is-active" : ""}`} type="button" onClick={toggleTalkAutoplay} aria-pressed={talkAutoplay} aria-label={t(talkAutoplay ? "spine.autoplayStop" : "spine.autoplayStart")} title={t(talkAutoplay ? "spine.autoplayStop" : "spine.autoplayStart")}><span>{talkAutoplay ? <IconPause /> : <IconPlay />}</span><span>{t("spine.autoplay")}</span></button> : null}
               <button className={`spine-tool-button${showInteractionPoints ? " is-active" : ""}`} type="button" disabled={!meta} aria-pressed={showInteractionPoints} onClick={() => setShowInteractionPoints((shown) => !shown)} aria-label={t("spine.showInteractionPoints")} title={t("spine.showInteractionPoints")}><IconTarget /><span>{t("spine.points")}</span></button>
               <button className={`spine-tool-button${showOptions ? " is-active" : ""}`} type="button" aria-expanded={showOptions} aria-controls="spine-options" onClick={() => setShowOptions((shown) => !shown)}><IconSliders /><span>{t("spine.options")}</span></button>
               <button className="spine-tool-button spine-sidebar-toggle" type="button" aria-expanded={showSidebar} aria-controls="spine-sidebar" onClick={() => setShowSidebar((shown) => !shown)} title={t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}><IconUsers /><span>{t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}</span></button>
               {fullscreen && <button className="spine-tool-button spine-fullscreen-controls-toggle" type="button" aria-expanded={showFullscreenControls} onClick={() => setShowFullscreenControls((shown) => !shown)} title={t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}><IconSliders /><span>{t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}</span></button>}
               <button className="spine-tool-button" type="button" onClick={() => void viewportRef.current?.toggleFullscreen()} aria-label={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")} title={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")}><span>{fullscreen ? <IconCompress /> : <IconExpand />}</span><span className="spine-button-label">{t("spine.fullscreen")}</span></button>
             </div>
-          </div>
+           </div>
 
-          {interactionMode === "free" && <div className="spine-playback-row">
+           {voiceLines.length > 0 && <div className="spine-voice-row">
+             <label className="spine-dialogue-picker"><span>{t("spine.dialogueSelect")}</span><select value={selectedVoiceLineIndex === null ? "" : String(selectedVoiceLineIndex)} onChange={(event) => selectDialogue(event.target.value)} disabled={!interactionReady} aria-label={t("spine.dialogueSelectAria")}>
+               <option value="">{t("spine.dialogueNext")}</option>
+               {voiceLines.map((line, index) => {
+                 const number = line.id.match(/(\d+)$/)?.[1];
+                 return <option key={`${line.id}-${index}`} value={index}>{t("spine.dialogueOption", { n: number ?? String(index + 1) })}</option>;
+               })}
+             </select></label>
+             {talkAutoplay && <span className="spine-autoplay-status" role="status">{t("spine.autoplayPlaying")}</span>}
+           </div>}
+
+           {interactionMode === "free" && <div className="spine-playback-row">
             <button className="spine-icon-button" type="button" onClick={togglePlayback} disabled={!meta} aria-label={t(playing ? "spine.pause" : "spine.play")} title={t(playing ? "spine.pause" : "spine.play")}>
               {playing ? <IconPause /> : <IconPlay />}
             </button>
@@ -700,15 +1057,19 @@ export function Spine() {
                   {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}
                 </select></label>
                 <label className="spine-check"><input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>
-              </>}
-              <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={skipIntro} onChange={(event) => toggleSkipIntro(event.target.checked)} />{t("spine.skipIntro")}</label>
-              <label className="spine-setting-field spine-effects-field"><span>{t("spine.effects")}</span><input type="range" min="0" max="1" step="0.05" value={effectsStrength} onChange={(event) => setEffectsStrength(Number(event.target.value))} aria-label={t("spine.effects")} title={t("spine.effects.hint")} /><output>{Math.round(effectsStrength * 100)}%</output></label>
+                </>}
+                <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={skipIntro} onChange={(event) => toggleSkipIntro(event.target.checked)} />{t("spine.skipIntro")}</label>
+                {voiceLines.length > 0 && <>
+                  <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={voiceEnabled} onChange={(event) => setVoiceEnabled(event.target.checked)} />{t("spine.voice")}{voicePlaying && <small>●</small>}</label>
+                  <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={showDialogue} onChange={(event) => setShowDialogue(event.target.checked)} />{t("spine.dialogue")}</label>
+                </>}
+                <label className="spine-setting-field spine-effects-field"><span>{t("spine.effects")}</span><input type="range" min="0" max="1" step="0.05" value={effectsStrength} onChange={(event) => setEffectsStrength(Number(event.target.value))} aria-label={t("spine.effects")} title={t("spine.effects.hint")} /><output>{Math.round(effectsStrength * 100)}%</output></label>
               <button className="spine-settings-action" type="button" disabled={!meta} onClick={() => viewportRef.current?.resetCamera()}><IconRotate /><span>{t("spine.resetView")}</span></button>
               {interactionMode === "free" && meta?.introAnimation && meta.idleAnimation && <button className="spine-settings-action" type="button" onClick={() => { setAnimation(INTRO_ANIMATION); setProgress((current) => ({ ...current, time: 0 })); viewportRef.current?.replayIntro(); }}><IconRotate /><span>{t("spine.replayIntro")}</span></button>}
             </div>
           </div>}
         </div>
-        <p className="spine-caption">{meta ? t("spine.loaded", { animations: meta.animations.length }) : t("spine.caption")}</p>
+        <p className="spine-caption">{meta ? t("spine.loaded", { animations: meta.animations.length }) : t("spine.caption")}<span className="spine-shortcuts"><strong>{t("spine.shortcuts")}</strong> {t("spine.shortcutsHint")}</span></p>
       </section>
     </div>
   </main>;

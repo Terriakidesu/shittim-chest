@@ -1,11 +1,14 @@
 import {
+  Animation,
   AtlasAttachmentLoader,
   AnimationState,
   AnimationStateData,
   Bone,
+  EventTimeline,
   Physics,
   Skeleton,
   SkeletonBinary,
+  TrackEntry,
   TextureAtlas,
   Vector2,
 } from "@esotericsoftware/spine-core";
@@ -138,6 +141,10 @@ export interface SpineRendererCallbacks {
   onError: (error: Error | null) => void;
   onCameraMode?: (mode: SpineCameraMode) => void;
   onInteractionPoints?: (overlay: SpineInteractionOverlay) => void;
+  onTalk?: (index: number, animation: string, eventCount: number) => boolean;
+  onTalkClip?: (index: number, clipIndex: number) => void;
+  onIntro?: (animation: string, eventCount: number) => boolean;
+  onIntroClip?: (clipIndex: number) => void;
   onEditorFrame?: (frame: SpineEditorFrame) => void;
   /** Private authoring hooks. Not used by the published viewer. */
   onBeforeEditorUpdate?: (skeleton: Skeleton) => void;
@@ -204,6 +211,45 @@ function filesWithExtension(files: SpineFiles, extension: string): File[] {
 function errorFrom(value: unknown): Error {
   if (value instanceof Error) return value;
   return new Error(typeof value === "string" ? value : "Could not load the Spine asset.");
+}
+
+function talkNumber(animation: string): number | null {
+  const match = basename(animation).match(/^talk[_ -]?(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function eventTimes(events: Array<{ time: number }>): number[] {
+  const sorted = [...new Set(events.map((event) => event.time))].sort((a, b) => a - b);
+  const result: number[] = [];
+  for (const time of sorted) {
+    // A few exports contain two event keys on adjacent frames for one clip.
+    // Treat those as one marker instead of making the audio session wait for a
+    // phantom clip at the end of the animation.
+    if (result.length === 0 || time - result[result.length - 1]! > 0.05) result.push(time);
+  }
+  return result;
+}
+
+/** Talk markers identify voice clips; matching Sound markers disambiguate intro clips. */
+export function talkEventTimes(animation: Animation | null, number?: number | null): number[] {
+  if (!animation) return [];
+  const events = animation.timelines
+    .filter((timeline): timeline is EventTimeline => timeline instanceof EventTimeline)
+    .flatMap((timeline) => timeline.events);
+  const talk = events
+    .filter((event) => event.data.name.toLocaleLowerCase() === "talk")
+    .map((event) => event);
+  const sound = events.filter((event) => /^sound\//i.test(event.data.name));
+  const matchingSound = Number.isFinite(number)
+    ? sound.filter((event) => new RegExp(`memoriallobby_${number}(?:_|$)`, "i").test(basename(event.data.name)))
+    : sound;
+  if (matchingSound.length > 0) {
+    const soundTimes = eventTimes(matchingSound);
+    const pairedTalk = talk.filter((event) => soundTimes.some((time) => Math.abs(time - event.time) <= 0.001));
+    return eventTimes(pairedTalk.length > 0 ? pairedTalk : matchingSound);
+  }
+  if (talk.length > 0) return eventTimes(talk);
+  return eventTimes(sound);
 }
 
 /** Pick the authored opening animation without relying on one exact suffix. */
@@ -464,6 +510,12 @@ export class SpineRenderer {
   private interactionReady = false;
   private eyeFollowHold = 0;
   private talkIndex = 0;
+  private activeTalkIndex = -1;
+  private talkEventIndex = 0;
+  private talkAudioPending = false;
+  private talkFadeQueued = false;
+  private introAudioEntry: TrackEntry | null = null;
+  private introEventIndex = 0;
   private interactionFollowWorld: { x: number; y: number } | null = null;
   private touchPointerOrigin: { x: number; y: number } | null = null;
   private touchFollowOffset: { x: number; y: number } | null = null;
@@ -503,6 +555,13 @@ export class SpineRenderer {
     this.callbacks.onLoading(true);
     this.callbacks.onInteractionPoints?.({ canvasWidth: 0, canvasHeight: 0, points: [] });
     this.animationSelection = "";
+    this.talkIndex = 0;
+    this.activeTalkIndex = -1;
+    this.talkEventIndex = 0;
+    this.talkAudioPending = false;
+    this.talkFadeQueued = false;
+    this.introAudioEntry = null;
+    this.introEventIndex = 0;
 
     try {
       const bundle = await loadBundle(files, directoryName, this.renderer, this.context, project);
@@ -553,6 +612,13 @@ export class SpineRenderer {
     this.interactionFollowWorld = null;
     this.touchPointerOrigin = null;
     this.touchFollowOffset = null;
+    this.talkIndex = 0;
+    this.activeTalkIndex = -1;
+    this.talkEventIndex = 0;
+    this.talkAudioPending = false;
+    this.talkFadeQueued = false;
+    this.introAudioEntry = null;
+    this.introEventIndex = 0;
   }
 
   setPlaying(playing: boolean) {
@@ -625,7 +691,11 @@ export class SpineRenderer {
     this.pointerInside = false;
     this.interactionState = "idle";
     this.interactionTrackName = null;
+    this.activeTalkIndex = -1;
+    this.talkEventIndex = 0;
     this.interactionReady = false;
+    this.introAudioEntry = null;
+    this.introEventIndex = 0;
     this.eyeFollowHold = 0;
     this.interactionFollowWorld = null;
     this.touchPointerOrigin = null;
@@ -638,6 +708,10 @@ export class SpineRenderer {
       this.callbacks.onCameraMode?.("game");
       this.enterInteraction();
     } else {
+      this.activeTalkIndex = -1;
+      this.talkEventIndex = 0;
+      this.talkAudioPending = false;
+      this.talkFadeQueued = false;
       this.clearInteractionTracks();
       this.cameraMode = this.freeCameraMode;
       this.pendingFit = true;
@@ -648,17 +722,77 @@ export class SpineRenderer {
     }
   }
 
-  triggerTalk() {
-    if (this.interactionMode !== "interaction" || this.interactionState !== "idle" || !this.interactionReady || !this.bundle || this.bundle.interaction.talks.length === 0) return;
-    const pair = this.bundle.interaction.talks[this.talkIndex % this.bundle.interaction.talks.length]!;
+  triggerTalk(requestedAnimation?: string) {
+    if (this.interactionMode !== "interaction" || !this.interactionReady || !this.bundle || this.bundle.interaction.talks.length === 0) return;
+    if (this.interactionState !== "idle") {
+      // Choosing a specific dialogue is an explicit request to interrupt the
+      // current talk. A plain Talk click still waits for the authored gesture
+      // to finish, preserving the original manual interaction behavior.
+      if (!requestedAnimation || this.interactionState !== "talk") return;
+      this.clearOverlay(5);
+      this.clearOverlay(6);
+      this.interactionState = "idle";
+      this.interactionTrackName = null;
+      this.talkAudioPending = false;
+      this.talkFadeQueued = false;
+    }
+    const requested = requestedAnimation
+      ? this.bundle.interaction.talks.findIndex((talk) => {
+        const wanted = basename(requestedAnimation).toLocaleLowerCase();
+        const actual = basename(talk.main).toLocaleLowerCase();
+        if (wanted === actual) return true;
+        const wantedNumber = talkNumber(requestedAnimation);
+        return wantedNumber !== null && talkNumber(talk.main) === wantedNumber;
+      })
+      : -1;
+    if (requestedAnimation && requested < 0) return;
+    const index = (requested >= 0 ? requested : this.talkIndex) % this.bundle.interaction.talks.length;
+    const pair = this.bundle.interaction.talks[index]!;
+    const eventTimes = talkEventTimes(this.bundle.skeleton.data.findAnimation(pair.main), talkNumber(pair.main));
     this.talkIndex = (this.talkIndex + 1) % this.bundle.interaction.talks.length;
+    this.activeTalkIndex = index;
+    this.talkEventIndex = 0;
+    this.talkAudioPending = this.callbacks.onTalk?.(index, pair.main, eventTimes.length) === true;
+    this.talkFadeQueued = !this.talkAudioPending;
     this.interactionState = "talk";
     this.interactionTrackName = pair.main;
     this.eyeFollowHold = 0;
     this.resetInteractionTargets();
     this.clearOverlay(3);
     this.clearOverlay(4);
-    this.playOverlayPair(pair, 5, 6, false, true);
+    const main = this.playOverlayPair(pair, 5, 6, false, !this.talkAudioPending);
+    if (this.talkAudioPending) {
+      if (main) {
+        main.listener = {
+          event: (entry, event) => {
+            const state = this.bundle?.state;
+            if (this.interactionState !== "talk" || !state || entry !== state.getCurrent(5) || this.talkEventIndex >= eventTimes.length) return;
+            const expectedTime = eventTimes[this.talkEventIndex]!;
+            if (Math.abs(event.time - expectedTime) > 0.001) return;
+            this.callbacks.onTalkClip?.(this.activeTalkIndex, this.talkEventIndex++);
+          },
+        };
+      }
+      if (!main || eventTimes.length === 0) this.callbacks.onTalkClip?.(index, 0);
+    }
+  }
+
+  setTalkAudioPending(pending: boolean) {
+    this.talkAudioPending = pending;
+    if (pending || this.interactionState !== "talk") return;
+    const state = this.bundle?.state;
+    if (!state) return;
+    if (!this.talkFadeQueued) {
+      if (state.getCurrent(5)) queueInteractionFadeOut(state, 5);
+      if (state.getCurrent(6)) queueInteractionFadeOut(state, 6);
+      this.talkFadeQueued = true;
+    }
+    this.finishInteractionState();
+  }
+
+  /** Attach the intro voice listener after the local voice catalog has loaded. */
+  startIntroAudio() {
+    this.attachIntroAudio();
   }
 
   setAnimation(animation: string, restart = false) {
@@ -679,6 +813,9 @@ export class SpineRenderer {
       const intro = state.setAnimation(0, meta.introAnimation, false);
       state.addAnimation(0, meta.idleAnimation, this.interactionMode === "interaction" ? true : this.loop, 0);
       meta.duration = intro.animation?.duration ?? 0;
+      this.introAudioEntry = null;
+      this.introEventIndex = 0;
+      this.attachIntroAudio(intro);
     } else {
       const entry = state.setAnimation(0, animation, this.interactionMode === "interaction" ? true : this.loop);
       meta.duration = entry.animation?.duration ?? 0;
@@ -698,12 +835,38 @@ export class SpineRenderer {
     this.touchFollowOffset = null;
   }
 
+  private attachIntroAudio(entry = this.bundle?.state.getCurrent(0) ?? null) {
+    const bundle = this.bundle;
+    if (!bundle || !entry || entry.animation?.name !== bundle.meta.introAnimation || this.introAudioEntry === entry) return;
+    this.introEventIndex = 0;
+    const eventTimes = talkEventTimes(entry.animation, 0);
+    const pending = this.callbacks?.onIntro?.(entry.animation.name, eventTimes.length) === true;
+    if (!pending) {
+      // The voice catalog can arrive after the Spine set. Leave this entry
+      // retryable so startIntroAudio() can attach the listener later.
+      this.introAudioEntry = null;
+      return;
+    }
+    this.introAudioEntry = entry;
+    entry.listener = {
+      event: (current, event) => {
+        if (current !== this.introAudioEntry || this.bundle?.state.getCurrent(0) !== current || this.introEventIndex >= eventTimes.length) return;
+        const expectedTime = eventTimes[this.introEventIndex]!;
+        if (Math.abs(event.time - expectedTime) > 0.001) return;
+        this.callbacks?.onIntroClip?.(this.introEventIndex++);
+      },
+    };
+    if (eventTimes.length === 0) this.callbacks?.onIntroClip?.(0);
+  }
+
   private enterInteraction() {
     const bundle = this.bundle;
     if (!bundle) return;
     this.playing = true;
     this.interactionState = "idle";
     this.interactionTrackName = null;
+    this.talkAudioPending = false;
+    this.talkFadeQueued = false;
     this.eyeFollowHold = 0;
     this.interactionFollowWorld = null;
     this.interactionPressedKind = null;
@@ -755,9 +918,9 @@ export class SpineRenderer {
     clearInteractionTrack(state, track, smooth);
   }
 
-  private playOverlayPair(pair: SpineAnimationPair, mainTrack: number, faceTrack: number, loop: boolean, clearAfter: boolean) {
+  private playOverlayPair(pair: SpineAnimationPair, mainTrack: number, faceTrack: number, loop: boolean, clearAfter: boolean): TrackEntry | null {
     const bundle = this.bundle;
-    if (!bundle) return;
+    if (!bundle) return null;
     const main = setInteractionTrack(bundle.state, mainTrack, pair.main, loop);
     if (clearAfter && !loop) queueInteractionFadeOut(bundle.state, mainTrack);
     if (pair.face) {
@@ -768,6 +931,7 @@ export class SpineRenderer {
     }
     // Keep the local variable meaningful for zero-duration authored poses.
     if (main) main.trackTime = Math.max(0, main.trackTime);
+    return main;
   }
 
   private beginLook() {
@@ -902,9 +1066,13 @@ export class SpineRenderer {
           ? 5
           : -1;
     if (track < 0) return;
+    if (this.interactionState === "talk" && this.talkAudioPending) return;
     if (!this.interactionAnimationFinished(track)) return;
     this.interactionState = "idle";
     this.interactionTrackName = null;
+    this.activeTalkIndex = -1;
+    this.talkEventIndex = 0;
+    this.talkFadeQueued = false;
     this.eyeFollowHold = 0;
     this.resetInteractionTargets();
   }
@@ -934,6 +1102,9 @@ export class SpineRenderer {
     state.clearTracks();
     state.setAnimation(0, introAnimation, false);
     state.addAnimation(0, idleAnimation, this.loop, 0);
+    this.introAudioEntry = null;
+    this.introEventIndex = 0;
+    this.attachIntroAudio(state.getCurrent(0));
     state.apply(skeleton);
     skeleton.updateWorldTransform(Physics.update);
     if (bundle.eyeTarget) {

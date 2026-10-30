@@ -426,6 +426,7 @@ a { color: var(--cyan); }
 .spine-layout:fullscreen .spine-playback-row { border-color: #ffffff20; }
 .spine-layout:fullscreen .spine-icon-button { width: 30px; height: 30px; background: transparent; border-color: #ffffff30; }
 .spine-layout:fullscreen .spine-settings-panel { border-color: #ffffff20; }
+.spine-layout:fullscreen .spine-voice-row { border-color: #ffffff25; background: #ffffff0d; }
 .spine-layout:fullscreen .spine-settings-heading button { color: #edf7ff; }
 .spine-layout:fullscreen .spine-settings-panel select { background: #10202d99; color: #edf7ff; border-color: #ffffff30; }
 .spine-layout:fullscreen .spine-caption, .spine-layout:fullscreen .spine-stage-hint { display: none; }
@@ -441,7 +442,8 @@ a { color: var(--cyan); }
 .spine-stage-empty span { max-width: 400px; font-size: 11px; line-height: 1.6; }
 .spine-loading { position: absolute; top: 11px; left: 12px; padding: 5px 8px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--cyan); font-size: 10px; font-weight: 750; }
 .spine-stage-hint { position: absolute; right: 11px; bottom: 9px; max-width: min(440px, calc(100% - 22px)); padding: 5px 7px; color: var(--muted); background: color-mix(in srgb, var(--surface) 76%, transparent); font-size: 9px; pointer-events: none; }
-.spine-controls { margin-top: 0; padding: 8px 11px 9px; border-top: 1px solid var(--line); background: var(--surface); }
+.spine-dialogue { position: absolute; z-index: 3; left: 50%; bottom: clamp(33px, 8%, 72px); width: min(760px, calc(100% - 34px)); box-sizing: border-box; transform: translateX(-50%); padding: 8px 13px; border: 1px solid #ffffff35; border-radius: 7px; background: #10202dcc; color: #f4fbff; font-size: clamp(11px, 1.4vw, 15px); line-height: 1.45; text-align: center; text-shadow: 0 1px 2px #0008; white-space: pre-line; pointer-events: none; }
+.spine-controls { margin-top: 0; padding: 9px 11px 10px; border-top: 1px solid var(--line); background: var(--surface); }
 .spine-toolbar-row { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
 .spine-mode-switch { display: flex; flex: none; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-alt); }
 .spine-mode-switch button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; padding: 4px 9px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 800; }
@@ -454,6 +456,11 @@ a { color: var(--cyan); }
 .spine-tool-button:disabled { opacity: .45; }
 .spine-tool-button svg { width: 15px; height: 15px; }
 .spine-tool-button small { min-width: 14px; color: var(--muted); font-size: 9px; }
+.spine-voice-row { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 8px; padding: 7px 8px; border: 1px solid color-mix(in srgb, var(--cyan) 22%, var(--line)); border-radius: 6px; background: color-mix(in srgb, var(--cyan-soft) 55%, var(--surface)); }
+.spine-dialogue-picker { display: flex; align-items: center; gap: 7px; min-width: 0; flex: 1 1 240px; color: var(--muted); font-size: 10px; font-weight: 800; }
+.spine-dialogue-picker span { flex: none; }
+.spine-dialogue-picker select { min-width: 0; flex: 1; height: 29px; padding: 4px 7px; font-size: 10px; }
+.spine-autoplay-status { flex: none; color: var(--cyan); font-size: 9px; font-weight: 800; white-space: nowrap; }
 .spine-playback-row { display: flex; align-items: center; gap: 7px; margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--line); }
 .spine-icon-button { display: grid; place-items: center; width: 32px; height: 32px; flex: none; border: 1px solid var(--line); border-radius: 5px; background: var(--navy); color: #fff; }
 .spine-icon-button:hover:not(:disabled) { background: var(--cyan); }
@@ -483,7 +490,9 @@ a { color: var(--cyan); }
 .spine-show-controls-floating svg { width: 15px; height: 15px; }
 .spine-stage-interaction canvas { cursor: crosshair; }
 .spine-stage-interaction canvas:active { cursor: pointer; }
-.spine-caption { margin: 0; padding: 0 11px 8px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.spine-caption { display: flex; flex-wrap: wrap; gap: 3px 12px; margin: 0; padding: 0 11px 8px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.spine-shortcuts { color: var(--muted); }
+.spine-shortcuts strong { color: var(--text); font-weight: 750; }
 @media (max-width: 900px) {
   .spine-layout { position: relative; grid-template-columns: minmax(0, 1fr); }
   .spine-sidebar { position: absolute; z-index: 5; top: 0; left: 0; width: min(285px, calc(100% - 16px)); display: none; box-shadow: 0 12px 30px #0003; }
@@ -509,6 +518,7 @@ a { color: var(--cyan); }
   .spine-workspace-identity span { max-width: 115px; }
   .spine-stage { height: auto; aspect-ratio: 16 / 9; }
   .spine-stage-frame { flex: none; }
+  .spine-dialogue { bottom: 31px; width: calc(100% - 20px); padding: 6px 9px; font-size: 10px; }
   .spine-controls { padding: 7px 8px 8px; }
   .spine-toolbar-actions { gap: 2px; }
   .spine-tool-button { min-width: 30px; padding-inline: 6px; }
@@ -521,6 +531,9 @@ a { color: var(--cyan); }
   .spine-setting-field { flex-basis: 100%; }
   .spine-effects-field { flex-basis: 100%; }
   .spine-settings-action { flex: 1 1 120px; }
+  .spine-voice-row { align-items: stretch; flex-direction: column; gap: 5px; }
+  .spine-dialogue-picker { flex-basis: auto; }
+  .spine-autoplay-status { align-self: flex-start; }
   .spine-stage-hint { right: 7px; bottom: 7px; max-width: calc(100% - 14px); font-size: 8px; }
   .spine-show-controls-floating { right: 8px; bottom: 8px; }
 }

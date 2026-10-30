@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { Animation, AnimationState, AnimationStateData, BoneData, Skeleton, SkeletonData } from "@esotericsoftware/spine-core";
-import { findIdleAnimation, findIntroAnimation, INTRO_ANIMATION, SpineRenderer } from "./spineRuntime";
+import { Animation, AnimationState, AnimationStateData, BoneData, Event, EventData, EventTimeline, Skeleton, SkeletonData } from "@esotericsoftware/spine-core";
+import { findIdleAnimation, findIntroAnimation, INTRO_ANIMATION, SpineRenderer, talkEventTimes } from "./spineRuntime";
 
 function playback(selection: string) {
   const data = new SkeletonData();
@@ -50,6 +50,173 @@ describe("Spine restart playback", () => {
     expect(state.getCurrent(0)?.animation?.name).toBe("Idle_01");
     expect(state.getCurrent(0)?.trackTime).toBe(0);
     expect(state.getCurrent(0)?.next).toBeNull();
+  });
+
+  test("keeps a talk interaction active until chained audio reports completion", () => {
+    const data = new SkeletonData();
+    data.bones.push(new BoneData(0, "root", null));
+    data.animations.push(new Animation("Talk_01_M", [], 1));
+    const state = new AnimationState(new AnimationStateData(data));
+    const entry = state.setAnimation(5, "Talk_01_M", false);
+    entry.trackTime = 1;
+    const renderer = Object.assign(Object.create(SpineRenderer.prototype), {
+      bundle: { state, skeleton: new Skeleton(data) },
+      interactionState: "talk",
+      interactionTrackName: "Talk_01_M",
+      talkAudioPending: true,
+      talkFadeQueued: false,
+    }) as any;
+
+    renderer.finishInteractionState();
+    expect(renderer.interactionState).toBe("talk");
+    renderer.setTalkAudioPending(false);
+    expect(renderer.interactionState).toBe("idle");
+    expect(renderer.talkAudioPending).toBe(false);
+  });
+
+  test("does not queue the talk fade while audio is active", () => {
+    const data = new SkeletonData();
+    data.bones.push(new BoneData(0, "root", null));
+    data.animations.push(new Animation("Talk_01_M", [], 1));
+    const state = new AnimationState(new AnimationStateData(data));
+    const renderer = Object.assign(Object.create(SpineRenderer.prototype), {
+      bundle: {
+        state,
+        skeleton: new Skeleton(data),
+        interaction: { talks: [{ main: "Talk_01_M", face: null }] },
+      },
+      callbacks: { onTalk: () => true },
+      interactionMode: "interaction",
+      interactionState: "idle",
+      interactionReady: true,
+      talkIndex: 0,
+    }) as any;
+
+    renderer.triggerTalk();
+    expect(renderer.interactionState).toBe("talk");
+    expect(renderer.talkAudioPending).toBe(true);
+    expect(renderer.talkFadeQueued).toBe(false);
+    expect(state.getCurrent(5)?.next).toBeNull();
+  });
+
+  test("extracts only authored Talk event markers in timeline order", () => {
+    const data = new SkeletonData();
+    data.bones.push(new BoneData(0, "root", null));
+    const timeline = new EventTimeline(3);
+    timeline.setFrame(0, new Event(1.2, new EventData("Other")));
+    timeline.setFrame(1, new Event(3.4, new EventData("Talk")));
+    timeline.setFrame(2, new Event(2.1, new EventData("talk")));
+    const animation = new Animation("Talk_01_M", [timeline], 4);
+    expect(talkEventTimes(animation)).toEqual([2.1, 3.4]);
+  });
+
+  test("uses Talk markers paired with the requested Sound clip and falls back to Sound markers", () => {
+    const paired = new EventTimeline(4);
+    paired.setFrame(0, new Event(0.2, new EventData("Sound/CH0001_MemorialLobby_0_1")));
+    paired.setFrame(1, new Event(0.2, new EventData("Talk")));
+    paired.setFrame(2, new Event(1.2, new EventData("Sound/CH0001_MemorialLobby_3")));
+    paired.setFrame(3, new Event(1.2, new EventData("Talk")));
+    expect(talkEventTimes(new Animation("Talk_03_M", [paired], 2), 3)).toEqual([1.2]);
+
+    const soundOnly = new EventTimeline(2);
+    soundOnly.setFrame(0, new Event(0.4, new EventData("Sound/CH0002_MemorialLobby_1_1")));
+    soundOnly.setFrame(1, new Event(1.4, new EventData("Sound/CH0002_MemorialLobby_1_2")));
+    expect(talkEventTimes(new Animation("Talk_01_M", [soundOnly], 2), 1)).toEqual([0.4, 1.4]);
+  });
+
+  test("deduplicates adjacent-frame Talk markers for one clip", () => {
+    const timeline = new EventTimeline(3);
+    timeline.setFrame(0, new Event(1, new EventData("Talk")));
+    timeline.setFrame(1, new Event(2, new EventData("Talk")));
+    timeline.setFrame(2, new Event(2.033, new EventData("Talk")));
+    expect(talkEventTimes(new Animation("Talk_04_M", [timeline], 3))).toEqual([1, 2]);
+  });
+
+  test("starts voice clips when the Talk events reach the mouth timeline", () => {
+    const data = new SkeletonData();
+    data.bones.push(new BoneData(0, "root", null));
+    const timeline = new EventTimeline(2);
+    timeline.setFrame(0, new Event(0.5, new EventData("Talk")));
+    timeline.setFrame(1, new Event(1.1, new EventData("Talk")));
+    data.animations.push(new Animation("Talk_01_M", [timeline], 1.5));
+    const state = new AnimationState(new AnimationStateData(data));
+    const skeleton = new Skeleton(data);
+    const clips: number[] = [];
+    const renderer = Object.assign(Object.create(SpineRenderer.prototype), {
+      bundle: {
+        state,
+        skeleton,
+        interaction: { talks: [{ main: "Talk_01_M", face: null }] },
+      },
+      callbacks: {
+        onTalk: () => true,
+        onTalkClip: (_index: number, clipIndex: number) => clips.push(clipIndex),
+      },
+      interactionMode: "interaction",
+      interactionState: "idle",
+      interactionReady: true,
+      talkIndex: 0,
+    }) as any;
+
+    renderer.triggerTalk();
+    expect(clips).toEqual([]);
+    state.update(0.49);
+    state.apply(skeleton);
+    expect(clips).toEqual([]);
+    state.update(0.02);
+    state.apply(skeleton);
+    expect(clips).toEqual([0]);
+    state.update(0.6);
+    state.apply(skeleton);
+    expect(clips).toEqual([0, 1]);
+  });
+
+  test("starts the intro voice from MemorialLobby_0 markers", () => {
+    const timeline = new EventTimeline(1);
+    timeline.setFrame(0, new Event(0.4, new EventData("Sound/CH0001_MemorialLobby_0")));
+    const data = new SkeletonData();
+    data.bones.push(new BoneData(0, "root", null));
+    data.animations.push(new Animation("Start_Idle_01", [timeline], 1), new Animation("Idle_01", [], 2));
+    const state = new AnimationState(new AnimationStateData(data));
+    state.setAnimation(0, "Start_Idle_01", false);
+    const skeleton = new Skeleton(data);
+    const clips: number[] = [];
+    const renderer = Object.assign(Object.create(SpineRenderer.prototype), {
+      bundle: { state, skeleton, meta: { introAnimation: "Start_Idle_01", idleAnimation: "Idle_01" } },
+      callbacks: { onIntro: () => true, onIntroClip: (clipIndex: number) => clips.push(clipIndex) },
+      introAudioEntry: null,
+      introEventIndex: 0,
+    }) as any;
+
+    renderer.startIntroAudio();
+    state.update(0.39);
+    state.apply(skeleton);
+    expect(clips).toEqual([]);
+    state.update(0.02);
+    state.apply(skeleton);
+    expect(clips).toEqual([0]);
+  });
+
+  test("a requested talk can interrupt an existing talk", () => {
+    const data = new SkeletonData();
+    data.bones.push(new BoneData(0, "root", null));
+    data.animations.push(new Animation("Talk_01_M", [], 1), new Animation("Talk_02_M", [], 1));
+    const state = new AnimationState(new AnimationStateData(data));
+    const renderer = Object.assign(Object.create(SpineRenderer.prototype), {
+      bundle: { state, skeleton: new Skeleton(data), interaction: { talks: [{ main: "Talk_01_M", face: null }, { main: "Talk_02_M", face: null }] } },
+      callbacks: { onTalk: () => false },
+      interactionMode: "interaction",
+      interactionState: "talk",
+      interactionTrackName: "Talk_01_M",
+      interactionReady: true,
+      talkIndex: 0,
+      talkAudioPending: true,
+      talkFadeQueued: false,
+    }) as any;
+    state.setAnimation(5, "Talk_01_M", false);
+    renderer.triggerTalk("Talk_02_M");
+    expect(state.getCurrent(5)?.animation?.name).toBe("Talk_02_M");
+    expect(renderer.interactionState).toBe("talk");
   });
 
   test("switches a loaded lobby from intro to idle when skip intro is enabled", () => {
