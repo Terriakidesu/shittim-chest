@@ -199,6 +199,8 @@ function snapTime(value: number, snap: number, duration: number): number {
   return Math.max(0, Math.min(duration, Number(next.toFixed(3))));
 }
 
+type TimelineDragKind = "layer" | "layer-start" | "cue" | "cue-start" | "cue-end" | "audio" | "audio-start";
+
 function cueText(cue: EditorSubtitleCue, language: TimelineLanguage): string {
   return cue.text[language] || cue.text.en || cue.text.ja || cue.text.ko || "Untitled subtitle";
 }
@@ -342,7 +344,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   const audioPreviousTimeRef = useRef<Record<string, number | undefined>>({});
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
   const [missingAudio, setMissingAudio] = useState<string[]>([]);
-  const dragRef = useRef<{ kind: "layer" | "cue" | "cue-start" | "cue-end" | "audio"; id: string; x: number; start: number; end: number } | null>(null);
+  const dragRef = useRef<{ kind: TimelineDragKind; id: string; x: number; start: number; end: number } | null>(null);
   const initializedLayersRef = useRef("");
   const subtitleDocumentsRef = useRef<Record<string, Record<string, unknown>>>({});
   const projectRef = useRef<EditorProject | null>(project);
@@ -849,7 +851,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     });
   }
 
-  function beginDrag(event: ReactPointerEvent<HTMLElement>, kind: "layer" | "cue" | "cue-start" | "cue-end" | "audio", id: string, start: number, end: number) {
+  function beginDrag(event: ReactPointerEvent<HTMLElement>, kind: TimelineDragKind, id: string, start: number, end: number) {
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { kind, id, x: event.clientX, start, end };
@@ -862,10 +864,14 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     const delta = (event.clientX - drag.x) / (TIMELINE_SCALE * zoom);
     const targets = [...markers, ...timeline.subtitles.filter((cue) => cue.id !== drag.id).flatMap((cue) => [cue.start, cue.end])];
     const snap = (value: number) => Math.max(0, Math.min(duration, snapToTargets(value, event.altKey ? 0 : timeline.snap, event.altKey ? [] : targets)));
-    if (drag.kind === "layer") {
+    if (drag.kind === "layer-start") {
+      updateLayer(drag.id, { start: Math.min(snap(drag.start + delta), drag.end - 0.01) }, false);
+    } else if (drag.kind === "layer") {
       const length = drag.end - drag.start;
       const start = Math.min(duration - length, snap(drag.start + delta));
       updateLayer(drag.id, { start: Math.max(0, start), end: Math.max(start + 0.01, start + length) }, false);
+    } else if (drag.kind === "audio-start") {
+      updateAudio(drag.id, { start: Math.min(snap(drag.start + delta), drag.end - 0.01) }, false);
     } else if (drag.kind === "audio") {
       const length = drag.end - drag.start;
       const start = Math.min(duration - length, snap(drag.start + delta));
@@ -1000,9 +1006,10 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
                 {displayLayers.map((layer) => <div className="timeline-row" key={layer.id}>
                <div className="timeline-track-label" title={layer.directory}><b>{roleLabel(layer.role)}</b><span>{layer.name}</span></div>
                <div className={`timeline-track timeline-layer-track${layer.id === timeline.selectedLayerId ? " is-selected" : ""}`} onPointerDown={seekFromEvent}>
-                 <div className="timeline-layer-clip" style={{ left: layer.start * TIMELINE_SCALE * zoom, width: Math.max(8, (layerEnd(layer) - layer.start) * TIMELINE_SCALE * zoom), zIndex: layer.order }} onPointerDown={(event) => { setSelectedLayer(layer.id); beginDrag(event, "layer", layer.id, layer.start, layerEnd(layer)); }}>
-                   <span>{layer.animation || metas[layer.id]?.idleAnimation || "Animation"}</span>
-                 </div>
+                  <div className="timeline-layer-clip" title="Drag to move the layer; drag the left edge to change its start" style={{ left: layer.start * TIMELINE_SCALE * zoom, width: Math.max(8, (layerEnd(layer) - layer.start) * TIMELINE_SCALE * zoom), zIndex: layer.order }} onPointerDown={(event) => { setSelectedLayer(layer.id); beginDrag(event, "layer", layer.id, layer.start, layerEnd(layer)); }}>
+                    <button type="button" className="timeline-clip-start-handle" aria-label={`Move ${layer.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); setSelectedLayer(layer.id); beginDrag(event, "layer-start", layer.id, layer.start, layerEnd(layer)); }} />
+                    <span>{layer.animation || metas[layer.id]?.idleAnimation || "Animation"}</span>
+                  </div>
                  <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
                </div>
               </div>)}
@@ -1020,7 +1027,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
             <div className="timeline-row audio-row">
               <div className="timeline-track-label"><b>AUDIO</b><span>{timeline.audio.length} clip{timeline.audio.length === 1 ? "" : "s"}</span></div>
               <div className="timeline-track timeline-audio-track" onPointerDown={seekFromEvent}>
-                 {timeline.audio.map((clip) => <div key={clip.id} className={`timeline-audio-clip${clip.id === selectedAudio?.id ? " is-selected" : ""}${clip.enabled ? "" : " is-disabled"}`} style={{ left: clip.start * TIMELINE_SCALE * zoom, width: Math.max(12, (clip.end - clip.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { setSelectedAudio(clip.id); beginDrag(event, "audio", clip.id, clip.start, clip.end); }}><AudioWaveform url={audioUrls[clip.id]} onDuration={(value) => applyDecodedAudioDuration(clip.id, value)} /><span>♫ {clip.name}</span></div>)}
+                 {timeline.audio.map((clip) => <div key={clip.id} className={`timeline-audio-clip${clip.id === selectedAudio?.id ? " is-selected" : ""}${clip.enabled ? "" : " is-disabled"}`} title="Drag to move the audio; drag the left edge to change its start" style={{ left: clip.start * TIMELINE_SCALE * zoom, width: Math.max(12, (clip.end - clip.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { setSelectedAudio(clip.id); beginDrag(event, "audio", clip.id, clip.start, clip.end); }}><button type="button" className="timeline-clip-start-handle" aria-label={`Move ${clip.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); setSelectedAudio(clip.id); beginDrag(event, "audio-start", clip.id, clip.start, clip.end); }} /><AudioWaveform url={audioUrls[clip.id]} onDuration={(value) => applyDecodedAudioDuration(clip.id, value)} /><span>♫ {clip.name}</span></div>)}
                 <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
               </div>
             </div>

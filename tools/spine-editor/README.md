@@ -59,15 +59,17 @@ directories are discovered automatically. Each set remains a real Spine
 instance and is rendered as a synchronized layer; the shared playhead drives
 all layers together rather than flattening them into images.
 
-- Drag layer blocks to change their start time; use the inspector for exact
-  start/end times, animation, looping, order, position, scale, opacity, and
-  visibility. Non-looping layers use the actual Spine animation end by default;
-  enter a manual end time when a deliberate hold or early cut is needed.
+- Drag layer blocks to move the whole clip, or drag their left edge to change
+  only the start time; use the inspector for exact start/end times, animation,
+  looping, order, position, scale, opacity, and visibility. Non-looping layers
+  use the actual Spine animation end by default; enter a manual end time when a
+  deliberate hold or early cut is needed.
 - Add subtitle cues, drag their body to move them, drag either edge to resize
   them, or enter exact timestamps. English, Japanese, and Korean text are kept
   independently in the project.
 - Import the generated `subtitles.json` files to bring in subtitle markers and
-  their audio paths, or add local audio clips for a session and edit their
+  their audio paths, or add local audio clips for a session. Drag audio blocks
+  to move them, drag their left edge to change their start time, and edit their
   timing, volume, and enabled state in the Audio track.
 - In the native desktop host, switch character sets from the shared header picker;
   decoded voice duration expands each imported audio block and the linked
