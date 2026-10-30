@@ -4,10 +4,17 @@ import type { AssetSource } from "../../../src/client/spine/spineAssets";
 interface SpineSet { directory: string; path: string }
 interface Catalog { rootPath: string | null; sets: SpineSet[] }
 
+export interface DesktopTextFile {
+  path: string;
+  content: string;
+}
+
 export interface DesktopAssetSource extends AssetSource {
   readonly desktop: true;
   readonly rootPath: string;
-  openText: () => Promise<{ path: string; content: string } | null>;
+  openText: () => Promise<DesktopTextFile | null>;
+  openProject: () => Promise<DesktopTextFile | null>;
+  readText: (path: string) => Promise<string | null>;
   openAudio: () => Promise<string[]>;
   saveText: (path: string, content: string) => Promise<void>;
 }
@@ -35,6 +42,22 @@ export async function chooseDesktopSource(): Promise<DesktopAssetSource | null> 
   return sourceFromDesktop(selected.rootPath);
 }
 
+export async function chooseDesktopSourceAt(rootPath: string): Promise<DesktopAssetSource | null> {
+  const selected = await request("/__spine/use-root", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ rootPath }),
+  }).then((response) => response.json()) as { rootPath: string | null };
+  if (!selected.rootPath) return null;
+  return sourceFromDesktop(selected.rootPath);
+}
+
+export async function chooseDesktopProject(): Promise<{ source: DesktopAssetSource; file: DesktopTextFile } | null> {
+  const selected = await request("/__spine/open-project", { method: "POST" }).then((response) => response.json()) as DesktopTextFile & { rootPath: string | null };
+  if (!selected.rootPath || !selected.path) return null;
+  return { source: sourceFromDesktop(selected.rootPath), file: { path: selected.path, content: selected.content } };
+}
+
 export function sourceFromDesktop(rootPath: string): DesktopAssetSource {
   let catalogPromise: Promise<Catalog> | null = null;
   const loadCatalog = () => catalogPromise ??= request("/__spine/catalog").then((response) => response.json() as Promise<Catalog>);
@@ -53,6 +76,14 @@ export function sourceFromDesktop(rootPath: string): DesktopAssetSource {
     openText: async () => {
       const selected = await request("/__spine/open-file", { method: "POST" }).then((response) => response.json()) as { path: string | null; content: string | null };
       return selected.path && selected.content !== null ? { path: selected.path, content: selected.content } : null;
+    },
+    openProject: async () => {
+      const selected = await request("/__spine/open-project", { method: "POST" }).then((response) => response.json()) as { path: string | null; content: string | null };
+      return selected.path && selected.content !== null ? { path: selected.path, content: selected.content } : null;
+    },
+    readText: async (path) => {
+      const file = await loadFile(path);
+      return file ? file.text() : null;
     },
     openAudio: async () => {
       const selected = await request("/__spine/open-audio", { method: "POST" }).then((response) => response.json()) as { paths?: unknown };

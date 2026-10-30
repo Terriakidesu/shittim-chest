@@ -31,7 +31,8 @@ import { findInteractionProfile } from "../../../src/client/spine/spineInteracti
 import { detectHeadRegion, repairPatRegions, type HeadRegion } from "./headRegion";
 import { TimelineWorkspace } from "./TimelineWorkspace";
 import { LEGACY_PROJECT_STORAGE_PREFIX } from "./editorModel";
-import { chooseDesktopSource, type DesktopAssetSource } from "./desktopSource";
+import { chooseDesktopProject, chooseDesktopSource, chooseDesktopSourceAt, type DesktopAssetSource } from "./desktopSource";
+import { normalizeRecentFiles, RECENT_FILES_KEY, rememberRecentFile, removeRecentFile, type RecentFile, type RecentFileKind } from "./recentFiles";
 
 function displayName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -49,6 +50,19 @@ function readStoredViewSettings(): EditorViewSettings {
   } catch {
     return DEFAULT_EDITOR_VIEW_SETTINGS;
   }
+}
+
+function readRecentFiles(): RecentFile[] {
+  try {
+    const stored = localStorage.getItem(RECENT_FILES_KEY);
+    return normalizeRecentFiles(stored ? JSON.parse(stored) as unknown : null);
+  } catch {
+    return [];
+  }
+}
+
+function recentKindLabel(kind: RecentFileKind): string {
+  return kind === "folder" ? "ASSET ROOT" : kind === "project" ? "PROJECT" : kind === "subtitle" ? "SUBTITLE" : "AUDIO";
 }
 
 interface BoneOverlayProps {
@@ -264,6 +278,7 @@ export function Editor() {
   const timelineSaveRef = useRef<((getProject: () => EditorProject | null) => Promise<string[]>) | null>(null);
   const sourceRef = useRef<DesktopAssetSource | null>(source);
   const projectSaveQueueRef = useRef(Promise.resolve());
+  const pendingProjectRef = useRef<EditorProject | null>(null);
   const [viewSettings, setViewSettings] = useState<EditorViewSettings>(() => readStoredViewSettings());
   const [undo, setUndo] = useState<EditorProject[]>([]);
   const [redo, setRedo] = useState<EditorProject[]>([]);
@@ -276,11 +291,16 @@ export function Editor() {
   const [loadProgress, setLoadProgress] = useState<SpineLoadProgress>({ loaded: 0, total: 1, label: "Preparing asset set" });
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [recentFiles, setRecentFiles] = useState<RecentFile[]>(() => readRecentFiles());
+  const [pendingSubtitlePath, setPendingSubtitlePath] = useState<string | null>(null);
+  const [pendingAudioPaths, setPendingAudioPaths] = useState<string[] | null>(null);
+  const recentFilesRef = useRef<RecentFile[]>(recentFiles);
 
   projectRef.current = project;
   directoryRef.current = directory;
   metaRef.current = meta;
   sourceRef.current = source;
+  recentFilesRef.current = recentFiles;
   const viewSettingsRef = useRef<EditorViewSettings>(viewSettings);
   viewSettingsRef.current = viewSettings;
 
@@ -323,8 +343,11 @@ export function Editor() {
       } catch {
         restored = null;
       }
-      const original = restored ?? createProject(directoryRef.current, loadedMeta.animations, value.bones);
-      const repair = repairPatRegions(original, headRegionRef.current);
+       const original = restored ?? createProject(directoryRef.current, loadedMeta.animations, value.bones);
+       const pending = pendingProjectRef.current?.assetDirectory === directoryRef.current ? pendingProjectRef.current : null;
+       if (pending) pendingProjectRef.current = null;
+       const loadedProject = pending ?? original;
+       const repair = repairPatRegions(loadedProject, headRegionRef.current);
       const pinchRepair = repairPinchRegions(repair.project, value.bones);
       const next = withCurrentViewSettings(pinchRepair.project);
       projectRef.current = next;
@@ -487,25 +510,119 @@ export function Editor() {
     };
   }, [frame, testing]);
 
-  async function useSource(next: DesktopAssetSource) {
+  function recordRecentFile(item: Omit<RecentFile, "lastOpened"> & { lastOpened?: number }) {
+    const next = rememberRecentFile(recentFilesRef.current, item);
+    recentFilesRef.current = next;
+    setRecentFiles(next);
+    try { localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(next)); }
+    catch { /* Recent files are a convenience, never a reason to block opening. */ }
+  }
+
+  function forgetRecentFile(item: Pick<RecentFile, "kind" | "rootPath" | "path">) {
+    const next = removeRecentFile(recentFilesRef.current, item);
+    recentFilesRef.current = next;
+    setRecentFiles(next);
+    try { localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(next)); }
+    catch { /* Recent files are a convenience, never a reason to block opening. */ }
+  }
+
+  async function confirmOpen(): Promise<boolean> {
+    if (saveState !== "dirty") return true;
+    if (!window.confirm("This project has unsaved changes. Open another file without saving?")) return false;
+    return true;
+  }
+
+  async function useSource(next: DesktopAssetSource, preferredDirectory?: string) {
+    const found = await next.getDirectories();
+    if (found.length === 0) throw new Error("No Spine asset directories were found.");
+    if (preferredDirectory && !found.includes(preferredDirectory)) throw new Error(`The project references missing Spine set “${preferredDirectory}”.`);
+    const selectedDirectory = preferredDirectory && found.includes(preferredDirectory) ? preferredDirectory : found[0]!;
+    setSource(next);
+    setDirectories(found);
+    setDirectory(selectedDirectory);
+    recordRecentFile({ kind: "folder", path: next.rootPath, rootPath: next.rootPath, label: displayName(next.rootPath), directory: selectedDirectory });
+    setError(null);
+    setSaveState("idle");
+    setSavedAt(null);
+  }
+
+  async function openFolder() {
+    if (!(await confirmOpen())) return;
     try {
-      const found = await next.getDirectories();
-      if (found.length === 0) throw new Error("No Spine asset directories were found.");
-      setSource(next);
-      setDirectories(found);
-      setDirectory(found[0]!);
-      setError(null);
-      setSaveState("idle");
-      setSavedAt(null);
+      const next = await chooseDesktopSource();
+      if (next) {
+        pendingProjectRef.current = null;
+        setPendingSubtitlePath(null);
+        setPendingAudioPaths(null);
+        await useSource(next);
+      }
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
   }
 
-  async function openFolder() {
+  async function openProjectFile() {
+    if (!(await confirmOpen())) return;
     try {
-      const next = await chooseDesktopSource();
-      if (next) await useSource(next);
+      const selected = await chooseDesktopProject();
+      if (!selected) return;
+      const raw = JSON.parse(selected.file.content) as Record<string, unknown>;
+      const assetDirectory = typeof raw.assetDirectory === "string" ? raw.assetDirectory : "";
+      if (!assetDirectory) throw new Error("This project file does not identify an asset set.");
+      const restored = normalizeProject(raw, assetDirectory);
+      if (!restored) throw new Error("The selected file is not a compatible Spine editor project.");
+      pendingProjectRef.current = restored;
+      setPendingSubtitlePath(null);
+      setPendingAudioPaths(null);
+      recordRecentFile({ kind: "project", path: selected.file.path, rootPath: selected.source.rootPath, label: displayName(selected.file.path), directory: restored.assetDirectory });
+      await useSource(selected.source, restored.assetDirectory);
+      setWorkspace("interaction");
+      setStatus(`Opened project ${displayName(selected.file.path)}.`);
+    } catch (value) {
+      pendingProjectRef.current = null;
+      setError(value instanceof Error ? value.message : String(value));
+    }
+  }
+
+  async function openRecentFile(item: RecentFile) {
+    if (!(await confirmOpen())) return;
+    try {
+      const next = await chooseDesktopSourceAt(item.rootPath);
+      if (!next) return;
+      if (item.kind === "project") {
+        const content = await next.readText(item.path);
+        if (!content) throw new Error(`Recent project file is missing: ${item.path}`);
+        const raw = JSON.parse(content) as Record<string, unknown>;
+        const assetDirectory = typeof raw.assetDirectory === "string" ? raw.assetDirectory : item.directory ?? "";
+        const restored = normalizeProject(raw, assetDirectory);
+        if (!restored) throw new Error("The recent file is not a compatible Spine editor project.");
+        pendingProjectRef.current = restored;
+        setPendingSubtitlePath(null);
+        setPendingAudioPaths(null);
+        recordRecentFile({ ...item, directory: restored.assetDirectory });
+        await useSource(next, restored.assetDirectory);
+        setWorkspace("interaction");
+        setStatus(`Reopened project ${item.label}.`);
+      } else {
+        pendingProjectRef.current = null;
+        setPendingSubtitlePath(null);
+        setPendingAudioPaths(null);
+        await useSource(next, item.directory);
+        recordRecentFile(item);
+        if (item.kind === "subtitle") {
+          setPendingSubtitlePath(item.path);
+          setPendingAudioPaths(null);
+          setWorkspace("timeline");
+          setStatus(`Ready to import ${item.label} into the timeline.`);
+        } else if (item.kind === "audio") {
+          setPendingAudioPaths([item.path]);
+          setWorkspace("timeline");
+          setStatus(`Loading ${item.label} into the timeline…`);
+        } else {
+          setPendingAudioPaths(null);
+          setStatus(`Reopened ${item.label}. Use Add → Audio files to place it on the timeline.`);
+        }
+      }
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
@@ -518,6 +635,9 @@ export function Editor() {
     setSaveState("idle");
     setSavedAt(null);
     setError(null);
+    pendingProjectRef.current = null;
+    setPendingSubtitlePath(null);
+    setPendingAudioPaths(null);
     setStatus(`Loading ${displayName(next)}…`);
   }
 
@@ -594,6 +714,7 @@ export function Editor() {
         const safeName = saveDirectory.replace(/[^A-Za-z0-9._-]+/g, "-") || "project";
         const projectPath = `.shittim-spine-editor/${safeName}.spine-project.json`;
         await saveSource.saveText(projectPath, `${JSON.stringify(latest, null, 2)}\n`);
+        recordRecentFile({ kind: "project", path: projectPath, rootPath: saveSource.rootPath, label: displayName(projectPath), directory: saveDirectory });
         setSaveState("saved");
         setSavedAt(Date.now());
         const subtitleMessage = subtitlePaths.length > 0
@@ -839,8 +960,26 @@ export function Editor() {
       : saveState === "error"
         ? "Save failed"
         : savedAt
-          ? `Saved ${new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-          : "Ready to save";
+           ? `Saved ${new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+           : "Ready to save";
+
+  function recentPath(item: RecentFile): string {
+    return item.kind === "folder" ? item.rootPath : nativePath(item.rootPath, item.path);
+  }
+
+  function recentList(limit = 6) {
+    if (recentFiles.length === 0) return <p className="editor-muted editor-recent-empty">No recent files yet.</p>;
+    return <div className="editor-recent-list">
+      {recentFiles.slice(0, limit).map((item) => <div className="editor-recent-item" key={`${item.kind}:${item.rootPath}:${item.path}`}>
+        <button className="editor-recent-open" title={recentPath(item)} onClick={() => void openRecentFile(item)}>
+          <span className={`editor-recent-icon kind-${item.kind}`}>{item.kind === "folder" ? "▰" : item.kind === "project" ? "◇" : item.kind === "subtitle" ? "≡" : "♫"}</span>
+          <span><b>{item.label}</b><small>{recentKindLabel(item.kind)} · {displayName(item.rootPath)}</small></span>
+        </button>
+        <button className="editor-recent-remove" aria-label={`Remove ${item.label} from recent files`} title="Remove from recent files" onClick={() => forgetRecentFile(item)}>×</button>
+      </div>)}
+      {recentFiles.length > limit && <span className="editor-recent-more">{recentFiles.length - limit} more in Open menu</span>}
+    </div>;
+  }
 
   return (
     <div className={`editor-app${testing ? " is-testing" : ""}`}>
@@ -858,7 +997,15 @@ export function Editor() {
             {!directories.length && <option value="">Open a folder…</option>}
             {directories.map((item) => <option key={item} value={item}>{item}</option>)}
           </select></label>
-          <button className="editor-button" onClick={openFolder}>Open folder</button>
+          <details className="editor-open-menu">
+            <summary className="editor-button">Open ▾</summary>
+            <div className="editor-open-menu-popover">
+              <button className="editor-button" onClick={() => void openFolder()}>Asset folder…</button>
+              <button className="editor-button" onClick={() => void openProjectFile()}>Project file…</button>
+              <div className="editor-open-menu-heading"><span>Recently opened</span>{recentFiles.length > 0 && <button onClick={() => { recentFilesRef.current = []; setRecentFiles([]); try { localStorage.removeItem(RECENT_FILES_KEY); } catch { /* optional */ } }}>Clear</button>}</div>
+              {recentList(8)}
+            </div>
+          </details>
           <span className={`editor-save-state is-${saveState}`} aria-live="polite">● {saveLabel}</span>
           <button className="editor-button editor-save-button" onClick={() => void saveProject()} disabled={!assetLoaded || saveState === "saving"}>Save files</button>
           <button className="editor-button" onClick={() => setHelp((value) => !value)} title="Keyboard shortcuts (?)">? Help</button>
@@ -914,7 +1061,11 @@ export function Editor() {
                 <progress value={loadPercent} max={100} />
                 <span>{loadProgress.label} · {loadPercent}%</span>
               </div>}
-              <button className="editor-button editor-start-button" onClick={openFolder}>{source && directory ? "Choose another folder" : "Open asset folder"}</button>
+              <div className="editor-start-actions">
+                <button className="editor-button editor-start-button" onClick={() => void openFolder()}>{source && directory ? "Choose another folder" : "Open asset folder"}</button>
+                <button className="editor-button editor-start-secondary" onClick={() => void openProjectFile()}>Open project file</button>
+              </div>
+              {recentFiles.length > 0 && <section className="editor-recent-start"><div className="editor-section-title"><strong>Recently opened</strong><button onClick={() => { recentFilesRef.current = []; setRecentFiles([]); try { localStorage.removeItem(RECENT_FILES_KEY); } catch { /* optional */ } }}>Clear</button></div>{recentList(5)}</section>}
             </div>
           </div>}
           <div className="editor-toolbar" role="toolbar" aria-label="Canvas tools">
@@ -1045,7 +1196,7 @@ export function Editor() {
           </section>}
         </aside>
       </main>
-      {workspace === "timeline" && assetLoaded && <TimelineWorkspace source={source} directory={directory} directories={directories} project={project} onMutate={mutate} onLive={live} onBeginEdit={beginTimelineEdit} onSave={() => saveProject()} onRegisterSave={(callback) => { timelineSaveRef.current = callback; }} onStatus={setStatus} onError={setError} />}
+      {workspace === "timeline" && assetLoaded && <TimelineWorkspace source={source} directory={directory} directories={directories} project={project} initialSubtitlePath={pendingSubtitlePath} onSubtitleOpened={() => setPendingSubtitlePath(null)} initialAudioPaths={pendingAudioPaths} onAudioOpened={() => setPendingAudioPaths(null)} onRecentFile={recordRecentFile} onMutate={mutate} onLive={live} onBeginEdit={beginTimelineEdit} onSave={() => saveProject()} onRegisterSave={(callback) => { timelineSaveRef.current = callback; }} onStatus={setStatus} onError={setError} />}
       <footer className="editor-statusbar">
         <span className={error ? "editor-error" : ""}>{error ?? status}</span>
         <span>{directory ? `${displayName(directory)} · ${files?.size ?? 0} files` : "No asset loaded"} · {testing ? "TEST MODE" : workspace === "timeline" ? "TIMELINE" : "EDIT MODE"}</span>

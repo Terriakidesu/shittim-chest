@@ -13,8 +13,9 @@ import {
 } from "./editorModel";
 import type { DesktopAssetSource } from "./desktopSource";
 import { audioPlaybackDecision, decodedAudioTiming } from "./audioModel";
-import { animationEndForLayer, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
+import { animationEndForLayer, openingPhaseTimings, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
 import { serializeSubtitleDocument } from "./subtitleDocument";
+import type { RecentFile } from "./recentFiles";
 
 const TIMELINE_SCALE = 96;
 const MIN_TIMELINE_DURATION = 1;
@@ -50,6 +51,11 @@ interface TimelineWorkspaceProps {
   directory: string;
   directories: string[];
   project: EditorProject | null;
+  initialSubtitlePath?: string | null;
+  onSubtitleOpened: () => void;
+  initialAudioPaths?: string[] | null;
+  onAudioOpened: () => void;
+  onRecentFile: (item: Omit<RecentFile, "lastOpened"> & { lastOpened?: number }) => void;
   onMutate: (mutator: (current: EditorProject) => EditorProject) => void;
   onLive: (mutator: (current: EditorProject) => EditorProject) => void;
   onBeginEdit: () => void;
@@ -193,6 +199,10 @@ function roleLabel(role: TimelineLayerRole): string {
   return role === "background" ? "BG" : role === "scene" ? "SCENE" : role === "character" ? "CHAR" : "OVERLAY";
 }
 
+function openingPhaseLabel(id: OpeningPhaseTiming["id"]): string {
+  return id === "scene" ? "Scene lead-in" : id === "intro" ? "Character intro" : "Idle hold";
+}
+
 function importedText(value: unknown): Record<TimelineLanguage, string> {
   if (!value || typeof value !== "object") return { en: "", ja: "", ko: "" };
   const item = value as Record<string, unknown>;
@@ -279,7 +289,7 @@ async function findAudioFile(source: DesktopAssetSource, path: string): Promise<
   return null;
 }
 
-export function TimelineWorkspace({ source, directory, directories, project, onMutate, onLive, onBeginEdit, onSave, onRegisterSave, onStatus, onError }: TimelineWorkspaceProps) {
+export function TimelineWorkspace({ source, directory, directories, project, initialSubtitlePath, onSubtitleOpened, initialAudioPaths, onAudioOpened, onRecentFile, onMutate, onLive, onBeginEdit, onSave, onRegisterSave, onStatus, onError }: TimelineWorkspaceProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -306,6 +316,8 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   const projectRef = useRef<EditorProject | null>(project);
   const sourceRef = useRef<DesktopAssetSource | null>(source);
   const subtitleSaveQueueRef = useRef(Promise.resolve());
+  const openedSubtitleRef = useRef("");
+  const openedAudioRef = useRef("");
   projectRef.current = project;
   sourceRef.current = source;
 
@@ -318,6 +330,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   const selectedAudio = timeline?.audio.find((clip) => clip.id === selectedAudioId) ?? null;
   const layerDirectoriesKey = displayLayers.map((layer) => layer.directory).join("|");
   const characterMeta = displayLayers.map((layer) => layer.role === "character" ? metas[layer.id] : null).find(Boolean);
+  const characterLayer = displayLayers.find((layer) => layer.role === "character");
   const animations = characterMeta?.animations ?? [];
   const sequenceIds = [...new Set(["opening", ...animations.filter((name) => /talk[_ -]?\d+/i.test(name)).map(talkSequenceId), ...Object.keys(project?.sequences ?? {}).filter((id) => id !== "legacy")])];
 
@@ -332,10 +345,24 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   }
 
   const talkLayers = timeline?.sequenceId?.startsWith("talk-") ? displayLayers.filter((layer) => layer.role === "character") : [];
-  const duration = talkLayers.length > 0
-    ? talkSequenceDuration(talkLayers, animationDurations, layerAnimation)
+  const duration = timeline?.sequenceId === "opening"
+    ? Math.max(MIN_TIMELINE_DURATION, timeline.duration ?? 12)
+    : talkLayers.length > 0
+      ? talkSequenceDuration(talkLayers, animationDurations, layerAnimation)
     : Math.max(MIN_TIMELINE_DURATION, timeline?.duration ?? 12, ...displayLayers.map(layerEnd));
   const trackWidth = Math.max(640, duration * TIMELINE_SCALE * zoom + 48);
+  const openingMode = timeline?.openingMode ?? "direct";
+  const introAnimation = characterMeta?.introAnimation ?? "";
+  const introDuration = characterLayer && introAnimation ? animationDurations[`${characterLayer.id}:${introAnimation}`] ?? 0 : 0;
+  const openingIdleDuration = Math.max(0, timeline?.openingIdleDuration ?? 3);
+  const openingAutoDuration = Math.max(MIN_TIMELINE_DURATION, (openingMode === "scene-first" ? Math.max(0, timeline?.sceneDuration ?? 3) : 0) + (openingMode === "skip" ? 0 : introDuration) + openingIdleDuration);
+  const openingPhases = timeline?.sequenceId === "opening" ? openingPhaseTimings(openingMode, timeline.sceneDuration ?? 3, introDuration, duration) : [];
+
+  useEffect(() => {
+    if (!timeline || timeline.sequenceId !== "opening" || timeline.durationMode !== "auto" || !characterMeta || (introAnimation && introDuration <= 0)) return;
+    if (Math.abs(timeline.duration - openingAutoDuration) < 0.01) return;
+    updateTimeline((value) => ({ ...value, duration: openingAutoDuration }), false);
+  }, [characterMeta, duration, openingAutoDuration, introAnimation, introDuration, timeline]);
 
   function onAnimationDuration(layerId: string, animation: string, animationDuration: number) {
     const key = `${layerId}:${animation}`;
@@ -344,6 +371,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
     const currentLayer = currentTimeline?.layers.find((layer) => layer.id === layerId);
     if (!currentTimeline || !currentLayer || currentLayer.endMode === "manual") return;
     const talkCharacter = currentTimeline.sequenceId?.startsWith("talk-") && currentLayer.role === "character";
+    if (!talkCharacter && currentLayer.loop) return;
     const effectiveLayer = talkCharacter ? { ...currentLayer, loop: false } : currentLayer;
     const nextEnd = animationEndForLayer(effectiveLayer, animationDuration);
     const currentTalkDuration = talkCharacter
@@ -366,6 +394,20 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   function chooseSequence(id: string) {
     onMutate((current) => switchSequence(current, id, animations, directories));
     setCurrentTime(0); setPlaying(false); setPreviewUntil(null); setSelectedAudioId(null); setInspector("sequence");
+  }
+
+  function previewOpeningPhase(phase: OpeningPhaseTiming) {
+    setCurrentTime(phase.start);
+    setPreviewUntil(Math.max(phase.start + 0.01, phase.end));
+    setPlaying(true);
+    setInspector("sequence");
+  }
+
+  function stepOpeningPhase(direction: -1 | 1) {
+    if (!openingPhases.length) return;
+    const index = openingPhases.findIndex((phase) => currentTime >= phase.start && currentTime < phase.end);
+    const next = openingPhases[Math.max(0, Math.min(openingPhases.length - 1, (index < 0 ? 0 : index) + direction))];
+    if (next) { setCurrentTime(next.start); setPlaying(false); setPreviewUntil(null); }
   }
 
   useEffect(() => {
@@ -447,6 +489,25 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   useEffect(() => {
     subtitleDocumentsRef.current = {};
   }, [directory, source]);
+
+  useEffect(() => {
+    if (!initialSubtitlePath) openedSubtitleRef.current = "";
+  }, [initialSubtitlePath]);
+
+  useEffect(() => {
+    if (!initialAudioPaths?.length) openedAudioRef.current = "";
+  }, [initialAudioPaths]);
+
+  useEffect(() => {
+    if (!initialSubtitlePath || !source || !project) return;
+    const key = `${source.rootPath}:${directory}:${initialSubtitlePath}`;
+    if (openedSubtitleRef.current === key) return;
+    openedSubtitleRef.current = key;
+    void source.readText(initialSubtitlePath).then((content) => {
+      if (!content) throw new Error(`Recent subtitle file is missing: ${initialSubtitlePath}`);
+      return importSubtitleFile({ path: initialSubtitlePath, content });
+    }).then(() => onSubtitleOpened()).catch((value) => onError(value instanceof Error ? value.message : String(value)));
+  }, [directory, initialSubtitlePath, onError, onSubtitleOpened, project, source]);
 
   function applyDecodedAudioDuration(id: string, decodedDuration: number) {
     const currentTimeline = timeline;
@@ -582,6 +643,36 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
     updateTimeline((value) => ({ ...value, audio: value.audio.map((clip) => clip.id === id ? { ...clip, ...patch } : clip) }), history);
   }
 
+  function addAudioFiles(selected: Array<{ path: string; file: File }>) {
+    if (!selected.length || !timeline) return;
+    const clips = selected.map(({ path, file }, index): EditorAudioClip => {
+      const id = `audio-file-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+      const start = snapTime(currentTime + index * 0.01, timeline.snap, duration);
+      const url = URL.createObjectURL(file);
+      audioUrlsRef.current[id] = url;
+      setAudioUrls((value) => ({ ...value, [id]: url }));
+      return { id, name: path.split(/[\\/]/).pop() ?? path, path, autoEnd: true, start, end: Math.min(duration, start + 2), enabled: true, volume: 1 };
+    });
+    updateTimeline((value) => ({ ...value, audio: [...value.audio, ...clips] }));
+    setSelectedAudio(clips[0]?.id ?? null);
+    onStatus(`Added ${clips.length} local audio clip${clips.length === 1 ? "" : "s"}.`);
+  }
+
+  useEffect(() => {
+    if (!initialAudioPaths?.length || !source || !project || !timeline) return;
+    const key = `${source.rootPath}:${directory}:${initialAudioPaths.join("|")}`;
+    if (openedAudioRef.current === key) return;
+    openedAudioRef.current = key;
+    void Promise.all(initialAudioPaths.map(async (path) => {
+      const file = await findAudioFile(source, path);
+      if (!file) throw new Error(`Recent audio file is missing: ${path}`);
+      return { path, file };
+    })).then((selected) => {
+      addAudioFiles(selected);
+      onAudioOpened();
+    }).catch((value) => onError(value instanceof Error ? value.message : String(value)));
+  }, [directory, initialAudioPaths, onAudioOpened, onError, project, source, timeline]);
+
   function setSelectedLayer(id: string) {
     setPreviewUntil(null); setInspector("layer"); updateTimeline((value) => ({ ...value, selectedLayerId: id }), false);
   }
@@ -611,15 +702,10 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
     onStatus(`Subtitle cue added at ${seconds(start)}.`);
   }
 
-  async function importSubtitles() {
+  async function importSubtitleFile(selected: { path: string; content: string }) {
     try {
-      let raw: Record<string, unknown>;
-      let subtitlePath: string | undefined;
-      if (!source) return;
-      const selected = await source.openText();
-      if (!selected) return;
-      raw = JSON.parse(selected.content) as Record<string, unknown>;
-      subtitlePath = selected.path;
+      const raw = JSON.parse(selected.content) as Record<string, unknown>;
+      const subtitlePath = selected.path;
       subtitleDocumentsRef.current[subtitlePath] = structuredClone(raw);
       const sourceFile = Array.isArray(raw.characters) ? raw.characters.find((item) => (item as Record<string, unknown>).directory === directory) as Record<string, unknown> : raw;
       if (!sourceFile || !Array.isArray(sourceFile.lines)) throw new Error("No matching character subtitle lines found.");
@@ -638,7 +724,18 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
         }
         return switchSequence(next, original, animations, directories);
       });
+      if (source) onRecentFile({ kind: "subtitle", path: subtitlePath, rootPath: source.rootPath, label: subtitlePath.split(/[\\/]/).pop() ?? subtitlePath, directory });
       onStatus(`Imported ${count} cues into separate talk timelines.${subtitlePath ? " Source JSON is now linked for direct saves." : " Original files unchanged."}`);
+    } catch (value) {
+      onError(value instanceof Error ? value.message : String(value));
+    }
+  }
+
+  async function importSubtitles() {
+    if (!source) return;
+    try {
+      const selected = await source.openText();
+      if (selected) await importSubtitleFile(selected);
     } catch (value) {
       onError(value instanceof Error ? value.message : String(value));
     }
@@ -648,6 +745,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
     if (!source) return [];
     try {
       const paths = await source.openAudio();
+      paths.forEach((path) => onRecentFile({ kind: "audio", path, rootPath: source.rootPath, label: path.split(/[\\/]/).pop() ?? path, directory }));
       return (await Promise.all(paths.map(async (path) => ({ path, file: await source.getFile(path) })))).filter((entry): entry is { path: string; file: File } => entry.file !== null);
     } catch (value) {
       onError(value instanceof Error ? value.message : String(value));
@@ -657,18 +755,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
 
   async function importAudio() {
     const selected = await selectAudioFiles();
-    if (!selected.length) return;
-    const clips = selected.map(({ path, file }, index): EditorAudioClip => {
-      const id = `audio-file-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
-      const start = snapTime(currentTime + index * 0.01, timeline?.snap ?? 0.1, duration);
-      const url = URL.createObjectURL(file);
-      audioUrlsRef.current[id] = url;
-      setAudioUrls((value) => ({ ...value, [id]: url }));
-      return { id, name: path.split(/[\\/]/).pop() ?? path, path, autoEnd: true, start, end: Math.min(duration, start + 2), enabled: true, volume: 1 };
-    });
-    updateTimeline((value) => ({ ...value, audio: [...value.audio, ...clips] }));
-    setSelectedAudio(clips[0]?.id ?? null);
-    onStatus(`Added ${clips.length} local audio clip${clips.length === 1 ? "" : "s"}.`);
+    addAudioFiles(selected);
   }
 
   async function relinkAudio() {
@@ -831,8 +918,13 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
           </div>
         </div>
       </aside>
-      <section className="timeline-main">
-        <div className="sequence-heading"><strong>{timeline.sequenceId === "opening" ? "Opening" : timeline.sequenceId?.startsWith("talk-") ? `Talk ${timeline.sequenceId.replace("talk-", "")}` : "Recovered composition"}</strong></div>
+       <section className="timeline-main">
+         <div className="sequence-heading"><div><strong>{timeline.sequenceId === "opening" ? "Opening / Intro" : timeline.sequenceId?.startsWith("talk-") ? `Talk ${timeline.sequenceId.replace("talk-", "")}` : "Recovered composition"}</strong><small>{timeline.sequenceId === "opening" ? "Compose the scene, character entrance, and idle hold." : "Synchronized Spine composition"}</small></div>{timeline.sequenceId === "opening" && <span className="opening-duration-badge">{timeline.durationMode === "auto" ? "AUTO" : "MANUAL"} · {seconds(duration)}</span>}</div>
+         {timeline.sequenceId === "opening" && <div className="opening-phase-strip" aria-label="Opening phases">
+           {openingPhases.map((phase) => <button key={phase.id} className={`opening-phase${currentTime >= phase.start && currentTime < phase.end ? " is-active" : ""}`} onClick={() => previewOpeningPhase(phase)} title={`Preview ${openingPhaseLabel(phase.id)}`}>
+             <span><b>{openingPhaseLabel(phase.id)}</b><small>{seconds(phase.start)}–{seconds(phase.end)}</small></span><i>▶</i>
+           </button>)}
+         </div>}
         <div className="timeline-stage-wrap">
           <div className="timeline-stage">
              {displayLayers.map((layer) => <TimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} sceneDuration={timeline.sceneDuration} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
@@ -844,10 +936,11 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
            </div>
         </div>
 
-        <div className="timeline-transport">
-           <button className="editor-icon-button" aria-label={playing ? "Pause sequence" : "Play sequence"} onClick={() => { setPreviewUntil(null); setPlaying((value) => !value); }}>{playing ? "❚❚" : "▶"}</button>
-           <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(0); setPlaying(false); }}>⏮ Start</button>
-           <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(duration); setPlaying(false); }}>End ⏭</button>
+         <div className="timeline-transport">
+            <button className="editor-icon-button" aria-label={playing ? "Pause sequence" : "Play sequence"} onClick={() => { setPreviewUntil(null); setPlaying((value) => !value); }}>{playing ? "❚❚" : "▶"}</button>
+            <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(0); setPlaying(false); }}>⏮ Start</button>
+           {timeline.sequenceId === "opening" && <><button className="editor-button" onClick={() => stepOpeningPhase(-1)} disabled={!openingPhases.length}>◀ Phase</button><button className="editor-button" onClick={() => stepOpeningPhase(1)} disabled={!openingPhases.length}>Phase ▶</button></>}
+            <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(duration); setPlaying(false); }}>End ⏭</button>
           <label className="editor-speed">Speed <input type="number" min="0.1" max="3" step="0.1" value={speed} onChange={(event) => setSpeed(Math.max(0.1, Number(event.target.value) || 1))} /></label>
           <label className="timeline-loop"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop</label>
           <span className="editor-time">{seconds(currentTime)} / {seconds(duration)}</span>
@@ -911,9 +1004,17 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
       <aside className="editor-panel timeline-inspector">
         {inspector === "sequence" && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Sequence settings</strong><span>{seconds(duration)}</span></div>
-          <label>Length (s)<input type="number" min="1" step="0.1" value={Number(timeline.duration.toFixed(3))} onChange={(event) => updateTimeline((value) => ({ ...value, duration: Math.max(1, Number(event.target.value) || 1) }))} /></label>
-          <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop sequence</span></label>
-          {timeline.sequenceId === "opening" && <><label>Opening flow<select value={timeline.openingMode ?? "direct"} onChange={(event) => updateTimeline((value) => ({ ...value, openingMode: event.target.value as "direct" | "scene-first" | "skip" }))}><option value="scene-first">Scene first → Intro → Idle</option><option value="direct">Direct Intro → Idle</option><option value="skip">Skip intro → Idle</option></select></label>{timeline.openingMode === "scene-first" && <label>Scene lead-in (s)<input type="number" min="0" step="0.1" value={Number((timeline.sceneDuration ?? 3).toFixed(3))} onChange={(event) => updateTimeline((value) => ({ ...value, sceneDuration: Math.max(0, Number(event.target.value) || 0) }))} /></label>}</>}
+           <label>{timeline.sequenceId === "opening" ? "Total duration (s)" : "Length (s)"}<input type="number" min="1" step="0.1" value={Number(timeline.duration.toFixed(3))} disabled={timeline.sequenceId === "opening" && timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: value.sequenceId === "opening" ? "manual" : value.durationMode, duration: Math.max(1, Number(event.target.value) || 1) }))} /></label>
+           <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop sequence</span></label>
+           {timeline.sequenceId === "opening" && <div className="opening-flow-editor">
+             <div className="editor-subheading">Opening flow</div>
+             <p className="editor-muted">Preview and tune each phase without guessing where the character entrance begins.</p>
+             <label>Flow preset<select value={timeline.openingMode ?? "direct"} onChange={(event) => updateTimeline((value) => ({ ...value, openingMode: event.target.value as "direct" | "scene-first" | "skip" }))}><option value="scene-first">Scene → Intro → Idle</option><option value="direct">Intro → Idle</option><option value="skip">Idle only</option></select></label>
+             {timeline.openingMode === "scene-first" && <label>Scene lead-in (s)<input type="number" min="0" step="0.1" value={Number((timeline.sceneDuration ?? 3).toFixed(3))} onChange={(event) => updateTimeline((value) => ({ ...value, sceneDuration: Math.max(0, Number(event.target.value) || 0) }))} /></label>}
+             <div className="opening-intro-card"><span>Character intro animation</span><strong>{introAnimation || "No intro animation"}</strong><small>{introAnimation ? introDuration > 0 ? `${seconds(introDuration)} actual Spine duration` : "Reading Spine animation duration…" : "This asset set will go straight to idle."}</small></div>
+             <div className="editor-two-fields"><label>Idle hold (s)<input type="number" min="0" step="0.1" value={Number(openingIdleDuration.toFixed(3))} onChange={(event) => updateTimeline((value) => ({ ...value, openingIdleDuration: Math.max(0, Number(event.target.value) || 0), duration: value.durationMode === "auto" ? value.duration : Math.max(1, (value.openingMode === "scene-first" ? value.sceneDuration ?? 3 : 0) + (value.openingMode === "skip" ? 0 : introDuration) + Math.max(0, Number(event.target.value) || 0)) }))} /></label><label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: event.target.checked ? "auto" : "manual", duration: event.target.checked ? openingAutoDuration : value.duration }))} /> Automatic total</span><small className="editor-field-hint">{timeline.durationMode === "auto" ? `Updates to ${seconds(openingAutoDuration)}` : "Manual override"}</small></label></div>
+             <div className="opening-phase-summary">{openingPhases.map((phase) => <button key={phase.id} onClick={() => previewOpeningPhase(phase)}><b>{openingPhaseLabel(phase.id)}</b><span>{seconds(phase.end - phase.start)}</span></button>)}</div>
+           </div>}
           <div className="timeline-context-summary"><span>Layers <b>{displayLayers.length}</b></span><span>Subtitles <b>{timeline.subtitles.length}</b></span><span>Audio <b>{timeline.audio.length}</b></span></div>
           <p className="editor-muted">Select a clip in the timeline to edit its properties. Add content from the <b>＋ Add</b> menu.</p>
           {timeline.subtitles.some((cue, index, all) => all.some((other, j) => index !== j && cue.start < other.end && cue.end > other.start)) && <p className="editor-error">Overlapping subtitle cues: review timing before export.</p>}

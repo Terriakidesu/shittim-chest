@@ -1,5 +1,13 @@
 import { ensureTimelineLayers, type EditorProject, type EditorTimeline, type EditorTimelineLayer } from "./editorModel";
 
+export type OpeningPhaseId = "scene" | "intro" | "idle";
+
+export interface OpeningPhaseTiming {
+  id: OpeningPhaseId;
+  start: number;
+  end: number;
+}
+
 /** Resolve a non-looping layer's visible end from the actual Spine animation. */
 export function animationEndForLayer(layer: Pick<EditorTimelineLayer, "start" | "end" | "endMode" | "loop" | "animationOffset">, animationDuration: number): number {
   if (layer.loop || layer.endMode === "manual" || !Number.isFinite(animationDuration) || animationDuration <= 0) return layer.end;
@@ -20,6 +28,23 @@ export function talkSequenceDuration(
   )));
 }
 
+export function openingPhaseTimings(mode: "scene-first" | "direct" | "skip", sceneDuration: number, introDuration: number, totalDuration: number): OpeningPhaseTiming[] {
+  const phases: OpeningPhaseTiming[] = [];
+  const safeScene = Math.max(0, sceneDuration);
+  const safeIntro = mode === "skip" ? 0 : Math.max(0, introDuration);
+  let cursor = 0;
+  if (mode === "scene-first" && safeScene > 0) {
+    phases.push({ id: "scene", start: 0, end: safeScene });
+    cursor = safeScene;
+  }
+  if (safeIntro > 0) {
+    phases.push({ id: "intro", start: cursor, end: cursor + safeIntro });
+    cursor += safeIntro;
+  }
+  phases.push({ id: "idle", start: cursor, end: Math.max(cursor, totalDuration) });
+  return phases;
+}
+
 export function talkSequenceId(animation: string): string {
   const number = animation.match(/talk[_ -]?(\d+)/i)?.[1];
   return number ? `talk-${Number(number)}` : "opening";
@@ -37,7 +62,7 @@ export function switchSequence(project: EditorProject, id: string, animations: s
     const animation = id === "opening" ? "" : main ?? animations.find((name) => talkSequenceId(name) === id) ?? `Talk_${number.padStart(2, "0")}_M`;
     next = {
       ...structuredClone(project.timeline), sequenceId: id, duration: 12, loop: false,
-      openingMode: "direct", sceneDuration: 3,
+      openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3, durationMode: id === "opening" ? "auto" : "manual",
       subtitles: [], audio: [], selectedCueId: null,
       layers: project.timeline.layers.map((layer) => ({ ...layer, start: 0, end: 12, animation: layer.role === "character" ? animation : "", faceAnimation: layer.role === "character" ? face ?? "" : "", loop: id === "opening" })),
     };
@@ -47,6 +72,9 @@ export function switchSequence(project: EditorProject, id: string, animations: s
       ...next,
       layers: next.layers.map((layer) => layer.role === "character" && layer.endMode !== "manual" ? { ...layer, loop: false } : layer),
     };
+  }
+  if (id === "opening") {
+    next = { ...next, openingIdleDuration: next.openingIdleDuration ?? 3, durationMode: next.durationMode ?? "manual" };
   }
   return { ...project, sequences, timeline: ensureTimelineLayers(next, project.assetDirectory, directories) };
 }

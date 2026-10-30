@@ -91,6 +91,8 @@ export interface EditorTimeline {
   subtitlePath?: string;
   openingMode?: "scene-first" | "direct" | "skip";
   sceneDuration?: number;
+  openingIdleDuration?: number;
+  durationMode?: "auto" | "manual";
   duration: number;
   loop: boolean;
   layers: EditorTimelineLayer[];
@@ -354,6 +356,7 @@ function createTimeline(directory: string): EditorTimeline {
   const character = createTimelineLayer(directory, "character", defaultLayerOrder("character"), duration);
   return {
     duration,
+    durationMode: "manual",
     loop: true,
     layers: [character],
     subtitles: [],
@@ -491,6 +494,8 @@ export function normalizeTimeline(value: unknown, directory: string): EditorTime
     subtitlePath: typeof raw.subtitlePath === "string" ? raw.subtitlePath : undefined,
     openingMode: raw.openingMode === "scene-first" || raw.openingMode === "skip" ? raw.openingMode : "direct",
     sceneDuration: finiteNumber(raw.sceneDuration, 3, 0),
+    openingIdleDuration: finiteNumber(raw.openingIdleDuration, 3, 0),
+    durationMode: raw.durationMode === "auto" ? "auto" : "manual",
     layers,
     subtitles,
     audio,

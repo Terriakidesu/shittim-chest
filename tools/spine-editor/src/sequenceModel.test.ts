@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createProject, normalizeProject } from "./editorModel";
-import { animationEndForLayer, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
+import { animationEndForLayer, openingPhaseTimings, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
 
 test("talk sequences pair body and face and isolate subtitle clocks", () => {
   const animations = ["Idle_01", "Talk_01_M", "Talk_01_A", "Talk_02_M", "Talk_02_A"];
@@ -64,4 +64,13 @@ test("non-looping timeline layers follow the real Spine duration unless manually
 test("talk playback duration follows character animation instead of a long audio clip", () => {
   const layer = { ...createProject("Airi_home", [], []).timeline.layers[0]!, animation: "Talk_01_M", end: 20, loop: true };
   expect(talkSequenceDuration([layer], { [`${layer.id}:Talk_01_M`]: 2.75 }, () => "Talk_01_M")).toBe(2.75);
+});
+
+test("opening phases keep scene, intro, and idle boundaries explicit", () => {
+  expect(openingPhaseTimings("scene-first", 3, 2.5, 10)).toEqual([
+    { id: "scene", start: 0, end: 3 },
+    { id: "intro", start: 3, end: 5.5 },
+    { id: "idle", start: 5.5, end: 10 },
+  ]);
+  expect(openingPhaseTimings("skip", 3, 2.5, 4)).toEqual([{ id: "idle", start: 0, end: 4 }]);
 });

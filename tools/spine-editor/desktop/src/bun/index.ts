@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
-import { basename, extname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { ApplicationMenu, BrowserWindow, Utils } from "electrobun/main";
 
 let assetRoot: string | null = null;
@@ -45,6 +45,14 @@ async function catalog(): Promise<SpineSet[]> {
   return [...unique.values()].sort((a, b) => a.directory.localeCompare(b.directory, undefined, { sensitivity: "base" }));
 }
 
+async function useRoot(path: string): Promise<string> {
+  const root = resolve(path);
+  const entries = await readdir(root, { withFileTypes: true });
+  if (!entries.some((entry) => entry.isDirectory() || /\.(?:atlas|skel)$/i.test(entry.name))) throw new Error("The recent folder is empty or is not an asset root.");
+  assetRoot = root;
+  return root;
+}
+
 async function setFiles(directory: string): Promise<string[]> {
   const full = rootRelativePath(directory === "." ? "" : directory);
   return (await readdir(full, { withFileTypes: true }))
@@ -82,6 +90,11 @@ async function api(request: Request, url: URL): Promise<Response> {
       assetRoot = selected[0] ?? null;
       return json({ rootPath: assetRoot });
     }
+    if (url.pathname === "/__spine/use-root" && request.method === "POST") {
+      const body = await request.json() as { rootPath?: unknown };
+      if (typeof body.rootPath !== "string" || !body.rootPath) return errorResponse("A recent asset root is required.");
+      return json({ rootPath: await useRoot(body.rootPath) });
+    }
     if (url.pathname === "/__spine/open-file" && request.method === "POST") {
       if (!assetRoot) throw new Error("Choose an asset root first.");
       const selected = await Utils.openFileDialog({
@@ -97,6 +110,21 @@ async function api(request: Request, url: URL): Promise<Response> {
       const full = resolve(absolute);
       if (full !== root && !full.startsWith(`${root}${sep}`)) throw new Error("Choose a file inside the selected asset root.");
       return json({ path: relative(root, full).replaceAll(sep, "/"), content: await readFile(full, "utf8") });
+    }
+    if (url.pathname === "/__spine/open-project" && request.method === "POST") {
+      const selected = await Utils.openFileDialog({
+        startingFolder: assetRoot ?? Utils.paths.home,
+        allowedFileTypes: "json",
+        canChooseFiles: true,
+        canChooseDirectory: false,
+        allowsMultipleSelection: false,
+      });
+      const absolute = selected[0];
+      if (!absolute) return json({ rootPath: null, path: null, content: null });
+      const full = resolve(absolute);
+      const projectDirectory = basename(dirname(full)) === ".shittim-spine-editor" ? dirname(dirname(full)) : dirname(full);
+      assetRoot = await useRoot(projectDirectory);
+      return json({ rootPath: assetRoot, path: relative(assetRoot, full).replaceAll(sep, "/"), content: await readFile(full, "utf8") });
     }
     if (url.pathname === "/__spine/open-audio" && request.method === "POST") {
       if (!assetRoot) throw new Error("Choose an asset root first.");
