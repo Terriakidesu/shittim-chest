@@ -1,16 +1,28 @@
-# Private Spine interaction editor
+# Private desktop Spine editor and timeline composer
 
-This tool is local-only and is intentionally outside the GitHub Pages build.
-From the repository root:
+This tool is local-only desktop development tooling and is intentionally outside
+the GitHub Pages build. The normal site build never imports it, and the root
+package must not gain desktop-only dependencies just to publish the calendar.
+The React/Spine surface is bundled into the native Electrobun window; there is
+no supported browser editor.
+
+Install the optional native toolchain once:
 
 ```bash
-bun run editor
+cd tools/spine-editor/desktop
+bun install
+bunx electrobun prepare
 ```
 
-Open the local URL, choose a Spine asset folder, and author regions and
-animation phases. Projects autosave to browser storage and can be exported as
-versioned JSON for review or reuse. The tool reads the selected folder directly
-in the browser; it does not upload assets or make network requests.
+From the repository root, launch the desktop editor with:
+
+```bash
+bun run editor:desktop
+```
+
+Choose a Spine asset folder in the native window, then author regions and
+animation phases. The desktop host reads local files through its native Bun
+bridge and does not upload assets or make network requests.
 
 ## Workflow
 
@@ -28,10 +40,38 @@ in the browser; it does not upload assets or make network requests.
    live state and movement target appear below the canvas. Body/face animations
    run over idle and movement uses the configured sensitivity, limits and easing.
    Press triggers play once; Hold triggers start immediately; Drag triggers wait
-   for movement. Project changes apply on the next press. Reset idle or Escape
-   cancels the test; losing window focus releases a held interaction.
+    for movement. Project changes apply on the next press. Reset idle or Escape
+    cancels the test; losing window focus releases a held interaction.
 
-The workspace fits the browser window. Each side panel scrolls independently;
+## Timeline composition
+
+Choose **Timeline** in the header to open the composition workspace. When the
+selected set is named like `Airi_home`, matching `Airi_bg` and `Airi_scene`
+directories are discovered automatically. Each set remains a real Spine
+instance and is rendered as a synchronized layer; the shared playhead drives
+all layers together rather than flattening them into images.
+
+- Drag layer blocks to change their start time; use the inspector for exact
+  start/end times, animation, looping, order, position, scale, opacity, and
+  visibility. Non-looping layers use the actual Spine animation end by default;
+  enter a manual end time when a deliberate hold or early cut is needed.
+- Add subtitle cues, drag their body to move them, drag either edge to resize
+  them, or enter exact timestamps. English, Japanese, and Korean text are kept
+  independently in the project.
+- Import the generated `subtitles.json` files to bring in subtitle markers and
+  their audio paths, or add local audio clips for a session and edit their
+  timing, volume, and enabled state in the Audio track.
+- In the native desktop host, switch character sets from the shared header picker;
+  decoded voice duration expands each imported audio block and the linked
+  subtitle JSON is saved back in place. **Save files** writes the companion
+  project JSON under `.shittim-spine-editor/` in the selected asset root.
+- Change the shared duration, snap interval, playback speed, and layer order.
+
+Timeline edits are part of the same local, versioned project JSON as the
+interaction edits. They are non-destructive: the source `.atlas`, `.skel`, and
+texture files are never rewritten.
+
+The workspace fits the desktop window. Each side panel scrolls independently;
 drag its divider to resize, double-click the divider to reset, or use the canvas
 toolbar to hide a panel. Focused dividers also respond to arrow keys. Pan mode
 drags the view, the wheel zooms, and Fit (or a canvas double-click) restores framing.
@@ -59,22 +99,11 @@ Shortcuts are ignored while typing in a field.
 | Escape | Cancel test, return to idle/Edit, close help |
 | Ctrl/⌘ Z / Shift Z | Undo / Redo |
 | Ctrl/⌘ D | Duplicate selected region |
-| Ctrl/⌘ S | Export JSON backup |
+| Ctrl/⌘ S | Save project and linked subtitle files |
 | Delete / Backspace | Delete selected region (Edit mode) |
 | ? | Show/hide quick help |
 
-Existing version-1 projects remain compatible. Exported JSON can be imported
-back into this editor; the published viewer does **not** consume custom projects.
+Existing version-1 projects remain compatible. Project companions are kept
+under the selected asset root; the published viewer does **not** consume custom
+projects.
 Neither this editor nor its assets are included in the root Pages build.
-
-## Bulk repair for old patting defaults
-
-Older editor versions placed every generated patting ellipse on `Touch_Point`,
-which is a movement controller and can be far below the head. **Repair saved
-defaults** scans only projects already saved in the currently opened asset-folder
-source. It detects visible face/head artwork per skeleton, moves only untouched
-generated defaults, and leaves custom, moved, resized, renamed, disabled, or
-rebound regions unchanged. The operation keeps a browser-storage backup; use
-**Undo bulk repair** immediately if the result needs review. Rigs without a
-reliable head candidate are reported and their uncertain default is disabled,
-never guessed onto the body.

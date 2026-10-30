@@ -9,9 +9,9 @@
     "export": "bun run scripts/export.ts",
     "dev": "vite",
     "build": "vite build",
-    "editor": "vite --config tools/spine-editor/vite.config.ts",
-    "editor:build": "vite build --config tools/spine-editor/vite.config.ts",
     "editor:typecheck": "tsc --noEmit -p tools/spine-editor/tsconfig.json",
+    "editor:desktop": "bun --cwd=tools/spine-editor/desktop run dev",
+    "editor:desktop:build": "bun --cwd=tools/spine-editor/desktop run build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "bun test"

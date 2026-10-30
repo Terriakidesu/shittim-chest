@@ -2,3 +2,17 @@ node_modules/
 dist/
 .DS_Store
 *.log
+
+# The Spine editor is private development tooling, but its source, manifests,
+# and lockfiles are committed. Ignore only generated builds and installations.
+tools/spine-editor/dist/
+tools/spine-editor/.vite/
+tools/spine-editor/desktop/.hutch/
+tools/spine-editor/desktop/.cottontail-tmp/
+tools/spine-editor/desktop/node_modules/
+tools/spine-editor/desktop/artifacts/
+tools/spine-editor/desktop/build/
+tools/spine-editor/desktop/dist/
+
+# Native editor autosave companions are user data, not editor source.
+.shittim-spine-editor/

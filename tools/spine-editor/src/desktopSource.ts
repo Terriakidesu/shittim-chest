@@ -1,0 +1,65 @@
+import type { SpineFiles } from "../../../src/client/spine/spineRuntime";
+import type { AssetSource } from "../../../src/client/spine/spineAssets";
+
+interface SpineSet { directory: string; path: string }
+interface Catalog { rootPath: string | null; sets: SpineSet[] }
+
+export interface DesktopAssetSource extends AssetSource {
+  readonly desktop: true;
+  readonly rootPath: string;
+  openText: () => Promise<{ path: string; content: string } | null>;
+  openAudio: () => Promise<string[]>;
+  saveText: (path: string, content: string) => Promise<void>;
+}
+
+async function request(path: string, init?: RequestInit): Promise<Response> {
+  const response = await fetch(path, init);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `Desktop editor request failed (${response.status}).`);
+  }
+  return response;
+}
+
+async function loadFile(path: string): Promise<File | null> {
+  const response = await fetch(`/__spine/file?path=${encodeURIComponent(path)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Could not read ${path}.`);
+  const blob = await response.blob();
+  return new File([blob], path.split("/").at(-1) ?? "asset");
+}
+
+export async function chooseDesktopSource(): Promise<DesktopAssetSource | null> {
+  const selected = await request("/__spine/open-root", { method: "POST" }).then((response) => response.json()) as { rootPath: string | null };
+  if (!selected.rootPath) return null;
+  return sourceFromDesktop(selected.rootPath);
+}
+
+export function sourceFromDesktop(rootPath: string): DesktopAssetSource {
+  let catalogPromise: Promise<Catalog> | null = null;
+  const loadCatalog = () => catalogPromise ??= request("/__spine/catalog").then((response) => response.json() as Promise<Catalog>);
+  return {
+    desktop: true,
+    rootPath,
+    getDirectories: async () => (await loadCatalog()).sets.map((set) => set.directory),
+    getSetFiles: async (directory) => {
+      const set = (await loadCatalog()).sets.find((item) => item.directory === directory);
+      if (!set) throw new Error(`Spine directory not found: ${directory}`);
+      const files = await request(`/__spine/files?directory=${encodeURIComponent(set.path)}`).then((response) => response.json()) as { files: string[] };
+      const entries = await Promise.all(files.files.map(async (name) => [name, await loadFile(set.path === "." ? name : `${set.path}/${name}`)] as const));
+      return new Map(entries.filter((entry): entry is [string, File] => entry[1] !== null)) as SpineFiles;
+    },
+    getFile: loadFile,
+    openText: async () => {
+      const selected = await request("/__spine/open-file", { method: "POST" }).then((response) => response.json()) as { path: string | null; content: string | null };
+      return selected.path && selected.content !== null ? { path: selected.path, content: selected.content } : null;
+    },
+    openAudio: async () => {
+      const selected = await request("/__spine/open-audio", { method: "POST" }).then((response) => response.json()) as { paths?: unknown };
+      return Array.isArray(selected.paths) ? selected.paths.filter((path): path is string => typeof path === "string") : [];
+    },
+    saveText: async (path, content) => {
+      await request("/__spine/save", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path, content }) });
+    },
+  };
+}

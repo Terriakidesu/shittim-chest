@@ -20,6 +20,7 @@ ships the static subset that can be hosted on GitHub Pages.
 | `scripts/weekly-refresh.sh` | Weekly refresh: export → commit to `main` → republish `gh-pages`. |
 | `scripts/og/template.html` | Source for the social card images in `public/og/`. Rendered offline, not built. |
 | `scripts/pageslike-server.py` | Serves `dist/` the way GitHub Pages does (extensionless URLs, `404.html` fallback), for local routing checks. |
+| `tools/spine-editor/` | Private, development-only Spine interaction/timeline editor; never included in the Pages build. Its optional desktop host is isolated below this directory. |
 | [`shittim-chest-cron`](https://github.com/Terriakides/shittim-chest-cron) | Org-hosted scheduler that runs `weekly-refresh.sh`, for when this repo's own Actions runners are unavailable. |
 | `public/data/` | Generated forecast snapshots, committed by the weekly refresh. |
 | `public/img/` | Locally bundled artwork (avatars, portraits, banners, mascots, emblems). The client never loads images from upstream hosts. |
@@ -42,6 +43,17 @@ bun run test       # bun test unit tests
 
 `bun run export --skip-images` refreshes the JSON without touching artwork.
 Both `export` variants need network access.
+
+The Spine editor is opt-in desktop-only development tooling. It is packaged as
+an Electrobun window and has no supported browser launch. The normal root
+`bun install` and `bun run build` do not install or run its optional
+Electrobun/Hutch toolchain. Install that toolchain from
+`tools/spine-editor/desktop/` instead of adding those dependencies to the root
+package.
+
+After opting into the native toolchain in `tools/spine-editor/desktop/`, its
+convenience commands are `bun run editor:desktop` and
+`bun run editor:desktop:build`.
 Student reveal profiles (combat class, weapon, birthday, voice actor and English
 recruitment dialogue) come from wiki character infoboxes and `/audio` pages,
 joined by numeric student ID. `bun run scripts/student-profiles.ts` regenerates

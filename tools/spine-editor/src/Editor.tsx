@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   SpineRenderer,
   type SpineEditorFrame,
@@ -13,7 +13,6 @@ import {
   createProject,
   DEFAULT_EDITOR_VIEW_SETTINGS,
   EDITOR_VIEW_SETTINGS_KEY,
-  EDITOR_SCHEMA_VERSION,
   normalizeProject,
   normalizeViewSettings,
   projectStorageKey,
@@ -29,69 +28,10 @@ import "./editor.css";
 import { InteractionPreview } from "./preview";
 import { hitRegion, inversePoint, regionMatrix, screenToWorld } from "./geometry";
 import { findInteractionProfile } from "../../../src/client/spine/spineInteraction";
-import { detectHeadRegion, repairPatRegions, repairSavedHeadRegions, undoSavedHeadRepair, HEAD_REPAIR_BACKUP, type HeadRegion } from "./headRegion";
-
-interface AssetSource {
-  getDirectories: () => Promise<string[]>;
-  getSetFiles: (directory: string) => Promise<SpineFiles>;
-}
-
-type DirectoryPickerWindow = Window & { showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle> };
-type DirectoryHandleWithEntries = FileSystemDirectoryHandle & { entries: () => AsyncIterableIterator<[string, FileSystemHandle]> };
-type WebkitFile = File & { webkitRelativePath?: string };
-
-function sourceFromDirectory(handle: FileSystemDirectoryHandle): AssetSource {
-  return {
-    getDirectories: async () => {
-      const directories: string[] = [];
-      let hasRootAssets = false;
-      for await (const [name, entry] of (handle as DirectoryHandleWithEntries).entries()) {
-        if (entry.kind === "directory") directories.push(name);
-        else if (/\.(?:atlas|skel)$/i.test(name)) hasRootAssets = true;
-      }
-      if (hasRootAssets) directories.unshift(handle.name);
-      return directories.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-    },
-    getSetFiles: async (directory) => {
-      const folder = handle.name === directory ? handle : await handle.getDirectoryHandle(directory);
-      const files: SpineFiles = new Map();
-      for await (const [name, entry] of (folder as DirectoryHandleWithEntries).entries()) {
-        if (entry.kind === "file") files.set(name, await (entry as FileSystemFileHandle).getFile());
-      }
-      return files;
-    },
-  };
-}
-
-function sourceFromInput(fileList: FileList): AssetSource {
-  const rootName = (fileList[0] as WebkitFile | undefined)?.webkitRelativePath?.split("/")[0];
-  const importedName = rootName || "Imported set";
-  const files = [...fileList].map((file) => {
-    const path = (file as WebkitFile).webkitRelativePath || file.name;
-    const slash = path.indexOf("/");
-    return { path: slash === -1 ? path : path.slice(slash + 1), file };
-  });
-  return {
-    getDirectories: async () => {
-      const directories = new Set<string>();
-      for (const { path } of files) {
-        const slash = path.indexOf("/");
-        directories.add(slash === -1 ? importedName : path.slice(0, slash));
-      }
-      directories.delete("");
-      return [...directories].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-    },
-    getSetFiles: async (directory) => {
-      const prefix = `${directory}/`;
-      const rootSelection = !rootName || rootName === directory;
-      return new Map(
-        files
-          .filter(({ path }) => rootSelection || path.startsWith(prefix))
-          .map(({ path, file }) => [rootSelection ? path : path.slice(prefix.length), file]),
-      );
-    },
-  };
-}
+import { detectHeadRegion, repairPatRegions, type HeadRegion } from "./headRegion";
+import { TimelineWorkspace } from "./TimelineWorkspace";
+import { LEGACY_PROJECT_STORAGE_PREFIX } from "./editorModel";
+import { chooseDesktopSource, type DesktopAssetSource } from "./desktopSource";
 
 function displayName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -104,27 +44,6 @@ function readStoredViewSettings(): EditorViewSettings | null {
   } catch {
     return null;
   }
-}
-
-const PROJECT_STORAGE_PREFIX = projectStorageKey("");
-
-function readStoredProjects(current: EditorProject | null): EditorProject[] {
-  const projects = new Map<string, EditorProject>();
-  try {
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (!key?.startsWith(PROJECT_STORAGE_PREFIX)) continue;
-      const directory = key.slice(PROJECT_STORAGE_PREFIX.length);
-      if (!directory) continue;
-      const stored = localStorage.getItem(key);
-      const normalized = stored ? normalizeProject(JSON.parse(stored) as unknown, directory) : null;
-      if (normalized) projects.set(directory, normalized);
-    }
-  } catch {
-    // A single malformed or unavailable storage entry should not block export.
-  }
-  if (current?.assetDirectory) projects.set(current.assetDirectory, current);
-  return [...projects.values()].sort((a, b) => a.assetDirectory.localeCompare(b.assetDirectory, undefined, { sensitivity: "base" }));
 }
 
 interface BoneOverlayProps {
@@ -302,8 +221,6 @@ function BoneOverlay({ frame, project, viewSettings, tool, onSelectBone, onSelec
 
 export function Editor() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const projectInputRef = useRef<HTMLInputElement>(null);
   const rendererRef = useRef<SpineRenderer | null>(null);
   const metaRef = useRef<SpineMeta | null>(null);
   const directoryRef = useRef("");
@@ -314,9 +231,6 @@ export function Editor() {
   const testPointerRef = useRef<number | null>(null);
   const headRegionRef = useRef<HeadRegion | null>(null);
   const headDetectionDone = useRef(false);
-  const repairAbortRef = useRef<AbortController | null>(null);
-  const [repairing, setRepairing] = useState(false);
-  const [hasRepairBackup, setHasRepairBackup] = useState(() => { try { return Boolean(localStorage.getItem(HEAD_REPAIR_BACKUP)); } catch { return false; } });
   const drawRef = useRef<{ x: number; y: number } | null>(null);
   const [drawBox, setDrawBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const panelDragRef = useRef<{ side: "left" | "right"; x: number; width: number } | null>(null);
@@ -329,9 +243,9 @@ export function Editor() {
   const [leftHidden, setLeftHidden] = useState(false);
   const [rightHidden, setRightHidden] = useState(false);
   const [help, setHelp] = useState(false);
-  const [assetSearch, setAssetSearch] = useState("");
+  const [workspace, setWorkspace] = useState<"interaction" | "timeline">("interaction");
   const [previewStatus, setPreviewStatus] = useState("Idle");
-  const [source, setSource] = useState<AssetSource | null>(null);
+  const [source, setSource] = useState<DesktopAssetSource | null>(null);
   const [directories, setDirectories] = useState<string[]>([]);
   const [directory, setDirectory] = useState("");
   const [files, setFiles] = useState<SpineFiles | null>(null);
@@ -342,6 +256,7 @@ export function Editor() {
   const [speed, setSpeed] = useState(1);
   const [selectedAnimation, setSelectedAnimation] = useState("");
   const [project, setProject] = useState<EditorProject | null>(null);
+  const timelineSaveRef = useRef<(() => Promise<void>) | null>(null);
   const [viewSettings, setViewSettings] = useState<EditorViewSettings | null>(() => readStoredViewSettings());
   const [undo, setUndo] = useState<EditorProject[]>([]);
   const [redo, setRedo] = useState<EditorProject[]>([]);
@@ -349,6 +264,8 @@ export function Editor() {
   const [interactionSearch, setInteractionSearch] = useState("");
   const [status, setStatus] = useState("Open a Spine asset folder to begin.");
   const [error, setError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   projectRef.current = project;
   directoryRef.current = directory;
@@ -394,7 +311,8 @@ export function Editor() {
       initializedAssetRef.current = key;
       let restored: EditorProject | null = null;
       try {
-        const stored = localStorage.getItem(projectStorageKey(directoryRef.current));
+         const stored = localStorage.getItem(projectStorageKey(directoryRef.current))
+           ?? localStorage.getItem(`${LEGACY_PROJECT_STORAGE_PREFIX}${directoryRef.current}`);
         restored = stored ? normalizeProject(JSON.parse(stored) as unknown, directoryRef.current) : null;
       } catch {
         restored = null;
@@ -433,7 +351,6 @@ export function Editor() {
     });
     rendererRef.current = renderer;
     return () => {
-      repairAbortRef.current?.abort();
       renderer.dispose();
       rendererRef.current = null;
     };
@@ -441,7 +358,6 @@ export function Editor() {
 
   useEffect(() => {
     if (!source || !directory) return;
-    repairAbortRef.current?.abort();
     let cancelled = false;
     setTesting(false);
     previewRef.current.reset();
@@ -476,7 +392,7 @@ export function Editor() {
     // Never autosave the previous student's project under the new student's key.
     if (!project || !directory || project.assetDirectory !== directory) return;
     try { localStorage.setItem(projectStorageKey(directory), JSON.stringify(project)); }
-    catch { setError("Browser storage is full or unavailable. Export JSON to keep your changes."); }
+    catch { setError("Recovery storage is unavailable. Save files to keep your changes."); }
   }, [project, directory]);
 
   useEffect(() => {
@@ -491,9 +407,10 @@ export function Editor() {
       if ((event.target as HTMLElement)?.closest("input, select, textarea, [contenteditable=true]")) return;
       const key = event.key.toLowerCase();
       const modifier = event.ctrlKey || event.metaKey;
+      if (workspace === "timeline" && key !== "?" && key !== "escape" && !(modifier && ["z", "y"].includes(key))) return;
       if (modifier && key === "z") { event.preventDefault(); event.shiftKey ? redoProject() : undoProject(); }
       else if (modifier && key === "y") { event.preventDefault(); redoProject(); }
-      else if (modifier && key === "s") { event.preventDefault(); exportProject(); }
+      else if (modifier && key === "s") { event.preventDefault(); void saveProject(); }
       else if (modifier && key === "d") { event.preventDefault(); duplicateRegion(); }
       else if (key === "escape") { resetPreview(); setTesting(false); setTool("select"); setHelp(false); }
       else if (key === "t") toggleTest();
@@ -540,7 +457,7 @@ export function Editor() {
     };
   }, [frame, testing]);
 
-  async function useSource(next: AssetSource) {
+  async function useSource(next: DesktopAssetSource) {
     try {
       const found = await next.getDirectories();
       if (found.length === 0) throw new Error("No Spine asset directories were found.");
@@ -548,27 +465,20 @@ export function Editor() {
       setDirectories(found);
       setDirectory(found[0]!);
       setError(null);
+      setSaveState("idle");
+      setSavedAt(null);
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
   }
 
   async function openFolder() {
-    const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
-    if (picker) {
-      try {
-        await useSource(sourceFromDirectory(await picker()));
-      } catch (value) {
-        if ((value as DOMException)?.name !== "AbortError") setError(String(value));
-      }
-    } else {
-      fileInputRef.current?.click();
+    try {
+      const next = await chooseDesktopSource();
+      if (next) await useSource(next);
+    } catch (value) {
+      setError(value instanceof Error ? value.message : String(value));
     }
-  }
-
-  function onFolderInput(event: ChangeEvent<HTMLInputElement>) {
-    if (event.target.files?.length) void useSource(sourceFromInput(event.target.files));
-    event.target.value = "";
   }
 
   function mutate(mutator: (current: EditorProject) => EditorProject) {
@@ -579,6 +489,7 @@ export function Editor() {
     setRedo([]);
     projectRef.current = next;
     setProject(next);
+    setSaveState("dirty");
   }
 
   function live(mutator: (current: EditorProject) => EditorProject) {
@@ -587,6 +498,13 @@ export function Editor() {
     const next = mutator(cloneProject(current));
     projectRef.current = next;
     setProject(next);
+    setSaveState("dirty");
+  }
+
+  function beginTimelineEdit() {
+    if (!projectRef.current) return;
+    setUndo((items) => [...items.slice(-49), projectRef.current!]);
+    setRedo([]);
   }
 
   function updateViewSetting(field: keyof EditorViewSettings, value: boolean) {
@@ -605,6 +523,7 @@ export function Editor() {
     const next = withCurrentViewSettings(previous);
     projectRef.current = next;
     setProject(next);
+    setSaveState("dirty");
   }
 
   function redoProject() {
@@ -616,83 +535,23 @@ export function Editor() {
     const applied = withCurrentViewSettings(next);
     projectRef.current = applied;
     setProject(applied);
+    setSaveState("dirty");
   }
 
-  function exportProject() {
-    if (!project) return;
-    const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${displayName(directory || "spine-project")}.interactions.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    setStatus("Project exported.");
-  }
-
-  function exportAllProjects() {
-    const projects = readStoredProjects(projectRef.current);
-    if (projects.length === 0) {
-      setStatus("No saved projects to export.");
-      return;
-    }
-    const bundle = { schemaVersion: EDITOR_SCHEMA_VERSION, projects };
-    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "spine-interactions.all.json";
-    link.click();
-    URL.revokeObjectURL(url);
-    setStatus(`Exported ${projects.length} project${projects.length === 1 ? "" : "s"}.`);
-  }
-
-  function loadLocal() {
-    if (!directory) return;
+  async function saveProject(skipTimeline = false) {
+    const current = projectRef.current ?? project;
+    if (!current || !source) return;
+    setSaveState("saving");
+    setError(null);
     try {
-      const stored = localStorage.getItem(projectStorageKey(directory));
-      const normalized = stored ? normalizeProject(JSON.parse(stored) as unknown, directory) : null;
-      const repaired = normalized ? repairPinchRegions(repairPatRegions(normalized, headRegionRef.current).project, frame?.bones ?? []).project : null;
-      if (!repaired) {
-        setStatus("No saved project exists for this asset set.");
-        return;
-      }
-      const next = withCurrentViewSettings(repaired);
-      projectRef.current = next;
-      setProject(next);
-      setUndo([]);
-      setRedo([]);
-      setStatus("Loaded local project.");
+      if (!skipTimeline) await timelineSaveRef.current?.();
+      const safeName = directory.replace(/[^A-Za-z0-9._-]+/g, "-") || "project";
+      await source.saveText(`.shittim-spine-editor/${safeName}.spine-project.json`, `${JSON.stringify(projectRef.current ?? current, null, 2)}\n`);
+      setSaveState("saved");
+      setSavedAt(Date.now());
+      setStatus("Saved project and linked subtitle files to the selected asset root.");
     } catch (value) {
-      setError(value instanceof Error ? value.message : String(value));
-    }
-  }
-
-  function resetProject() {
-    if (!meta || !frame || !directory) return;
-    const detected = repairPatRegions(createProject(directory, meta.animations, frame.bones), headRegionRef.current).project;
-    const next = withCurrentViewSettings(repairPinchRegions(detected, frame.bones).project);
-    if (projectRef.current) setUndo((items) => [...items.slice(-49), projectRef.current!]);
-    setRedo([]);
-    projectRef.current = next;
-    setProject(next);
-    setStatus("Reset to detected presets.");
-  }
-
-  async function importProject(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    try {
-      const imported = normalizeProject(JSON.parse(await file.text()) as unknown, directory || "imported");
-      if (!imported) throw new Error("This is not a valid interaction project.");
-      const next = withCurrentViewSettings(frame ? repairPinchRegions(imported, frame.bones).project : imported);
-      projectRef.current = next;
-      setProject(next);
-      setUndo([]);
-      setRedo([]);
-      setStatus("Project imported.");
-    } catch (value) {
+      setSaveState("error");
       setError(value instanceof Error ? value.message : String(value));
     }
   }
@@ -881,39 +740,6 @@ export function Editor() {
     mutate((current) => ({ ...current, interactions: current.interactions.map((item) => item.id === selectedInteraction.id ? { ...item, regions: item.regions.map((region) => region.id === selectedRegion.id ? { ...region, anchorBone: next.anchorBone, offsetX: offset.x, offsetY: offset.y, placement: "manual" } : region) } : item) }));
   }
 
-  async function repairAllSaved() {
-    if (!source || repairing) return;
-    const controller = new AbortController();
-    repairAbortRef.current = controller;
-    setRepairing(true);
-    try {
-      const result = await repairSavedHeadRegions(source, directories, controller.signal, setStatus);
-      const currentKey = directory ? projectStorageKey(directory) : "";
-      const currentSaved = currentKey ? localStorage.getItem(currentKey) : null;
-      if (currentSaved) {
-        const currentProject = normalizeProject(JSON.parse(currentSaved) as unknown, directory);
-        if (currentProject) {
-          const next = withCurrentViewSettings(frame ? repairPinchRegions(currentProject, frame.bones).project : currentProject);
-          projectRef.current = next;
-          setProject(next);
-          setUndo([]);
-          setRedo([]);
-        }
-      }
-      setHasRepairBackup(Boolean(localStorage.getItem(HEAD_REPAIR_BACKUP)));
-      setStatus(`${result.cancelled ? "Stopped. " : ""}Head repair: ${result.repaired} repaired, ${result.unresolved} need review, ${result.kept} kept, ${result.failed} failed. Custom regions unchanged.`);
-    } catch (value) { setError(String(value)); }
-    finally { setRepairing(false); repairAbortRef.current = null; }
-  }
-
-  function undoBulkRepair() {
-    try {
-      const result = undoSavedHeadRepair();
-      setHasRepairBackup(Boolean(localStorage.getItem(HEAD_REPAIR_BACKUP)));
-      setStatus(`Bulk backup restored: ${result.restored} projects. ${result.kept} subsequently edited projects kept.`);
-    } catch (value) { setError(String(value)); }
-  }
-
   function snapRegionToHead() {
     if (!selectedRegion || !selectedInteraction || !headRegionRef.current) return;
     const head = headRegionRef.current;
@@ -921,36 +747,49 @@ export function Editor() {
     setStatus("Region fitted to detected head artwork. Movement target was not changed.");
   }
 
+  const assetLoaded = Boolean(source && directory && files && frame && project);
+  const saveLabel = saveState === "saving"
+    ? "Saving…"
+    : saveState === "dirty"
+      ? "Unsaved changes"
+      : saveState === "error"
+        ? "Save failed"
+        : savedAt
+          ? `Saved ${new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+          : "Ready to save";
+
   return (
     <div className={`editor-app${testing ? " is-testing" : ""}`}>
       <header className="editor-header">
-        <div>
-          <span className="editor-kicker">PRIVATE TOOL · SPINE 4.2</span>
-          <h1>Interaction Studio</h1>
+        <div className="editor-brand">
+          <span className="editor-kicker">SHITTIM CHEST · SPINE 4.2</span>
+          <h1>{workspace === "timeline" ? "Timeline Composer" : "Interaction Studio"}</h1>
         </div>
         <div className="editor-actions">
-          <button className="editor-button" onClick={openFolder}>Open asset folder</button>
-          <span className="editor-autosave">● Autosaves locally</span>
-          <button className="editor-button" onClick={loadLocal} disabled={!directory}>Load local</button>
-            <button className="editor-button" onClick={exportProject} disabled={!project}>Export JSON</button>
-            <button className="editor-button" onClick={exportAllProjects}>Export all</button>
-          <button className="editor-button" onClick={() => { if (confirm("Replace this project with detected presets? You can undo this.")) resetProject(); }} disabled={!meta || !frame}>Reset detected</button>
-          <button className="editor-button" onClick={() => projectInputRef.current?.click()}>Import JSON</button>
-          <button className="editor-button" disabled={!source} onClick={() => repairing ? repairAbortRef.current?.abort() : void repairAllSaved()} title="Repair untouched default patting regions across all saved sets in the open folder">{repairing ? "Stop repair" : "Repair saved defaults"}</button>
-          {hasRepairBackup && <button className="editor-button" disabled={repairing} onClick={undoBulkRepair}>Undo bulk repair</button>}
+          <div className="editor-workspace-tabs" role="tablist" aria-label="Editor workspace">
+            <button className={`editor-button${workspace === "interaction" ? " active" : ""}`} role="tab" aria-selected={workspace === "interaction"} onClick={() => setWorkspace("interaction")}>Interactions</button>
+            <button className={`editor-button${workspace === "timeline" ? " active" : ""}`} role="tab" aria-selected={workspace === "timeline"} onClick={() => setWorkspace("timeline")}>Timeline</button>
+          </div>
+          <label className="editor-asset-picker"><span>Set</span><select aria-label="Character or asset set" value={directory} onChange={(event) => setDirectory(event.target.value)} disabled={!directories.length}>
+            {!directories.length && <option value="">Open a folder…</option>}
+            {directories.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select></label>
+          <button className="editor-button" onClick={openFolder}>Open folder</button>
+          <span className={`editor-save-state is-${saveState}`} aria-live="polite">● {saveLabel}</span>
+          <button className="editor-button editor-save-button" onClick={() => void saveProject()} disabled={!project || saveState === "saving"}>Save files</button>
           <button className="editor-button" onClick={() => setHelp((value) => !value)} title="Keyboard shortcuts (?)">? Help</button>
-          <input ref={fileInputRef} className="editor-hidden" type="file" multiple onChange={onFolderInput} {...({ webkitdirectory: "" } as Record<string, string>)} />
-          <input ref={projectInputRef} className="editor-hidden" type="file" accept="application/json,.json" onChange={importProject} />
         </div>
       </header>
 
-      <div className="editor-statusbar">
-        <span className={error ? "editor-error" : ""}>{error ?? status}</span>
-        <span>{directory ? `${displayName(directory)} · ${files?.size ?? 0} files` : "No asset loaded"}</span>
-      </div>
-
-      {help && <div className="editor-help" role="region" aria-label="Editor help"><strong>Quick guide</strong><span>Draw a hit region → choose animations → Test → press, hold, drag, release.</span><span>V Select · H Pan · R Draw · T Test · F Fit · B Bones · Space Play/pause · Esc Idle/Edit</span><span>Ctrl/⌘ Z Undo · Shift Z Redo · D Duplicate region · S Export · Delete Remove region</span><button className="editor-button" onClick={() => setHelp(false)}>Close help</button></div>}
-      <main className={`editor-layout${leftHidden ? " hide-left" : ""}${rightHidden ? " hide-right" : ""}`} style={{ gridTemplateColumns: `${leftHidden ? "" : `${leftWidth}px `}minmax(180px, 1fr)${rightHidden ? "" : ` ${rightWidth}px`}` }}>
+      {help && <div className="editor-help" role="region" aria-label="Editor help"><strong>Shortcuts</strong>{workspace === "timeline" ? <span>Space Play/pause · ←/→ Frame · Shift+←/→ 10 frames · Home/End · S Split subtitle · Ctrl/⌘ D Duplicate · Delete Remove · F Fit · Ctrl/⌘ S Save</span> : <><span>Draw a hit region → choose animations → Test → press, hold, drag, release.</span><span>V Select · H Pan · R Draw · T Test · F Fit · B Bones · Space Play/pause · Esc Idle/Edit</span><span>Ctrl/⌘ Z Undo · Shift Z Redo · Ctrl/⌘ D Duplicate · Delete Remove region · Ctrl/⌘ S Save</span></>}<button className="editor-button" onClick={() => setHelp(false)}>Close</button></div>}
+      {!assetLoaded ? <section className="editor-start" aria-live="polite">
+        <div className="editor-start-card">
+          <span className="editor-kicker">DESKTOP WORKSPACE</span>
+          <strong>{source && directory ? "Loading asset set…" : "Open a Spine asset folder"}</strong>
+          <span>{source && directory ? "Reading the selected .atlas, .skel, and texture files." : "Choose the local folder containing your Spine lobby assets to begin."}</span>
+          <button className="editor-button editor-start-button" onClick={openFolder}>{source && directory ? "Choose another folder" : "Open asset folder"}</button>
+        </div>
+      </section> : workspace === "interaction" ? <main className={`editor-layout${leftHidden ? " hide-left" : ""}${rightHidden ? " hide-right" : ""}`} style={{ gridTemplateColumns: `${leftHidden ? "" : `${leftWidth}px `}minmax(180px, 1fr)${rightHidden ? "" : ` ${rightWidth}px`}` }}>
         {(["left", "right"] as const).filter((side) => side === "left" ? !leftHidden : !rightHidden).map((side) => <div key={side} className={`editor-panel-resizer ${side}`} role="separator" aria-label={`Resize ${side} panel`} aria-orientation="vertical" tabIndex={0} style={side === "left" ? { left: leftWidth + 7 } : { right: rightWidth + 7 }} onDoubleClick={() => side === "left" ? setLeftWidth(220) : setRightWidth(320)} onKeyDown={(event) => {
           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
           event.preventDefault(); const delta = event.key === "ArrowRight" ? 10 : -10;
@@ -962,16 +801,8 @@ export function Editor() {
           drag.side === "left" ? setLeftWidth(Math.max(160, Math.min(380, drag.width + dx))) : setRightWidth(Math.max(260, Math.min(460, drag.width - dx)));
         }} onPointerUp={() => { panelDragRef.current = null; }} onPointerCancel={() => { panelDragRef.current = null; }} />)}
         <aside className="editor-panel editor-left-panel" hidden={leftHidden}>
-          <section className="editor-section">
-            <div className="editor-section-title"><strong>Asset set</strong><span>{directories.length}</span></div>
-            <input className="editor-search" placeholder="Find asset set…" aria-label="Find asset set" value={assetSearch} onChange={(event) => setAssetSearch(event.target.value)} />
-            <select value={directory} onChange={(event) => setDirectory(event.target.value)} disabled={!directories.length}>
-              {!directories.length && <option value="">Open a folder…</option>}
-              {directories.filter((item) => item === directory || item.toLowerCase().includes(assetSearch.toLowerCase())).map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </section>
           <section className="editor-section editor-bone-section">
-            <div className="editor-section-title"><strong>Bones</strong><span>{visibleBones.length}/{frame?.bones.length ?? 0}</span></div>
+            <div className="editor-section-title"><strong>Rig hierarchy</strong><span>{visibleBones.length}/{frame?.bones.length ?? 0}</span></div>
             <input className="editor-search" value={boneSearch} onChange={(event) => setBoneSearch(event.target.value)} placeholder="Search bones…" />
             <div className="editor-checks">
               <label><input type="checkbox" checked={displaySettings.showBones} onChange={(event) => updateViewSetting("showBones", event.target.checked)} /> Show bones</label>
@@ -1029,7 +860,7 @@ export function Editor() {
             />}
             {(testing || tool === "draw") && <div className={`editor-input-surface${testing ? " testing" : " drawing"}`} aria-label={testing ? "Interaction test surface" : "Draw region surface"} onPointerDown={stagePress} onPointerMove={stageMove} onPointerUp={stageRelease} onPointerCancel={(event) => { if (!testing || testPointerRef.current === event.pointerId) { testPointerRef.current = null; previewRef.current.release(); } drawRef.current = null; setDrawBox(null); }} />}
             {drawBox && frame && <svg className="editor-draw-ghost" viewBox={`0 0 ${frame.canvasWidth} ${frame.canvasHeight}`} preserveAspectRatio="none"><ellipse cx={drawBox.x + drawBox.width / 2} cy={drawBox.y + drawBox.height / 2} rx={drawBox.width / 2} ry={drawBox.height / 2} /></svg>}
-            {!frame && <div className="editor-empty"><strong>Open a Spine asset folder</strong><span>The editor reads .atlas, .skel, and local texture files directly in your browser.</span></div>}
+            {!frame && <div className="editor-empty"><strong>Open a Spine asset folder</strong><span>The desktop editor reads .atlas, .skel, and local texture files from the selected root.</span></div>}
             {frame && <div className="editor-canvas-badge">{frame.animation ?? "No animation"} · {frame.bones.length} bones</div>}
             <div className="editor-stage-hint">{testing ? `${previewStatus} · Press a region, hold/drag, release` : tool === "draw" ? "Drag to draw a new region" : tool === "pan" ? "Drag to pan · Wheel to zoom · F to fit" : "Drag region to move · Corner to resize · Round handle to rotate"}</div>
           </div>
@@ -1112,8 +943,11 @@ export function Editor() {
              <p className="editor-muted">Select a bone on the canvas or in the left panel, then anchor here. Resize and rotate using canvas handles.</p>
           </section>}
         </aside>
-      </main>
-      <footer className="editor-footer"><span>Local only · {testing ? "TEST MODE" : "EDIT MODE"} · ? for shortcuts</span><span><button onClick={undoProject} disabled={!undo.length} title="Ctrl/⌘ Z">Undo</button><button onClick={redoProject} disabled={!redo.length} title="Ctrl/⌘ Shift Z">Redo</button></span></footer>
+      </main> : <TimelineWorkspace source={source} directory={directory} directories={directories} project={project} onMutate={mutate} onLive={live} onBeginEdit={beginTimelineEdit} onSave={() => saveProject(true)} onRegisterSave={(callback) => { timelineSaveRef.current = callback; }} help={help} onStatus={setStatus} onError={setError} />}
+      <footer className="editor-statusbar">
+        <span className={error ? "editor-error" : ""}>{error ?? status}</span>
+        <span>{directory ? `${displayName(directory)} · ${files?.size ?? 0} files` : "No asset loaded"} · {testing ? "TEST MODE" : workspace === "timeline" ? "TIMELINE" : "EDIT MODE"}</span>
+      </footer>
     </div>
   );
 }

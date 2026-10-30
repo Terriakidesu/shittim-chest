@@ -1,0 +1,16 @@
+{
+  "name": "shittim-chest-spine-editor-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.3",
+  "description": "Optional Electrobun host for the private Spine editor.",
+  "scripts": {
+    "dev": "bun scripts/prepare-editor.ts && bunx electrobun dev --watch",
+    "build": "bun scripts/prepare-editor.ts && bunx electrobun build --env=stable"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "electrobun": "2.0.5"
+  }
+}

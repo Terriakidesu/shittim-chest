@@ -126,7 +126,7 @@ interface RepairBackup { key: string; before: string; after: string }
 
 function backups(storage: Storage): RepairBackup[] {
   const value: unknown = JSON.parse(storage.getItem(HEAD_REPAIR_BACKUP) ?? "[]");
-  if (!Array.isArray(value)) throw new Error("Invalid head-repair backup. Export browser storage before replacing it.");
+  if (!Array.isArray(value)) throw new Error("Invalid head-repair backup.");
   return value.filter((item): item is RepairBackup => item && typeof item.key === "string" && typeof item.before === "string" && typeof item.after === "string");
 }
 
