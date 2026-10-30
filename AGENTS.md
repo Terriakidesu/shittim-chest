@@ -25,6 +25,54 @@ pass.
 
 **`src/model/` is vendored** from the full-stack `blue-archive-gacha-calendar` project. Keep it free of server/DB code, and keep changes in sync with that repo.
 
+## Private Spine editor and subtitle timelines
+
+`tools/spine-editor/` is private, local-only desktop tooling. It is not part of
+the GitHub Pages build and must not add Electrobun or other desktop dependencies
+to the root workspace. The supported UI is the native host:
+
+```bash
+bun run editor:desktop
+```
+
+- A selected asset root may contain `.editorignore`, using root-relative
+  gitignore-style patterns. Keep generated or unrelated asset-like folders out
+  of the catalog instead of adding ad-hoc exclusions to the native host.
+- Interaction and timeline projects are user data saved in the selected asset
+  root at `.editor/<asset-set>.spine-project.json`. The legacy
+  `.shittim-spine-editor/` directory remains readable for migration, but new
+  writes belong in `.editor/`. These files are not repository source and are
+  ignored by the root `.gitignore`.
+- A linked `audios/voicelines/<character>/subtitles.json` is saved back in place
+  when the project changes. The project stores the interaction data, sequence
+  timelines, localized subtitle cues, and audio paths; opening the root must
+  restore all of them. The published viewer does not consume private `.editor`
+  projects. Both these asset-root subtitle files and `.editor` projects are
+  external user data; do not copy or stage them in this repository unless the
+  task explicitly requests it.
+- `scripts/split-spine-voicelines.ts` is the generator for the local subtitle
+  files. Spine `Talk`/`Sound` event markers and OGG durations are authoritative
+  for timing; do not invent marker times when repairing a generated file.
+- Same-start parts with identical `en`/`ja`/`ko` text are duplicate alternatives,
+  not sequential dialogue. Keep the longer part, select one preferred audio
+  candidate, and update both the source subtitle parts and every affected saved
+  timeline. `normalizeProject()` and subtitle serialization also clean legacy
+  duplicates, but stale active/sequence copies should still be repaired rather
+  than relied on implicitly.
+- Part translations must follow the logical sentence segments in the line-level
+  localized subtitle. Never copy part 1 into part 2 merely because the source
+  has multiple audio files. Re-scan all local `subtitles.json` files after a
+  repair for repeated part text and same-track interval overlaps.
+- The public viewer's `.spine-dialogue` rule in `src/client/styles.css` is the
+  subtitle presentation source of truth. Keep the editor's
+  `.timeline-subtitle-preview` visually aligned with it, including the
+  translucent panel, border, typography, shadow, and `pre-line` wrapping.
+
+The editor's focused checks are `bun run editor:typecheck` and
+`bun test tools/spine-editor/src`; run the root typecheck and full test suite
+afterwards. The desktop packaging command can spend several minutes in
+Electrobun compression even after the embedded UI has compiled.
+
 ## The DTO contract
 
 `scripts/export.ts` writes `public/data/*.json`; `src/client/api.ts` declares the matching interfaces (`CharacterRecord`, `Banner`, `Status`, `ForecastResponse`). **They are not generated and not checked — changing a shape in one without the other fails silently at runtime.** Change both together. The same holds for `StudentProfile` (`src/client/api.ts`) vs `StudentProfileDto` (`scripts/student-profiles.ts`), which both carry the optional localized dialogue fields (`dialogueJp`, `dialogueKr`).
@@ -210,6 +258,9 @@ bun run scripts/student-profiles.ts   # refresh profiles+dialogues only, into th
 ```
 
 Focused runs: `bun test src/model` (dir or file path both work). Tests are colocated `*.test.ts` using `bun:test`.
+
+For Spine editor changes, also use `bun run editor:typecheck` and
+`bun test tools/spine-editor/src` before the root checks.
 
 **There is no linter, formatter, or test framework beyond `bun:test`** — nothing is installed for them. Don't try to run or add `lint`/`format`; match surrounding style by hand. Order is `typecheck` then `test`.
 

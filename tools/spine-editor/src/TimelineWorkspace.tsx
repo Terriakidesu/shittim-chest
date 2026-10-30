@@ -203,6 +203,10 @@ function cueText(cue: EditorSubtitleCue, language: TimelineLanguage): string {
   return cue.text[language] || cue.text.en || cue.text.ja || cue.text.ko || "Untitled subtitle";
 }
 
+function previewCueText(cue: EditorSubtitleCue, language: TimelineLanguage): string {
+  return cue.text[language] || cue.text.en || cue.text.ja || cue.text.ko || "";
+}
+
 function roleLabel(role: TimelineLayerRole): string {
   return role === "background" ? "BG" : role === "scene" ? "SCENE" : role === "character" ? "CHAR" : "OVERLAY";
 }
@@ -939,6 +943,10 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   if (!project || !timeline) return <div className="timeline-empty"><strong>Open a Spine asset folder first</strong><span>The timeline uses the selected character set plus matching <code>_bg</code> and <code>_scene</code> directories.</span></div>;
 
   const availableLayerDirectories = directories.filter((item) => !timeline.layers.some((layer) => layer.directory === item));
+  const activeSubtitleTexts = timeline.subtitles
+    .filter((cue) => cue.enabled && currentTime >= cue.start && currentTime <= cue.end)
+    .map((cue) => previewCueText(cue, timeline.language))
+    .filter((text) => text.trim().length > 0);
 
   return <>
     <div className="timeline-workspace">
@@ -962,9 +970,9 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
           <div className="timeline-stage">
              {displayLayers.map((layer) => <TimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} sceneDuration={timeline.sceneDuration} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
             {timeline.audio.map((clip) => <audio key={clip.id} ref={(element) => { audioElementsRef.current[clip.id] = element; }} src={audioUrls[clip.id]} preload="auto" onLoadedMetadata={(event) => applyDecodedAudioDuration(clip.id, event.currentTarget.duration)} />)}
-            <div className="timeline-subtitle-preview" aria-live="polite">
-              {timeline.subtitles.filter((cue) => cue.enabled && currentTime >= cue.start && currentTime <= cue.end).map((cue) => <div key={cue.id}>{cueText(cue, timeline.language)}</div>)}
-            </div>
+             {activeSubtitleTexts.length > 0 && <div className="timeline-subtitle-preview" aria-live="polite">
+               {activeSubtitleTexts.map((text, index) => <div key={`${index}-${text}`}>{text}</div>)}
+             </div>}
              {!displayLayers.length && <div className="timeline-empty"><strong>No layers</strong><span>Add a Spine set from the ＋ Add menu.</span></div>}
            </div>
         </div>
