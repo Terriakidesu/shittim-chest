@@ -61,6 +61,12 @@ export interface SpineProgress {
   animation: string | null;
 }
 
+export interface SpineCameraPose {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
 export interface SpineEditorBone {
   path: string;
   name: string;
@@ -1121,6 +1127,31 @@ export class SpineRenderer {
     entry.trackLast = -1;
   }
 
+  /** Deterministic authoring sample: idle under body/face tracks, with no event playback. */
+  sampleEditorAnimation(animation: string, face: string, time: number, loop: boolean, idleUnderlay = false) {
+    const bundle = this.bundle;
+    if (!bundle) return;
+    this.playing = false;
+    bundle.skeleton.setToSetupPose();
+    bundle.state.clearTracks();
+    const apply = (name: string, track: number) => {
+      const data = bundle.skeleton.data.findAnimation(name);
+      if (!data) return;
+      const entry = bundle.state.setAnimation(track, name, false);
+      entry.trackTime = loop && data.duration > 0 ? time % data.duration : Math.min(time, data.duration);
+    };
+    if (idleUnderlay && bundle.meta.idleAnimation) apply(bundle.meta.idleAnimation, 0);
+    apply(animation, idleUnderlay ? 1 : 0);
+    if (face) apply(face, 2);
+    bundle.state.apply(bundle.skeleton);
+    bundle.skeleton.updateWorldTransform(Physics.reset);
+  }
+
+  getEditorAnimationInfo(animation: string) {
+    const data = this.bundle?.skeleton.data.findAnimation(animation);
+    return { duration: data?.duration ?? 0, markers: talkEventTimes(data ?? null) };
+  }
+
   getEditorFrame(): SpineEditorFrame | null {
     return this.editorFrame();
   }
@@ -1252,6 +1283,27 @@ export class SpineRenderer {
 
   resetCamera() {
     this.pendingFit = true;
+  }
+
+  /** Private authoring hook used to make separately rendered composition layers share a camera. */
+  getCameraPose(): SpineCameraPose | null {
+    if (!this.bundle || !Number.isFinite(this.renderer.camera.zoom)) return null;
+    return {
+      x: this.renderer.camera.position.x,
+      y: this.renderer.camera.position.y,
+      zoom: this.renderer.camera.zoom,
+    };
+  }
+
+  /** Private authoring hook; published viewer callers continue to use camera modes. */
+  setCameraPose(pose: SpineCameraPose | null) {
+    if (!pose || !this.bundle) return;
+    const camera = this.renderer.camera;
+    camera.position.x = pose.x;
+    camera.position.y = pose.y;
+    camera.zoom = Math.max(0.0001, pose.zoom);
+    camera.update();
+    this.pendingFit = false;
   }
 
   async toggleFullscreen(element: HTMLElement) {

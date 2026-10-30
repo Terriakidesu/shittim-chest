@@ -112,4 +112,17 @@ describe("Spine local asset sources", () => {
     expect(await lobbySource.getDirectories()).toEqual(["Airi_home"]);
     expect([...((await lobbySource.getSetFiles("Airi_home")).keys())]).toEqual(["Airi_home.atlas", "Airi_home.skel"]);
   });
+
+  test("resolves canonical voice paths when only the voice folder was selected", async () => {
+    const source = sourceFromInput(fileList([
+      "voicelines/Airi/Airi_MemorialLobby_1_1.ogg",
+    ]));
+    expect((await source.getFile("audios/voicelines/Airi/Airi_MemorialLobby_1_1.ogg"))?.name).toBe("Airi_MemorialLobby_1_1.ogg");
+  });
+
+  test("resolves canonical voice paths from a selected voice directory", async () => {
+    const voice = mockFile("Airi_MemorialLobby_1_1.ogg");
+    const source = sourceFromDirectory(mockDirectory("voicelines", [mockDirectory("Airi", [voice])]));
+    expect((await source.getFile("audios/voicelines/Airi/Airi_MemorialLobby_1_1.ogg"))?.name).toBe("Airi_MemorialLobby_1_1.ogg");
+  });
 });

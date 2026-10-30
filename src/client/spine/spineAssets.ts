@@ -60,6 +60,14 @@ function normalizedPath(path: string): string {
   return path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+/g, "/");
 }
 
+function filePathCandidates(path: string): string[] {
+  const normalized = normalizedPath(path);
+  const withoutAudioRoot = normalized.replace(/^audios\/voicelines\//i, "");
+  const withoutAudios = normalized.replace(/^audios\//i, "");
+  const basename = normalized.split("/").at(-1) ?? normalized;
+  return [...new Set([normalized, withoutAudioRoot, withoutAudios, basename])].filter(Boolean);
+}
+
 async function childDirectory(handle: FileSystemDirectoryHandle, name: string): Promise<FileSystemDirectoryHandle | null> {
   try {
     return await handle.getDirectoryHandle(name);
@@ -125,7 +133,13 @@ export function sourceFromDirectory(root: FileSystemDirectoryHandle): AssetSourc
       const set = lobby === root && directory === root.name ? root : await lobby.getDirectoryHandle(directory);
       return filesInDirectory(set);
     },
-    getFile: (path) => fileAtPath(root, path),
+    getFile: async (path) => {
+      for (const candidate of filePathCandidates(path)) {
+        const file = await fileAtPath(root, candidate);
+        if (file) return file;
+      }
+      return null;
+    },
   };
 }
 
@@ -151,6 +165,16 @@ export function sourceFromInput(fileList: FileList): AssetSource {
   const findFiles = (prefix: string) => files
     .filter(({ path }) => path.startsWith(prefix))
     .map(({ path, file }) => [path.slice(prefix.length), file] as const);
+  const findFile = (path: string): File | null => {
+    const requested = normalizedPath(path);
+    const lower = requested.toLocaleLowerCase();
+    const exact = files.find((entry) => entry.path === requested || entry.path.toLocaleLowerCase() === lower);
+    if (exact) return exact.file;
+    const basename = lower.split("/").at(-1);
+    if (!basename) return null;
+    const matches = files.filter((entry) => entry.path.split("/").at(-1)?.toLocaleLowerCase() === basename);
+    return matches.length === 1 ? matches[0]!.file : null;
+  };
 
   return {
     getDirectories: async () => {
@@ -168,6 +192,6 @@ export function sourceFromInput(fileList: FileList): AssetSource {
       const prefix = directSet && directory === rootName ? "" : `${lobbyPrefix}${directory}/`;
       return new Map(findFiles(prefix));
     },
-    getFile: async (path) => files.find((entry) => entry.path === normalizedPath(path))?.file ?? null,
+    getFile: async (path) => findFile(path),
   };
 }
