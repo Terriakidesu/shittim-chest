@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { SpineEditorBone } from "../../../src/client/spine/spineRuntime";
 import {
   createProject,
+  compositionDirectories,
+  ensureTimelineLayers,
   isLegacyPinchRegion,
   normalizeProject,
   normalizeViewSettings,
@@ -139,5 +141,43 @@ describe("Spine editor project model", () => {
     const warnings = validateProject(project, ["Idle_01"], [bone("root")]);
     expect(warnings.map((warning) => warning.kind)).toEqual(["missing-animation", "missing-bone", "overlap"]);
     expect(warnings[2]?.message).toContain("overlaps");
+  });
+
+  test("discovers matching bg and scene Spine sets in render order", () => {
+    expect(compositionDirectories("Airi_home", ["Airi_home", "Airi_bg", "Airi_scene", "Hina_bg"])).toEqual([
+      { directory: "Airi_bg", role: "background" },
+      { directory: "Airi_scene", role: "scene" },
+      { directory: "Airi_home", role: "character" },
+    ]);
+    expect(compositionDirectories("Airi_bg", ["Airi_home", "Airi_bg", "Airi_scene"])).toEqual([
+      { directory: "Airi_bg", role: "background" },
+      { directory: "Airi_scene", role: "scene" },
+      { directory: "Airi_home", role: "character" },
+    ]);
+    const project = createProject("Airi_home", ["Idle_01"], [bone("root")]);
+    const timeline = ensureTimelineLayers(project.timeline, "Airi_home", ["Airi_home", "Airi_bg", "Airi_scene"]);
+    expect(timeline.layers.map((layer) => [layer.directory, layer.order])).toEqual([
+      ["Airi_home", 2],
+      ["Airi_bg", 0],
+      ["Airi_scene", 1],
+    ]);
+  });
+
+  test("normalizes timeline cues and keeps old projects importable", () => {
+    const project = normalizeProject({
+      schemaVersion: 1,
+      interactions: [],
+      timeline: {
+        duration: 8,
+        layers: [{ id: "char", directory: "Airi_home", role: "character", start: 1, end: 6, opacity: 2 }],
+        subtitles: [{ id: "cue", start: 2, end: 4, text: { EN: "Hello", KR: "안녕" } }],
+        audio: [{ id: "voice", path: "voice.ogg", start: 2, end: 4, volume: 2 }],
+      },
+    }, "Airi_home");
+    expect(project?.timeline).toMatchObject({ duration: 8, loop: true, selectedLayerId: "char", selectedCueId: "cue" });
+    expect(project?.timeline.layers[0]).toMatchObject({ start: 1, end: 6, endMode: "auto", opacity: 1 });
+    expect(project?.timeline.subtitles[0]?.text).toEqual({ en: "Hello", ja: "", ko: "안녕" });
+    expect(project?.timeline.audio[0]).toMatchObject({ path: "voice.ogg", volume: 1, enabled: true });
+    expect(normalizeProject({ schemaVersion: 1, interactions: [] }, "Airi_home")?.timeline.layers[0]?.directory).toBe("Airi_home");
   });
 });

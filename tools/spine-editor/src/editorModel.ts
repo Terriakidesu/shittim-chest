@@ -2,7 +2,8 @@ import type { SpineEditorBone } from "../../../src/client/spine/spineRuntime";
 import { findInteractionProfile } from "../../../src/client/spine/spineInteraction";
 import { cheekControlNames } from "../../../src/client/spine/spinePinch";
 
-export const EDITOR_SCHEMA_VERSION = 1;
+export const EDITOR_SCHEMA_VERSION = 2;
+export const LEGACY_EDITOR_SCHEMA_VERSION = 1;
 
 export type EditorTrigger = "press" | "hold" | "drag";
 export type EditorShape = "ellipse" | "rectangle";
@@ -41,7 +42,68 @@ export interface EditorInteraction {
   regions: EditorRegion[];
 }
 
+export type TimelineLayerRole = "character" | "scene" | "background" | "overlay";
+export type TimelineLanguage = "en" | "ja" | "ko";
+
+export interface EditorTimelineLayer {
+  endMode?: "auto" | "manual";
+  faceAnimation?: string;
+  id: string;
+  name: string;
+  role: TimelineLayerRole;
+  directory: string;
+  enabled: boolean;
+  animation: string;
+  start: number;
+  end: number;
+  animationOffset: number;
+  loop: boolean;
+  x: number;
+  y: number;
+  scale: number;
+  opacity: number;
+  order: number;
+}
+
+export interface EditorSubtitleCue {
+  lineId?: string;
+  id: string;
+  start: number;
+  end: number;
+  enabled: boolean;
+  text: Record<TimelineLanguage, string>;
+}
+
+export interface EditorAudioClip {
+  autoEnd?: boolean;
+  lineId?: string;
+  id: string;
+  name: string;
+  path: string;
+  start: number;
+  end: number;
+  enabled: boolean;
+  volume: number;
+}
+
+export interface EditorTimeline {
+  sequenceId?: string;
+  subtitlePath?: string;
+  openingMode?: "scene-first" | "direct" | "skip";
+  sceneDuration?: number;
+  duration: number;
+  loop: boolean;
+  layers: EditorTimelineLayer[];
+  subtitles: EditorSubtitleCue[];
+  audio: EditorAudioClip[];
+  selectedLayerId: string | null;
+  selectedCueId: string | null;
+  language: TimelineLanguage;
+  snap: number;
+}
+
 export interface EditorProject {
+  sequences?: Record<string, EditorTimeline>;
   schemaVersion: number;
   name: string;
   assetDirectory: string;
@@ -53,6 +115,7 @@ export interface EditorProject {
   showBoneNames: boolean;
   showConstraints: boolean;
   showInactiveBones: boolean;
+  timeline: EditorTimeline;
 }
 
 export type EditorViewSettings = Pick<EditorProject, "showBones" | "showBoneNames" | "showConstraints" | "showInactiveBones">;
@@ -65,6 +128,8 @@ export const DEFAULT_EDITOR_VIEW_SETTINGS: EditorViewSettings = {
 };
 
 export const EDITOR_VIEW_SETTINGS_KEY = `shittim-spine-editor:view-settings:v${EDITOR_SCHEMA_VERSION}`;
+
+export const LEGACY_PROJECT_STORAGE_PREFIX = `shittim-spine-editor:v${LEGACY_EDITOR_SCHEMA_VERSION}:`;
 
 export function viewSettingsFromProject(project: Pick<EditorProject, keyof EditorViewSettings>): EditorViewSettings {
   return {
@@ -212,6 +277,94 @@ function interaction(
   };
 }
 
+function compositionStem(directory: string): string {
+  return directory
+    .replace(/(?:_home)?_(?:bg|scene)$/i, "")
+    .replace(/_home$/i, "")
+    .toLocaleLowerCase();
+}
+
+function roleForCompositionDirectory(directory: string): TimelineLayerRole | null {
+  if (/_scene$/i.test(directory)) return "scene";
+  if (/_bg$/i.test(directory)) return "background";
+  return null;
+}
+
+function layerId(role: TimelineLayerRole, directory: string): string {
+  return `timeline-${role}-${directory.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
+}
+
+function defaultLayerOrder(role: TimelineLayerRole): number {
+  return role === "background" ? 0 : role === "scene" ? 1 : role === "character" ? 2 : 3;
+}
+
+export function createTimelineLayer(directory: string, role: TimelineLayerRole, order: number, duration = 12): EditorTimelineLayer {
+  return {
+    id: layerId(role, directory),
+    name: directory,
+    role,
+    directory,
+    enabled: true,
+    animation: "",
+    start: 0,
+    end: Math.max(1, duration),
+    endMode: "auto",
+    animationOffset: 0,
+    loop: true,
+    x: 0,
+    y: 0,
+    scale: 1,
+    opacity: 1,
+    order,
+  };
+}
+
+/** Find the sibling Spine sets that make up a lobby composition. */
+export function compositionDirectories(directory: string, directories: string[]): Array<{ directory: string; role: TimelineLayerRole }> {
+  const stem = compositionStem(directory);
+  const matching = directories.filter((candidate) => compositionStem(candidate) === stem);
+  const selectedRole = roleForCompositionDirectory(directory);
+  const character = selectedRole === null
+    ? directory
+    : matching.find((candidate) => roleForCompositionDirectory(candidate) === null && /_home$/i.test(candidate))
+      ?? matching.find((candidate) => roleForCompositionDirectory(candidate) === null)
+      ?? directory;
+  const result: Array<{ directory: string; role: TimelineLayerRole }> = [{ directory: character, role: "character" }];
+  const siblings = matching
+    .filter((candidate) => candidate !== character)
+    .flatMap((candidate) => {
+      const role = roleForCompositionDirectory(candidate);
+      return role ? [{ directory: candidate, role }] : [];
+    });
+  return [...result, ...siblings].sort((a, b) => defaultLayerOrder(a.role) - defaultLayerOrder(b.role) || a.directory.localeCompare(b.directory));
+}
+
+export function ensureTimelineLayers(timeline: EditorTimeline, directory: string, directories: string[]): EditorTimeline {
+  const discovered = compositionDirectories(directory, directories);
+  const layers = [...timeline.layers];
+  for (const item of discovered) {
+    if (layers.some((layer) => layer.directory === item.directory)) continue;
+    layers.push(createTimelineLayer(item.directory, item.role, defaultLayerOrder(item.role), timeline.duration));
+  }
+  return { ...timeline, layers };
+}
+
+function createTimeline(directory: string): EditorTimeline {
+  const duration = 12;
+  const character = createTimelineLayer(directory, "character", defaultLayerOrder("character"), duration);
+  return {
+    duration,
+    loop: true,
+    layers: [character],
+    subtitles: [],
+    audio: [],
+    selectedLayerId: character.id,
+    selectedCueId: null,
+    language: "en",
+    snap: 0.1,
+  };
+}
+
 export function createProject(directory: string, animations: string[], bones: SpineEditorBone[]): EditorProject {
   const interactions: EditorInteraction[] = [];
   const profile = findInteractionProfile(animations);
@@ -228,6 +381,7 @@ export function createProject(directory: string, animations: string[], bones: Sp
     selectedRegionId: interactions[0]?.regions[0]?.id ?? null,
     selectedBonePath: bones[0]?.path ?? null,
     ...DEFAULT_EDITOR_VIEW_SETTINGS,
+    timeline: createTimeline(directory),
   };
 }
 
@@ -237,6 +391,114 @@ export function blankInteraction(animations: string[], bones: SpineEditorBone[],
 
 export function blankRegion(anchorBone: SpineEditorBone | undefined, index: number): EditorRegion {
   return { ...region(`Region ${index + 1}`, anchorBone), radiusX: 100, radiusY: 75 };
+}
+
+function timelineRole(value: unknown): TimelineLayerRole {
+  return value === "scene" || value === "background" || value === "overlay" ? value : "character";
+}
+
+function timelineLanguage(value: unknown): TimelineLanguage {
+  return value === "ja" || value === "ko" ? value : "en";
+}
+
+function normalizeText(value: unknown): Record<TimelineLanguage, string> {
+  if (!value || typeof value !== "object") return { en: "", ja: "", ko: "" };
+  const text = value as Record<string, unknown>;
+  const stringValueFor = (key: string, fallback = "") => typeof text[key] === "string" ? text[key] as string : fallback;
+  return {
+    en: stringValueFor("en", stringValueFor("EN")),
+    ja: stringValueFor("ja", stringValueFor("JA", stringValueFor("JR"))),
+    ko: stringValueFor("ko", stringValueFor("KO", stringValueFor("KR"))),
+  };
+}
+
+function normalizeTimelineLayer(value: Partial<EditorTimelineLayer>, index: number, duration: number): EditorTimelineLayer | null {
+  const directory = stringValue(value.directory, "");
+  if (!directory) return null;
+  const start = finiteNumber(value.start, 0, 0);
+  const end = Math.max(start + 0.01, finiteNumber(value.end, duration, 0));
+  return {
+    id: stringValue(value.id, id("timeline-layer")),
+    name: stringValue(value.name, directory),
+    role: timelineRole(value.role),
+    directory,
+    enabled: value.enabled !== false,
+    animation: stringValue(value.animation, ""),
+    faceAnimation: stringValue(value.faceAnimation, ""),
+    start,
+    end,
+    endMode: value.endMode === "manual" ? "manual" : "auto",
+    animationOffset: finiteNumber(value.animationOffset, 0, 0),
+    loop: value.loop !== false,
+    x: finiteNumber(value.x, 0),
+    y: finiteNumber(value.y, 0),
+    scale: finiteNumber(value.scale, 1, 0.01),
+    opacity: Math.max(0, Math.min(1, finiteNumber(value.opacity, 1, 0))),
+    order: finiteNumber(value.order, index, 0),
+  };
+}
+
+function normalizeSubtitleCue(value: Partial<EditorSubtitleCue>, index: number, duration: number): EditorSubtitleCue {
+  const start = Math.max(0, finiteNumber(value.start, Math.min(index * 2, duration), 0));
+  return {
+    id: stringValue(value.id, id("subtitle")),
+    start,
+    end: Math.max(start + 0.01, finiteNumber(value.end, Math.min(duration, start + 2), 0)),
+    enabled: value.enabled !== false,
+    text: normalizeText(value.text),
+    lineId: typeof value.lineId === "string" ? value.lineId : undefined,
+  };
+}
+
+function normalizeAudioClip(value: Partial<EditorAudioClip>, index: number, duration: number): EditorAudioClip | null {
+  const path = stringValue(value.path, "");
+  if (!path) return null;
+  const start = Math.max(0, finiteNumber(value.start, 0, 0));
+  return {
+    id: stringValue(value.id, id("audio")),
+    name: stringValue(value.name, path.split("/").pop() ?? path),
+    path,
+    autoEnd: value.autoEnd === true,
+    lineId: typeof value.lineId === "string" ? value.lineId : undefined,
+    start,
+    end: Math.max(start + 0.01, finiteNumber(value.end, Math.min(duration, start + 2), 0)),
+    enabled: value.enabled !== false,
+    volume: Math.max(0, Math.min(1, finiteNumber(value.volume, 1, 0))),
+  };
+}
+
+export function normalizeTimeline(value: unknown, directory: string): EditorTimeline {
+  if (!value || typeof value !== "object") return createTimeline(directory);
+  const raw = value as Partial<EditorTimeline>;
+  const duration = Math.max(1, finiteNumber(raw.duration, 12, 0));
+  const layers = (Array.isArray(raw.layers) ? raw.layers as unknown[] : [])
+    .filter((item) => Boolean(item && typeof item === "object"))
+    .map((item, index) => normalizeTimelineLayer(item as Partial<EditorTimelineLayer>, index, duration))
+    .filter((item): item is EditorTimelineLayer => item !== null);
+  const subtitles = (Array.isArray(raw.subtitles) ? raw.subtitles as unknown[] : [])
+    .filter((item) => Boolean(item && typeof item === "object"))
+    .map((item, index) => normalizeSubtitleCue(item as Partial<EditorSubtitleCue>, index, duration));
+  const audio = (Array.isArray(raw.audio) ? raw.audio as unknown[] : [])
+    .filter((item) => Boolean(item && typeof item === "object"))
+    .map((item, index) => normalizeAudioClip(item as Partial<EditorAudioClip>, index, duration))
+    .filter((item): item is EditorAudioClip => item !== null);
+  const selectedLayer = typeof raw.selectedLayerId === "string" && layers.some((layer) => layer.id === raw.selectedLayerId) ? raw.selectedLayerId : layers[0]?.id ?? null;
+  const selectedCue = typeof raw.selectedCueId === "string" && subtitles.some((cue) => cue.id === raw.selectedCueId) ? raw.selectedCueId : subtitles[0]?.id ?? null;
+  return {
+    duration,
+    loop: raw.loop !== false,
+    sequenceId: typeof raw.sequenceId === "string" ? raw.sequenceId : "legacy",
+    subtitlePath: typeof raw.subtitlePath === "string" ? raw.subtitlePath : undefined,
+    openingMode: raw.openingMode === "scene-first" || raw.openingMode === "skip" ? raw.openingMode : "direct",
+    sceneDuration: finiteNumber(raw.sceneDuration, 3, 0),
+    layers,
+    subtitles,
+    audio,
+    selectedLayerId: selectedLayer,
+    selectedCueId: selectedCue,
+    language: timelineLanguage(raw.language),
+    snap: Math.max(0, finiteNumber(raw.snap, 0.1, 0)),
+  };
 }
 
 export function normalizeProject(value: unknown, directory: string): EditorProject | null {
@@ -257,7 +519,7 @@ export function normalizeProject(value: unknown, directory: string): EditorProje
     ? requestedRegion
     : selectedInteraction?.regions[0]?.id ?? null;
   return {
-    schemaVersion: Number.isFinite(schemaVersion) && schemaVersion > 0 ? schemaVersion : EDITOR_SCHEMA_VERSION,
+    schemaVersion: EDITOR_SCHEMA_VERSION,
     name: typeof project.name === "string" ? project.name : `${directory} interactions`,
     assetDirectory: directory,
     interactions,
@@ -268,6 +530,9 @@ export function normalizeProject(value: unknown, directory: string): EditorProje
     showBoneNames: project.showBoneNames === true,
     showConstraints: project.showConstraints !== false,
     showInactiveBones: project.showInactiveBones === true,
+    timeline: normalizeTimeline(project.timeline, directory),
+    sequences: project.sequences && typeof project.sequences === "object"
+      ? Object.fromEntries(Object.entries(project.sequences).map(([key, value]) => [key, normalizeTimeline(value, directory)])) : {},
   };
 }
 
