@@ -401,6 +401,16 @@ export function Editor() {
     catch { /* Display preferences are still useful for this session. */ }
   }, [viewSettings]);
 
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (saveState !== "dirty") return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [saveState]);
+
   // Rebound each render so keyboard actions always use current selections/history.
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -479,6 +489,16 @@ export function Editor() {
     } catch (value) {
       setError(value instanceof Error ? value.message : String(value));
     }
+  }
+
+  function changeDirectory(next: string) {
+    if (!next || next === directory) return;
+    if (saveState === "dirty" && !window.confirm("This project has unsaved changes. Switch asset sets without saving?")) return;
+    setDirectory(next);
+    setSaveState("idle");
+    setSavedAt(null);
+    setError(null);
+    setStatus(`Loading ${displayName(next)}…`);
   }
 
   function mutate(mutator: (current: EditorProject) => EditorProject) {
@@ -770,13 +790,13 @@ export function Editor() {
             <button className={`editor-button${workspace === "interaction" ? " active" : ""}`} role="tab" aria-selected={workspace === "interaction"} onClick={() => setWorkspace("interaction")}>Interactions</button>
             <button className={`editor-button${workspace === "timeline" ? " active" : ""}`} role="tab" aria-selected={workspace === "timeline"} onClick={() => setWorkspace("timeline")}>Timeline</button>
           </div>
-          <label className="editor-asset-picker"><span>Set</span><select aria-label="Character or asset set" value={directory} onChange={(event) => setDirectory(event.target.value)} disabled={!directories.length}>
+          <label className="editor-asset-picker"><span>Set</span><select aria-label="Character or asset set" value={directory} onChange={(event) => changeDirectory(event.target.value)} disabled={!directories.length}>
             {!directories.length && <option value="">Open a folder…</option>}
             {directories.map((item) => <option key={item} value={item}>{item}</option>)}
           </select></label>
           <button className="editor-button" onClick={openFolder}>Open folder</button>
           <span className={`editor-save-state is-${saveState}`} aria-live="polite">● {saveLabel}</span>
-          <button className="editor-button editor-save-button" onClick={() => void saveProject()} disabled={!project || saveState === "saving"}>Save files</button>
+          <button className="editor-button editor-save-button" onClick={() => void saveProject()} disabled={!assetLoaded || saveState === "saving"}>Save files</button>
           <button className="editor-button" onClick={() => setHelp((value) => !value)} title="Keyboard shortcuts (?)">? Help</button>
         </div>
       </header>
