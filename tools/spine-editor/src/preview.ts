@@ -12,6 +12,19 @@ import {
 
 export type PreviewPhase = "idle" | "starting" | "holding" | "releasing";
 
+export interface InteractionPreviewDebug {
+  phase: PreviewPhase;
+  interactionName: string;
+  regionName: string;
+  trigger: EditorInteraction["trigger"] | null;
+  bodyAnimation: string;
+  faceAnimation: string;
+  held: boolean;
+  targetBonePath: string | null;
+  offsetX: number;
+  offsetY: number;
+}
+
 /** Runs the authored project, independently of the viewer's detected presets. */
 export class InteractionPreview {
   phase: PreviewPhase = "idle";
@@ -27,6 +40,28 @@ export class InteractionPreview {
 
   get progress() {
     return { time: this.phase === "holding" && this.duration > 0 ? this.elapsed % this.duration : Math.min(this.elapsed, this.duration), duration: this.duration };
+  }
+
+  get debug(): InteractionPreviewDebug {
+    const item = this.interaction;
+    const bodyAnimation = item
+      ? this.phase === "starting" ? item.startAnimation : this.phase === "holding" ? item.followAnimation : this.phase === "releasing" ? item.endAnimation : ""
+      : "";
+    const faceAnimation = item
+      ? this.phase === "starting" ? item.faceStartAnimation : this.phase === "holding" ? item.faceFollowAnimation : this.phase === "releasing" ? item.faceEndAnimation : ""
+      : "";
+    return {
+      phase: this.phase,
+      interactionName: item?.name ?? "",
+      regionName: this.regionName,
+      trigger: item?.trigger ?? null,
+      bodyAnimation,
+      faceAnimation,
+      held: this.held,
+      targetBonePath: this.motion.resolvedTargetBonePath ?? item?.followTargetBone ?? null,
+      offsetX: this.motion.offset.x,
+      offsetY: this.motion.offset.y,
+    };
   }
 
   press(interaction: EditorInteraction, regionName: string, x: number, y: number) {

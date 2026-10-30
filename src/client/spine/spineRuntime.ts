@@ -1162,6 +1162,30 @@ export class SpineRenderer {
     bundle.skeleton.updateWorldTransform(Physics.reset);
   }
 
+  /** Play an authored interaction phase over the idle pose in the private editor. */
+  previewEditorPhase(animation: string, face: string, loop: boolean) {
+    const bundle = this.bundle;
+    if (!bundle) return;
+    this.playing = true;
+    // The phase preview uses separate body/face tracks. Clear the normal
+    // animation selection so choosing the same animation from the timeline
+    // afterward still restores a regular base-track preview.
+    this.animationSelection = "";
+    bundle.skeleton.setToSetupPose();
+    bundle.state.clearTracks();
+    const apply = (name: string | null | undefined, track: number, repeat: boolean) => {
+      if (!name) return;
+      const data = bundle.skeleton.data.findAnimation(name);
+      if (!data) return;
+      bundle.state.setAnimation(track, name, repeat);
+    };
+    apply(bundle.meta.idleAnimation, 0, true);
+    apply(animation, 1, loop);
+    apply(face, 2, loop);
+    bundle.state.apply(bundle.skeleton);
+    bundle.skeleton.updateWorldTransform(Physics.reset);
+  }
+
   getEditorAnimationInfo(animation: string) {
     const data = this.bundle?.skeleton.data.findAnimation(animation);
     return { duration: data?.duration ?? 0, markers: talkEventTimes(data ?? null) };

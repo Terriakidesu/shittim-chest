@@ -138,4 +138,26 @@ describe("Authored interaction preview", () => {
     expect(preview.phase).toBe("idle");
     expect(preview.interaction).toBeNull();
   });
+
+  test("exposes phase, track, target, and movement state for the editor debugger", () => {
+    const { preview, item, step } = fixture();
+    preview.press({ ...item, name: "Debugger test", trigger: "hold" }, "head", 0, 0);
+    step(0);
+    expect(preview.debug).toMatchObject({
+      phase: "starting",
+      interactionName: "Debugger test",
+      regionName: "head",
+      trigger: "hold",
+      bodyAnimation: "start",
+      faceAnimation: "face",
+      held: true,
+      targetBonePath: "root/target",
+    });
+    preview.move(20, 5);
+    step(0.25);
+    expect(preview.debug.phase).toBe("holding");
+    expect(preview.debug.bodyAnimation).toBe("follow");
+    expect(preview.debug.offsetX).not.toBe(0);
+    preview.release();
+  });
 });

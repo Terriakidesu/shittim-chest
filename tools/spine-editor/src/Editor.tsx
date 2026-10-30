@@ -25,9 +25,9 @@ import {
   type EditorViewSettings,
 } from "./editorModel";
 import "./editor.css";
-import { InteractionPreview } from "./preview";
+import { InteractionPreview, type InteractionPreviewDebug } from "./preview";
 import { hitRegion, inversePoint, regionMatrix, screenToWorld } from "./geometry";
-import { findInteractionProfile } from "../../../src/client/spine/spineInteraction";
+import { findInteractionProfile, interactionKind } from "../../../src/client/spine/spineInteraction";
 import { detectHeadRegion, repairPatRegions, type HeadRegion } from "./headRegion";
 import { TimelineWorkspace } from "./TimelineWorkspace";
 import { LEGACY_PROJECT_STORAGE_PREFIX } from "./editorModel";
@@ -86,12 +86,20 @@ interface BoneOverlayProps {
   frame: SpineEditorFrame | null;
   project: EditorProject | null;
   viewSettings: EditorViewSettings;
+  motionLimits: MotionLimitOverlay | null;
   onSelectBone: (path: string) => void;
   onSelectRegion: (interactionId: string, regionId: string) => void;
   onBeginRegionDrag: () => void;
   onDragRegion: (interactionId: string, regionId: string, x: number, y: number) => void;
   tool: "select" | "pan" | "draw";
   onChangeRegion: (interactionId: string, regionId: string, patch: Partial<EditorRegion>) => void;
+}
+
+interface MotionLimitOverlay {
+  targetBonePath: string | null;
+  limitX: number;
+  limitY: number;
+  worldSpace: boolean;
 }
 
 interface RegionGeometry {
@@ -137,13 +145,33 @@ function regionGeometry(frame: SpineEditorFrame, region: EditorRegion): RegionGe
   };
 }
 
-function BoneOverlay({ frame, project, viewSettings, tool, onSelectBone, onSelectRegion, onBeginRegionDrag, onDragRegion, onChangeRegion }: BoneOverlayProps) {
+function motionLimitGeometry(frame: SpineEditorFrame, overlay: MotionLimitOverlay) {
+  const target = frame.bones.find((bone) => bone.path === overlay.targetBonePath);
+  if (!target) return null;
+  const parent = overlay.worldSpace ? null : frame.bones.find((bone) => bone.path === target.parentPath);
+  const xAxis = parent
+    ? { x: parent.screenLocalXEndX - parent.screenX, y: parent.screenLocalXEndY - parent.screenY }
+    : { x: frame.screenUnitXEndX - frame.screenOriginX, y: frame.screenUnitXEndY - frame.screenOriginY };
+  const yAxis = parent
+    ? { x: parent.screenLocalYEndX - parent.screenX, y: parent.screenLocalYEndY - parent.screenY }
+    : { x: frame.screenUnitYEndX - frame.screenOriginX, y: frame.screenUnitYEndY - frame.screenOriginY };
+  return {
+    centerX: target.screenX,
+    centerY: target.screenY,
+    radiusX: Math.max(8, Math.hypot(xAxis.x, xAxis.y) * Math.max(1, overlay.limitX)),
+    radiusY: Math.max(8, Math.hypot(yAxis.x, yAxis.y) * Math.max(1, overlay.limitY)),
+    rotation: Math.atan2(xAxis.y, xAxis.x) * 180 / Math.PI,
+  };
+}
+
+function BoneOverlay({ frame, project, viewSettings, motionLimits, tool, onSelectBone, onSelectRegion, onBeginRegionDrag, onDragRegion, onChangeRegion }: BoneOverlayProps) {
   const drag = useRef<{ interactionId: string; regionId: string; startX: number; startY: number; offsetX: number; offsetY: number; frame: SpineEditorFrame } | null>(null);
   const handleDrag = useRef<{ interactionId: string; region: EditorRegion; frame: SpineEditorFrame; kind: "resize" | "rotate" } | null>(null);
   if (!frame || !project) return null;
   const bones = frame.bones.filter((bone) => viewSettings.showInactiveBones || bone.active);
   const selectedBone = project.selectedBonePath;
   const regions = project.interactions.flatMap((interaction) => interaction.regions.map((region) => ({ interaction, region })));
+  const motion = motionLimits ? motionLimitGeometry(frame, motionLimits) : null;
 
   const move = (event: ReactPointerEvent<SVGSVGElement>) => {
     const handle = handleDrag.current;
@@ -187,6 +215,12 @@ function BoneOverlay({ frame, project, viewSettings, tool, onSelectBone, onSelec
       onPointerCancel={() => { drag.current = null; handleDrag.current = null; }}
       aria-label="Spine editing overlay"
     >
+      {motion && <g className="editor-motion-limit" aria-label="Movement limits" transform={`rotate(${motion.rotation} ${motion.centerX} ${motion.centerY})`}>
+        <ellipse cx={motion.centerX} cy={motion.centerY} rx={motion.radiusX} ry={motion.radiusY} />
+        <line x1={motion.centerX - motion.radiusX} y1={motion.centerY} x2={motion.centerX + motion.radiusX} y2={motion.centerY} />
+        <line x1={motion.centerX} y1={motion.centerY - motion.radiusY} x2={motion.centerX} y2={motion.centerY + motion.radiusY} />
+        <circle cx={motion.centerX} cy={motion.centerY} r={4} />
+      </g>}
       {viewSettings.showBones && bones.map((bone) => (
         <g key={bone.path} className={`editor-bone${bone.path === selectedBone ? " is-selected" : ""}`}>
           <line x1={bone.screenX} y1={bone.screenY} x2={bone.screenEndX} y2={bone.screenEndY} onClick={() => onSelectBone(bone.path)} />
@@ -276,6 +310,7 @@ export function Editor() {
   const [tool, setTool] = useState<"select" | "pan" | "draw">("select");
   const [inspectorTab, setInspectorTab] = useState<"region" | "animation" | "movement">("region");
   const [showTestRegions, setShowTestRegions] = useState(true);
+  const [previewDebug, setPreviewDebug] = useState<InteractionPreviewDebug>(() => previewRef.current.debug);
   const [leftHidden, setLeftHidden] = useState(false);
   const [rightHidden, setRightHidden] = useState(false);
   const [help, setHelp] = useState(false);
@@ -301,6 +336,7 @@ export function Editor() {
   const [undo, setUndo] = useState<EditorProject[]>([]);
   const [redo, setRedo] = useState<EditorProject[]>([]);
   const [boneSearch, setBoneSearch] = useState("");
+  const [targetBoneSearch, setTargetBoneSearch] = useState("");
   const [collapsedBones, setCollapsedBones] = useState<Set<string>>(() => new Set());
   const [interactionSearch, setInteractionSearch] = useState("");
   const [status, setStatus] = useState("Open a Spine asset folder to begin.");
@@ -388,7 +424,9 @@ export function Editor() {
         }
         previewRef.current.update(delta, skeleton, state);
         const preview = previewRef.current;
-        setPreviewStatus(preview.phase === "idle" ? "Idle" : `${preview.phase} · ${preview.interaction?.name} · ${preview.regionName}`);
+        const debug = preview.debug;
+        setPreviewDebug(debug);
+        setPreviewStatus(debug.phase === "idle" ? "Idle" : `${debug.phase} · ${debug.interactionName} · ${debug.regionName}`);
       },
       onMeta: (value) => callbacksRef.current.onMeta(value),
       onProgress: () => {},
@@ -771,6 +809,12 @@ export function Editor() {
     return bones.filter((bone) => matches.has(bone.path));
   }, [boneSearch, collapsedBones, displaySettings.showInactiveBones, frame]);
   const visibleInteractions = project?.interactions.filter((item) => !interactionSearch.trim() || item.name.toLocaleLowerCase().includes(interactionSearch.trim().toLocaleLowerCase())) ?? [];
+  const targetBoneOptions = useMemo(() => {
+    const bones = frame?.bones ?? [];
+    const query = targetBoneSearch.trim().toLocaleLowerCase();
+    if (!query) return selectedInteraction?.followTargetBone ? bones.filter((bone) => bone.path === selectedInteraction.followTargetBone) : [];
+    return bones.filter((bone) => `${bone.name} ${bone.path}`.toLocaleLowerCase().includes(query)).slice(0, 80);
+  }, [frame, selectedInteraction?.followTargetBone, targetBoneSearch]);
   const validationWarnings = useMemo(() => project && meta && frame ? validateProject(project, meta.animations, frame.bones) : [], [frame, meta, project]);
   const renderedViewSettings = testing ? { ...displaySettings, showBones: false, showConstraints: false } : displaySettings;
 
@@ -865,8 +909,19 @@ export function Editor() {
     setPlaying(true);
   }
 
+  function previewPhase(label: string, body: string, face: string, loop: boolean) {
+    if (!body && !face) {
+      setStatus(`${label} has no animation assigned.`);
+      return;
+    }
+    rendererRef.current?.previewEditorPhase(body, face, loop);
+    setPlaying(true);
+    setStatus(`Previewing ${label}: ${body || "no body track"}${face ? ` + ${face}` : ""}.`);
+  }
+
   function resetPreview() {
     previewRef.current.reset();
+    setPreviewDebug(previewRef.current.debug);
     const idle = metaRef.current?.idleAnimation ?? metaRef.current?.defaultAnimation;
     if (idle) { rendererRef.current?.setAnimation(idle, true); setSelectedAnimation(idle); }
     setPlaying(true);
@@ -1110,10 +1165,11 @@ export function Editor() {
           <div className="editor-stage" ref={stageRef} onDoubleClick={(event) => { if (!testing && event.target === canvasRef.current) rendererRef.current?.resetCamera(); }}>
             <canvas ref={canvasRef} aria-label="Spine editor canvas" />
             {(!testing || showTestRegions) && <BoneOverlay
-              frame={frame}
-              project={testing && project ? { ...project, selectedRegionId: null } : project}
-              viewSettings={renderedViewSettings}
-              tool={testing ? "pan" : tool}
+               frame={frame}
+               project={testing && project ? { ...project, selectedRegionId: null } : project}
+               viewSettings={renderedViewSettings}
+               motionLimits={!testing && inspectorTab === "movement" && selectedInteraction?.followTargetBone ? { targetBonePath: selectedInteraction.followTargetBone, limitX: selectedInteraction.limitX, limitY: selectedInteraction.limitY, worldSpace: interactionKind(selectedInteraction) === "pinch" } : null}
+               tool={testing ? "pan" : tool}
               onSelectBone={(path) => live((current) => ({ ...current, selectedBonePath: path }))}
               onSelectRegion={(interactionId, regionId) => live((current) => ({ ...current, selectedInteractionId: interactionId, selectedRegionId: regionId }))}
               onBeginRegionDrag={() => { if (projectRef.current) setUndo((items) => [...items.slice(-49), projectRef.current!]); setRedo([]); }}
@@ -1132,7 +1188,19 @@ export function Editor() {
             {frame && <div className="editor-canvas-badge">{frame.animation ?? "No animation"} · {frame.bones.length} bones</div>}
              {(testing || tool !== "select") && <div className="editor-stage-hint">{testing ? `${previewStatus} · Press a region, hold/drag, release` : tool === "draw" ? "Drag to draw a new region" : "Drag to pan · Wheel to zoom · F to fit"}</div>}
           </div>
-          {testing && <div className="editor-testbar"><strong aria-live="polite">{previewStatus}</strong><label><input type="checkbox" checked={showTestRegions} onChange={(event) => setShowTestRegions(event.target.checked)} /> Hit regions</label><span>Target: {previewRef.current.interaction?.followTargetBone?.split("/").pop() ?? "—"}</span></div>}
+           {testing && <div className="editor-testbar">
+             <div className="editor-debug-status"><strong aria-live="polite">{previewStatus}</strong><span>{previewDebug.held ? "Held" : previewDebug.phase === "idle" ? "Ready" : "Released"}</span></div>
+             <div className="editor-debug-grid" aria-label="Interaction debugger">
+               <span>Interaction <b>{previewDebug.interactionName || "—"}</b></span>
+               <span>Region <b>{previewDebug.regionName || "—"}</b></span>
+               <span>Phase <b>{previewDebug.phase}</b></span>
+               <span>Body <b>{previewDebug.bodyAnimation || "—"}</b></span>
+               <span>Face <b>{previewDebug.faceAnimation || "—"}</b></span>
+               <span>Target <b title={previewDebug.targetBonePath ?? ""}>{previewDebug.targetBonePath?.split("/").pop() ?? "—"}</b></span>
+               <span>Offset <b>{previewDebug.offsetX.toFixed(1)}, {previewDebug.offsetY.toFixed(1)}</b></span>
+             </div>
+             <label><input type="checkbox" checked={showTestRegions} onChange={(event) => setShowTestRegions(event.target.checked)} /> Hit regions</label>
+           </div>}
           <div className="editor-timeline">
             <div className="editor-timeline-top">
               <button className="editor-icon-button" title="Play/pause (Space)" onClick={() => { const next = !playing; setPlaying(next); rendererRef.current?.setPlaying(next); }} disabled={!frame || testing}>{playing ? "❚❚" : "▶"}</button>
@@ -1170,11 +1238,22 @@ export function Editor() {
              <label>Name<input value={selectedInteraction.name} onChange={(event) => updateInteraction("name", event.target.value)} /></label>
              <div className="editor-two-fields"><label>Trigger<select value={selectedInteraction.trigger} onChange={(event) => updateInteraction("trigger", event.target.value)}><option value="press">Press</option><option value="hold">Hold</option><option value="drag">Drag</option></select></label><label>Color<input type="color" value={selectedInteraction.color} onChange={(event) => updateInteraction("color", event.target.value)} /></label></div>
              <label><input type="checkbox" checked={selectedInteraction.enabled} onChange={(event) => updateInteraction("enabled", event.target.checked)} /> Enabled</label>
-             <div className="editor-animation-fields">
-             <div className="editor-subheading">On press → While held → On release</div>
-             <p className="editor-muted">Body and face tracks play together over idle. Test runs the complete sequence.</p>
-             <button className="editor-preview-button" onClick={detectPhases}>Auto-detect phases from press animation</button>
-             <label>On press<select value={selectedInteraction.startAnimation} onChange={(event) => updateInteraction("startAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
+              <div className="editor-animation-fields">
+              <div className="editor-subheading">On press → While held → On release</div>
+              <p className="editor-muted">Body and face tracks play together over idle. Test runs the complete sequence.</p>
+              <button className="editor-preview-button" onClick={detectPhases}>Auto-detect phases from press animation</button>
+              <div className="editor-phase-strip" aria-label="Interaction animation phases">
+                {[
+                  { label: "On press", body: selectedInteraction.startAnimation, face: selectedInteraction.faceStartAnimation, loop: false },
+                  { label: "While held", body: selectedInteraction.followAnimation, face: selectedInteraction.faceFollowAnimation, loop: true },
+                  { label: "On release", body: selectedInteraction.endAnimation, face: selectedInteraction.faceEndAnimation, loop: false },
+                ].map((phase) => <article className="editor-phase-card" key={phase.label}>
+                  <div><strong>{phase.label}</strong><button className="editor-preview-button" disabled={testing || (!phase.body && !phase.face)} onClick={() => previewPhase(phase.label, phase.body, phase.face, phase.loop)}>Preview</button></div>
+                  <span>{phase.body || "No body animation"}</span>
+                  <small>{phase.face ? `Face · ${phase.face}` : "No face track"}{phase.loop ? " · loops" : ""}</small>
+                </article>)}
+              </div>
+              <label>On press<select value={selectedInteraction.startAnimation} onChange={(event) => updateInteraction("startAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
              <label>While held (loops)<select value={selectedInteraction.followAnimation} onChange={(event) => updateInteraction("followAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
              <label>On release<select value={selectedInteraction.endAnimation} onChange={(event) => updateInteraction("endAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
             <details className="editor-advanced-phases"><summary>Face / secondary tracks</summary><div>
@@ -1183,12 +1262,20 @@ export function Editor() {
               <label>End<select value={selectedInteraction.faceEndAnimation} onChange={(event) => updateInteraction("faceEndAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
             </div></details>
              <div className="editor-two-fields"><button className="editor-preview-button" disabled={testing} onClick={() => playAnimation(selectedInteraction.startAnimation)}>Preview press</button><button className="editor-preview-button" onClick={toggleTest}>{testing ? "Exit test" : "Test full interaction"}</button></div>
+              </div>
+              <div className="editor-movement-fields">
+              <div className="editor-subheading">Drag response</div>
+              <p className="editor-muted">Movement is relative to the initial press. Limits are in the target bone's parent space.</p>
+             <div className="editor-bone-picker">
+               <label>Target bone search<input value={targetBoneSearch} onChange={(event) => setTargetBoneSearch(event.target.value)} placeholder="Search name or path…" /></label>
+               <div className="editor-bone-picker-list">
+                 <button type="button" className={!selectedInteraction.followTargetBone ? "is-selected" : ""} onClick={() => updateInteraction("followTargetBone", null)}>None</button>
+                 {targetBoneOptions.map((bone) => <button type="button" key={bone.path} className={selectedInteraction.followTargetBone === bone.path ? "is-selected" : ""} title={bone.path} onClick={() => updateInteraction("followTargetBone", bone.path)}><span>{bone.name}</span><small>{bone.path}</small></button>)}
+                 {targetBoneSearch.trim() && targetBoneOptions.length === 0 && <p className="editor-muted">No matching bones.</p>}
+                 {!targetBoneSearch.trim() && <p className="editor-field-hint">{selectedInteraction.followTargetBone ? `Type to search the ${frame?.bones.length ?? 0}-bone rig.` : "Type to choose a target bone."}</p>}
+               </div>
              </div>
-             <div className="editor-movement-fields">
-             <div className="editor-subheading">Drag response</div>
-             <p className="editor-muted">Movement is relative to the initial press. Limits are in the target bone's parent space.</p>
-            <label>Target bone<select value={selectedInteraction.followTargetBone ?? ""} onChange={(event) => updateInteraction("followTargetBone", event.target.value || null)}><option value="">None</option>{frame?.bones.map((bone) => <option key={bone.path} value={bone.path}>{bone.path}</option>)}</select></label>
-            <div className="editor-three-fields"><label>Sensitivity<input type="number" min="0" max="2" step="0.05" value={selectedInteraction.sensitivity} onChange={(event) => updateInteraction("sensitivity", Number(event.target.value))} /></label><label>Limit X<input type="number" min="0" step="1" value={selectedInteraction.limitX} onChange={(event) => updateInteraction("limitX", Number(event.target.value))} /></label><label>Limit Y<input type="number" min="0" step="1" value={selectedInteraction.limitY} onChange={(event) => updateInteraction("limitY", Number(event.target.value))} /></label></div>
+             <div className="editor-three-fields"><label>Sensitivity<input type="number" min="0" max="2" step="0.05" value={selectedInteraction.sensitivity} onChange={(event) => updateInteraction("sensitivity", Number(event.target.value))} /></label><label>Limit X<input type="number" min="0" step="1" value={selectedInteraction.limitX} onChange={(event) => updateInteraction("limitX", Number(event.target.value))} /></label><label>Limit Y<input type="number" min="0" step="1" value={selectedInteraction.limitY} onChange={(event) => updateInteraction("limitY", Number(event.target.value))} /></label></div>
              <label>Smoothing · {selectedInteraction.smoothing.toFixed(1)} (higher = faster response)<input type="range" min="1" max="24" step="0.5" value={selectedInteraction.smoothing} onChange={(event) => updateInteraction("smoothing", Number(event.target.value))} /></label>
               <button className="editor-preview-button" disabled={!project?.selectedBonePath} onClick={() => updateInteraction("followTargetBone", project?.selectedBonePath ?? null)}>Use selected bone as movement target</button>
               </div>

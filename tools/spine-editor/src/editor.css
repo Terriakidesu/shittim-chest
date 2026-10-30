@@ -145,6 +145,10 @@ input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid
 .editor-bone.is-selected line { stroke: var(--editor-yellow); stroke-width: 4; }
 .editor-bone.is-selected circle { fill: var(--editor-yellow); stroke: #fff; }
 .editor-bone text { fill: #d9f6ff; font-size: 12px; paint-order: stroke; stroke: #08121b; stroke-width: 4px; pointer-events: none; }
+.editor-motion-limit { pointer-events: none; }
+.editor-motion-limit ellipse { fill: #ffd45c1a; stroke: var(--editor-yellow); stroke-width: 2; stroke-dasharray: 8 5; }
+.editor-motion-limit line { stroke: #ffd45c99; stroke-width: 1; stroke-dasharray: 3 3; }
+.editor-motion-limit circle { fill: var(--editor-yellow); stroke: #08121b; stroke-width: 2; }
 .editor-constraint { stroke: var(--editor-yellow); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .7; pointer-events: none; }
 .editor-region ellipse, .editor-region rect { fill: currentColor; fill-opacity: .12; stroke: currentColor; stroke-width: 2; stroke-dasharray: 7 4; pointer-events: auto; cursor: grab; }
 .editor-region.is-selected ellipse, .editor-region.is-selected rect { fill-opacity: .26; stroke-width: 3; stroke-dasharray: none; }
@@ -193,6 +197,21 @@ input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid
 .editor-tabs button[aria-pressed="true"] { color: var(--editor-cyan); border-color: var(--editor-cyan); background: #173347; }
 .editor-animation-fields, .editor-movement-fields, .editor-region-fields { display: grid; gap: 8px; }
 .editor-inspector label { display: grid; gap: 4px; color: var(--editor-muted); font-size: 11px; }
+.editor-phase-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.editor-phase-card { display: grid; align-content: start; gap: 4px; min-width: 0; padding: 7px; border: 1px solid var(--editor-line); border-radius: 4px; background: #0d202e; }
+.editor-phase-card > div { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.editor-phase-card strong { color: var(--editor-cyan); font-size: 9px; text-transform: uppercase; }
+.editor-phase-card > span, .editor-phase-card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-phase-card > span { color: var(--editor-text); font-size: 10px; }
+.editor-phase-card small { color: var(--editor-muted); font-size: 9px; }
+.editor-phase-card .editor-preview-button { min-height: 22px; padding: 2px 5px; font-size: 9px; }
+.editor-bone-picker { display: grid; gap: 5px; }
+.editor-bone-picker-list { max-height: 150px; overflow: auto; border: 1px solid var(--editor-line); border-radius: 3px; background: #0c1a27; }
+.editor-bone-picker-list button { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); align-items: center; gap: 6px; width: 100%; min-height: 27px; padding: 4px 6px; border: 0; border-bottom: 1px solid #213b4d; background: transparent; color: var(--editor-text); text-align: left; }
+.editor-bone-picker-list button:hover, .editor-bone-picker-list button.is-selected { background: #1d455c; }
+.editor-bone-picker-list button span, .editor-bone-picker-list button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-bone-picker-list button small { color: var(--editor-muted); font-size: 9px; }
+.editor-bone-picker-list .editor-muted { padding: 0 7px; }
 .editor-right-panel:not(.tab-animation) .editor-animation-fields, .editor-right-panel:not(.tab-movement) .editor-movement-fields, .editor-right-panel:not(.tab-region) .editor-region-fields { display: none; }
 .editor-input-surface { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
 .editor-input-surface.testing { cursor: pointer; }
@@ -238,9 +257,14 @@ input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid
 .editor-overlay.tool-pan *, .editor-overlay.tool-draw * { pointer-events: none !important; }
 .editor-handle { pointer-events: auto; fill: #fff; stroke: #132c3a; stroke-width: 2; cursor: nwse-resize; }
 .editor-handle.rotate { fill: var(--editor-yellow); cursor: crosshair; }
-.editor-testbar { display: flex; flex-wrap: wrap; gap: 12px; padding: 7px 10px; background: #173d33; color: #b9f5dc; font-size: 11px; }
+.editor-testbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 7px 10px; background: #173d33; color: #b9f5dc; font-size: 10px; }
 .editor-testbar strong { text-transform: capitalize; }
 .editor-testbar label { margin-left: auto; }
+.editor-debug-status { display: grid; gap: 1px; min-width: 90px; }
+.editor-debug-status span { color: #8bd7b8; font-size: 9px; text-transform: uppercase; }
+.editor-debug-grid { display: grid; grid-template-columns: repeat(4, minmax(90px, auto)); gap: 2px 10px; min-width: 0; }
+.editor-debug-grid span { color: #8bd7b8; white-space: nowrap; }
+.editor-debug-grid b { color: #e2fff1; font-weight: 700; }
 .editor-help { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 14px; background: #173347; font-size: 11px; }
 .editor-validation summary { cursor: pointer; color: var(--editor-muted); font-size: 11px; }
 .editor-interaction-settings { display: grid; gap: 8px; border-top: 1px solid var(--editor-line); padding-top: 7px; }
