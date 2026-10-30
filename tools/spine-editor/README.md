@@ -24,6 +24,14 @@ Choose a Spine asset folder in the native window, then author regions and
 animation phases. The desktop host reads local files through its native Bun
 bridge and does not upload assets or make network requests.
 
+The selected root may contain an `.editorignore` file. It uses root-relative
+gitignore-style patterns (`*`, `?`, `**`, directory patterns, and `!`
+negation) to keep generated or unrelated files out of the imported catalog.
+Editor-owned projects are saved under `.editor/`; the older
+`.shittim-spine-editor/` location is still read for migration. Opening a root
+or switching sets automatically restores the saved interaction/timeline
+project, including its subtitle cues and audio clips.
+
 ## Workflow
 
 1. Open an asset folder; the editor starts directly on idle.
@@ -64,7 +72,8 @@ all layers together rather than flattening them into images.
 - In the native desktop host, switch character sets from the shared header picker;
   decoded voice duration expands each imported audio block and the linked
   subtitle JSON is saved back in place. **Save files** writes the companion
-  project JSON under `.shittim-spine-editor/` in the selected asset root.
+  project JSON under `.editor/` in the selected asset root. When that project
+  is found again, subtitle cues and referenced audio are loaded automatically.
 - Change the shared duration, snap interval, playback speed, and layer order.
 
 Timeline edits are part of the same local, versioned project JSON as the
@@ -105,5 +114,6 @@ Shortcuts are ignored while typing in a field.
 
 Existing version-1 projects remain compatible. Project companions are kept
 under the selected asset root; the published viewer does **not** consume custom
-projects.
+projects. Use `.editorignore` when a root contains asset-like folders that
+should not be imported.
 Neither this editor nor its assets are included in the root Pages build.

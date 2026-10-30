@@ -26,7 +26,9 @@ native folder picker and asset reads do not depend on browser folder
 permissions. The local webview is an implementation detail; this tool has no
 browser launch mode.
 `Ctrl+S`/**Save files** writes the current non-destructive project companion to
-`.shittim-spine-editor/<character>.spine-project.json` inside the selected root.
-Imported subtitle JSON is linked to its source path and is saved back through
-the same native channel after edits (or immediately with Ctrl+S). The published
-site remains unaware of this API.
+`.editor/<character>.spine-project.json` inside the selected root. Imported
+subtitle JSON is linked to its source path and is saved back through the same
+native channel after edits (or immediately with Ctrl+S). Reopening the root
+restores the interaction/timeline project and automatically loads its subtitle
+cues and referenced audio. The older `.shittim-spine-editor/` directory is
+read for migration. The published site remains unaware of this API.

@@ -34,6 +34,7 @@ import { LEGACY_PROJECT_STORAGE_PREFIX } from "./editorModel";
 import { chooseDesktopProject, chooseDesktopSource, chooseDesktopSourceAt, type DesktopAssetSource } from "./desktopSource";
 import { normalizeRecentFiles, RECENT_FILES_KEY, rememberRecentFile, removeRecentFile, type RecentFile, type RecentFileKind } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
+import { editorProjectPath, editorProjectPaths } from "./editorStorage";
 
 function displayName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -42,6 +43,21 @@ function displayName(path: string): string {
 function nativePath(root: string, relativePath: string): string {
   const separator = root.includes("\\") ? "\\" : "/";
   return `${root.replace(/[\\/]+$/, "")}${separator}${relativePath.replaceAll("/", separator)}`;
+}
+
+async function readSavedEditorProject(source: DesktopAssetSource, directory: string, onError: (message: string) => void): Promise<EditorProject | null> {
+  for (const path of editorProjectPaths(directory)) {
+    const content = await source.readText(path);
+    if (!content) continue;
+    try {
+      const project = normalizeProject(JSON.parse(content) as unknown, directory);
+      if (project) return project;
+      onError(`Saved editor project is not compatible: ${path}`);
+    } catch (value) {
+      onError(`Could not read saved editor project ${path}: ${value instanceof Error ? value.message : String(value)}`);
+    }
+  }
+  return null;
 }
 
 function readStoredViewSettings(): EditorViewSettings {
@@ -539,6 +555,10 @@ export function Editor() {
     if (found.length === 0) throw new Error("No Spine asset directories were found.");
     if (preferredDirectory && !found.includes(preferredDirectory)) throw new Error(`The project references missing Spine set “${preferredDirectory}”.`);
     const selectedDirectory = preferredDirectory && found.includes(preferredDirectory) ? preferredDirectory : found[0]!;
+    const pending = pendingProjectRef.current;
+    if (!pending || pending.assetDirectory !== selectedDirectory) {
+      pendingProjectRef.current = await readSavedEditorProject(next, selectedDirectory, (message) => setError(message));
+    }
     setSource(next);
     setDirectories(found);
     setDirectory(selectedDirectory);
@@ -630,9 +650,10 @@ export function Editor() {
     }
   }
 
-  function changeDirectory(next: string) {
+  async function changeDirectory(next: string) {
     if (!next || next === directory) return;
     if (saveState === "dirty" && !window.confirm("This project has unsaved changes. Switch asset sets without saving?")) return;
+    pendingProjectRef.current = source ? await readSavedEditorProject(source, next, (message) => setError(message)) : null;
     setDirectory(next);
     setSaveState("idle");
     setSavedAt(null);
@@ -713,8 +734,7 @@ export function Editor() {
         const subtitlePaths = await timelineSaveRef.current?.(getCurrentProject) ?? [];
         const latest = getCurrentProject();
         if (sourceRef.current !== saveSource || directoryRef.current !== saveDirectory || latest.assetDirectory !== saveDirectory) return;
-        const safeName = saveDirectory.replace(/[^A-Za-z0-9._-]+/g, "-") || "project";
-        const projectPath = `.shittim-spine-editor/${safeName}.spine-project.json`;
+        const projectPath = editorProjectPath(saveDirectory);
         await saveSource.saveText(projectPath, `${JSON.stringify(latest, null, 2)}\n`);
         recordRecentFile({ kind: "project", path: projectPath, rootPath: saveSource.rootPath, label: displayName(projectPath), directory: saveDirectory });
         setSaveState("saved");

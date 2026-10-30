@@ -1,10 +1,13 @@
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { ApplicationMenu, BrowserWindow, Utils } from "electrobun/main";
+import { isEditorIgnored, parseEditorIgnore, type EditorIgnoreRule } from "../../../src/editorIgnore";
 
 let assetRoot: string | null = null;
 
 type SpineSet = { directory: string; path: string };
+
+const EDITOR_DIRECTORIES = new Set([".editor", ".shittim-spine-editor"]);
 
 function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -26,20 +29,48 @@ function rootRelativePath(value: string): string {
   return full;
 }
 
-async function spineSets(directory: string, output: SpineSet[]): Promise<void> {
+function relativePath(full: string): string {
+  return relative(resolve(assetRoot!), full).replaceAll(sep, "/");
+}
+
+function isEditorDataPath(path: string): boolean {
+  return EDITOR_DIRECTORIES.has(path.split("/")[0]?.toLocaleLowerCase() ?? "");
+}
+
+async function ignoreRules(): Promise<EditorIgnoreRule[]> {
+  if (!assetRoot) return [];
+  try {
+    return parseEditorIgnore(await readFile(join(assetRoot, ".editorignore"), "utf8"));
+  } catch (value) {
+    if (value && typeof value === "object" && "code" in value && (value as { code?: string }).code === "ENOENT") return [];
+    throw value;
+  }
+}
+
+function ignored(path: string, rules: readonly EditorIgnoreRule[], isDirectory = false): boolean {
+  return !isEditorDataPath(path) && isEditorIgnored(path, rules, isDirectory);
+}
+
+async function spineSets(directory: string, output: SpineSet[], rules: readonly EditorIgnoreRule[]): Promise<void> {
+  const rootRelative = relativePath(directory);
+  if (isEditorDataPath(rootRelative) || ignored(rootRelative, rules, true)) return;
   const entries = await readdir(directory, { withFileTypes: true });
-  if (entries.some((entry) => entry.isFile() && /\.(?:atlas|skel)$/i.test(entry.name))) {
-    const path = relative(assetRoot!, directory).replaceAll(sep, "/") || ".";
+  const usableEntries = entries.filter((entry) => {
+    const path = relativePath(join(directory, entry.name));
+    return entry.name !== "node_modules" && entry.name !== ".git" && !isEditorDataPath(path) && !ignored(path, rules, entry.isDirectory());
+  });
+  if (usableEntries.some((entry) => entry.isFile() && /\.(?:atlas|skel)$/i.test(entry.name))) {
+    const path = rootRelative || ".";
     output.push({ directory: basename(directory), path });
     return;
   }
-  await Promise.all(entries.filter((entry) => entry.isDirectory() && entry.name !== "node_modules" && entry.name !== ".git").map((entry) => spineSets(join(directory, entry.name), output)));
+  await Promise.all(usableEntries.filter((entry) => entry.isDirectory()).map((entry) => spineSets(join(directory, entry.name), output, rules)));
 }
 
 async function catalog(): Promise<SpineSet[]> {
   if (!assetRoot) throw new Error("Choose an asset root first.");
   const output: SpineSet[] = [];
-  await spineSets(assetRoot, output);
+  await spineSets(assetRoot, output, await ignoreRules());
   const unique = new Map<string, SpineSet>();
   for (const item of output) if (!unique.has(item.directory)) unique.set(item.directory, item);
   return [...unique.values()].sort((a, b) => a.directory.localeCompare(b.directory, undefined, { sensitivity: "base" }));
@@ -55,8 +86,9 @@ async function useRoot(path: string): Promise<string> {
 
 async function setFiles(directory: string): Promise<string[]> {
   const full = rootRelativePath(directory === "." ? "" : directory);
+  const rules = await ignoreRules();
   return (await readdir(full, { withFileTypes: true }))
-    .filter((entry) => entry.isFile())
+    .filter((entry) => entry.isFile() && !ignored(relativePath(join(full, entry.name)), rules))
     .map((entry) => entry.name)
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
@@ -109,7 +141,9 @@ async function api(request: Request, url: URL): Promise<Response> {
       const root = resolve(assetRoot);
       const full = resolve(absolute);
       if (full !== root && !full.startsWith(`${root}${sep}`)) throw new Error("Choose a file inside the selected asset root.");
-      return json({ path: relative(root, full).replaceAll(sep, "/"), content: await readFile(full, "utf8") });
+      const path = relative(root, full).replaceAll(sep, "/");
+      if (ignored(path, await ignoreRules())) throw new Error("The selected file is excluded by .editorignore.");
+      return json({ path, content: await readFile(full, "utf8") });
     }
     if (url.pathname === "/__spine/open-project" && request.method === "POST") {
       const selected = await Utils.openFileDialog({
@@ -122,7 +156,7 @@ async function api(request: Request, url: URL): Promise<Response> {
       const absolute = selected[0];
       if (!absolute) return json({ rootPath: null, path: null, content: null });
       const full = resolve(absolute);
-      const projectDirectory = basename(dirname(full)) === ".shittim-spine-editor" ? dirname(dirname(full)) : dirname(full);
+      const projectDirectory = EDITOR_DIRECTORIES.has(basename(dirname(full)).toLocaleLowerCase()) ? dirname(dirname(full)) : dirname(full);
       assetRoot = await useRoot(projectDirectory);
       return json({ rootPath: assetRoot, path: relative(assetRoot, full).replaceAll(sep, "/"), content: await readFile(full, "utf8") });
     }
@@ -136,17 +170,20 @@ async function api(request: Request, url: URL): Promise<Response> {
         allowsMultipleSelection: true,
       });
       const root = resolve(assetRoot);
+      const rules = await ignoreRules();
       const paths = selected.map((absolute) => {
         const full = resolve(absolute);
         if (full !== root && !full.startsWith(`${root}${sep}`)) throw new Error("Choose audio files inside the selected asset root.");
         return relative(root, full).replaceAll(sep, "/");
-      });
+      }).filter((path) => !ignored(path, rules));
       return json({ paths });
     }
     if (url.pathname === "/__spine/catalog") return json({ rootPath: assetRoot, sets: await catalog() });
     if (url.pathname === "/__spine/files") return json({ files: await setFiles(url.searchParams.get("directory") ?? ".") });
     if (url.pathname === "/__spine/file") {
-      const full = rootRelativePath(url.searchParams.get("path") ?? "");
+      const path = (url.searchParams.get("path") ?? "").replaceAll("\\", "/").replace(/^\/+/, "");
+      const full = rootRelativePath(path);
+      if (ignored(path, await ignoreRules())) return errorResponse("File excluded by .editorignore.", 404);
       if (!(await Bun.file(full).exists())) return errorResponse("File not found.", 404);
       return new Response(Bun.file(full), { headers: { "content-type": contentType(full) } });
     }

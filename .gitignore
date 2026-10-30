@@ -16,3 +16,4 @@ tools/spine-editor/desktop/dist/
 
 # Native editor autosave companions are user data, not editor source.
 .shittim-spine-editor/
+.editor/
