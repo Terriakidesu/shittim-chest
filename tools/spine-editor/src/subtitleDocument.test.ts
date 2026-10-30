@@ -34,3 +34,54 @@ test("subtitle direct-save serialization updates matching parts without mutating
   const savedAgain = JSON.parse(serializeSubtitleDocument(saved, "Airi_home", [first, second])) as typeof saved;
   expect(savedAgain.characters[0]!.lines[0]!.parts![0]!.subtitle).toMatchObject({ en: "Newest one" });
 });
+
+test("subtitle serialization removes duplicate same-start parts that would overlap audio", () => {
+  const document = {
+    directory: "Airi_home",
+    lines: [{
+      id: "MemorialLobby_1",
+      parts: [
+        { audio: ["Airi_MemorialLobby_1_1.ogg"], subtitle: { en: "Same line" }, start: 1.333333, end: 1.383333 },
+        { audio: ["Airi_MemorialLobby_1_2.ogg"], subtitle: { en: "Same line" }, start: 1.333333, end: 3.333333 },
+      ],
+    }],
+  };
+  const timeline = createProject("Airi_home", [], []).timeline;
+  timeline.subtitles = [{ id: "cue", lineId: "MemorialLobby_1", start: 1.333333, end: 3.333333, enabled: true, text: { en: "Same line", ja: "", ko: "" } }];
+  const saved = JSON.parse(serializeSubtitleDocument(document, "Airi_home", [timeline])) as { lines: Array<{ parts: Array<Record<string, unknown>> }> };
+  expect(saved.lines[0]!.parts).toHaveLength(1);
+  expect(saved.lines[0]!.parts[0]).toMatchObject({ audio: ["Airi_MemorialLobby_1_2.ogg"], start: 1.333333, end: 3.333333 });
+});
+
+test("subtitle serialization repairs duplicate parts even when a line has no edited cue", () => {
+  const document = {
+    lines: [{
+      id: "MemorialLobby_1",
+      parts: [
+        { audio: ["short.ogg"], subtitle: { en: "Same line" }, start: 1, end: 1.1 },
+        { audio: ["long.ogg"], subtitle: { en: "Same line" }, start: 1, end: 2 },
+      ],
+    }],
+  };
+  const saved = JSON.parse(serializeSubtitleDocument(document, "Airi_home", [])) as { lines: Array<{ parts: Array<Record<string, unknown>> }> };
+  expect(saved.lines[0]!.parts).toEqual([{ audio: ["long.ogg"], subtitle: { en: "Same line" }, start: 1, end: 2 }]);
+  expect(document.lines[0]!.parts).toHaveLength(2);
+});
+
+test("subtitle serialization ignores a stale duplicate of the active sequence", () => {
+  const document = {
+    lines: [{
+      id: "MemorialLobby_1",
+      parts: [{ audio: ["voice.ogg"], subtitle: { en: "Same line" }, start: 1, end: 3 }],
+    }],
+  };
+  const active = createProject("Airi_home", [], []).timeline;
+  active.sequenceId = "talk-1";
+  active.subtitles = [{ id: "active", lineId: "MemorialLobby_1", start: 1, end: 3, enabled: true, text: { en: "Same line", ja: "", ko: "" } }];
+  const stale = createProject("Airi_home", [], []).timeline;
+  stale.sequenceId = "talk-1";
+  stale.subtitles = [{ id: "stale", lineId: "MemorialLobby_1", start: 1, end: 1.1, enabled: true, text: { en: "Same line", ja: "", ko: "" } }];
+  const saved = JSON.parse(serializeSubtitleDocument(document, "Airi_home", [active, stale])) as { lines: Array<{ parts: Array<Record<string, unknown>> }> };
+  expect(saved.lines[0]!.parts).toHaveLength(1);
+  expect(saved.lines[0]!.parts[0]).toMatchObject({ start: 1, end: 3 });
+});

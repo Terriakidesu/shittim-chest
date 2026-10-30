@@ -21,6 +21,13 @@ import { AssetPickerModal } from "./AssetPickerModal";
 const TIMELINE_SCALE = 96;
 const MIN_TIMELINE_DURATION = 1;
 
+interface ImportedSubtitleEntry {
+  start: number;
+  end?: number;
+  text: Record<TimelineLanguage, string>;
+  audio: string[];
+}
+
 function AudioWaveform({ url, onDuration }: { url?: string; onDuration?: (duration: number) => void }) {
   const [peaks, setPeaks] = useState<number[]>([]);
   const onDurationRef = useRef(onDuration);
@@ -211,6 +218,27 @@ function importedText(value: unknown): Record<TimelineLanguage, string> {
   return { en: read("en", "EN"), ja: read("ja", "JA", "JR"), ko: read("ko", "KO", "KR") };
 }
 
+function subtitleTextKey(text: Record<TimelineLanguage, string>): string {
+  return `${text.en}\u0000${text.ja}\u0000${text.ko}`;
+}
+
+function collapseDuplicateEntries(entries: ImportedSubtitleEntry[]): ImportedSubtitleEntry[] {
+  const result: ImportedSubtitleEntry[] = [];
+  for (const entry of entries) {
+    const previousIndex = result.findIndex((previous) => Math.abs(previous.start - entry.start) < 0.0001 && subtitleTextKey(previous.text) === subtitleTextKey(entry.text));
+    if (previousIndex < 0) result.push(entry);
+    else if ((entry.end ?? Number.NEGATIVE_INFINITY) > (result[previousIndex]!.end ?? Number.NEGATIVE_INFINITY)) result[previousIndex] = entry;
+  }
+  return result;
+}
+
+function preferredAudioPath(alternatives: string[]): string[] {
+  const global = alternatives.filter((path) => /_GL_/i.test(path));
+  const base = alternatives.filter((path) => !/_(GL|JP|KR)_/i.test(path));
+  const candidates = global.length ? global : base.length ? base : alternatives.filter((path) => /_JP_/i.test(path));
+  return candidates.length ? [candidates[0]!] : alternatives.slice(0, 1);
+}
+
 function importedSubtitleCues(value: unknown): { cues: EditorSubtitleCue[]; audio: EditorAudioClip[]; duration: number } {
   const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const lines = Array.isArray(source.lines)
@@ -233,16 +261,18 @@ function importedSubtitleCues(value: unknown): { cues: EditorSubtitleCue[]; audi
     const line = candidate as Record<string, unknown>;
     const parts = Array.isArray(line.parts) ? line.parts.filter((part) => part && typeof part === "object") as Record<string, unknown>[] : [];
     const markers = Array.isArray(line.markers) ? line.markers.filter((marker): marker is number => typeof marker === "number" && Number.isFinite(marker)) : [];
-    const entries = parts.length > 0
+    const entries = (parts.length > 0
       ? parts.map((part, index) => ({
         start: typeof part.start === "number" && Number.isFinite(part.start) ? part.start : markers[index] ?? lineIndex * 2 + index * 2,
+        end: typeof part.end === "number" && Number.isFinite(part.end) ? part.end : undefined,
         text: importedText(part.subtitle ?? part.text ?? line.subtitle ?? line.text),
         audio: Array.isArray(part.audio) ? part.audio.filter((item): item is string => typeof item === "string") : [],
       }))
-      : [{ start: markers[0] ?? lineIndex * 2, text: importedText(line.subtitle ?? line.text ?? line), audio: Array.isArray(line.audio) ? line.audio.filter((item): item is string => typeof item === "string") : [] }];
-    entries.forEach((entry, index) => {
-      const nextStart = entries[index + 1]?.start;
-      const end = Math.max(entry.start + 0.05, nextStart ?? entry.start + 2);
+      : [{ start: markers[0] ?? lineIndex * 2, end: undefined, text: importedText(line.subtitle ?? line.text ?? line), audio: Array.isArray(line.audio) ? line.audio.filter((item): item is string => typeof item === "string") : [] }]) as ImportedSubtitleEntry[];
+    const compactEntries = collapseDuplicateEntries(entries);
+    compactEntries.forEach((entry, index) => {
+      const nextStart = compactEntries[index + 1]?.start;
+      const end = Math.max(entry.start + 0.05, entry.end ?? nextStart ?? entry.start + 2);
       const cue: EditorSubtitleCue = {
         id: `subtitle-import-${lineIndex}-${index}-${Math.random().toString(36).slice(2, 8)}`,
         start: Math.max(0, entry.start),
@@ -252,11 +282,7 @@ function importedSubtitleCues(value: unknown): { cues: EditorSubtitleCue[]; audi
       };
       cues.push(cue);
       duration = Math.max(duration, end);
-      const alternatives = entry.audio;
-      const global = alternatives.filter((path) => /_GL_/i.test(path));
-      const base = alternatives.filter((path) => !/_(GL|JP|KR)_/i.test(path));
-      const chosen = global.length ? global : base.length ? base : alternatives.filter((path) => /_JP_/i.test(path));
-      (chosen.length ? chosen : alternatives.slice(0, 1)).forEach((path, audioIndex) => {
+      preferredAudioPath(entry.audio).forEach((path, audioIndex) => {
         const start = entry.start + audioIndex * 0.01;
         audio.push({
           id: `audio-import-${lineIndex}-${index}-${audioIndex}-${Math.random().toString(36).slice(2, 8)}`,
@@ -582,7 +608,10 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   }, [directory, duration, timeline]);
 
   function projectTimelines(current: EditorProject) {
-    return [current.timeline, ...Object.values(current.sequences ?? {})];
+    const activeId = current.timeline.sequenceId;
+    return [current.timeline, ...Object.entries(current.sequences ?? {})
+      .filter(([id, timeline]) => id !== activeId && timeline.sequenceId !== activeId)
+      .map(([, timeline]) => timeline)];
   }
 
   async function saveSubtitleDocuments(getProject: () => EditorProject | null = () => projectRef.current): Promise<string[]> {

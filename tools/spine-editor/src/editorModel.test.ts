@@ -180,4 +180,28 @@ describe("Spine editor project model", () => {
     expect(project?.timeline.audio[0]).toMatchObject({ path: "voice.ogg", volume: 1, enabled: true });
     expect(normalizeProject({ schemaVersion: 1, interactions: [] }, "Airi_home")?.timeline.layers[0]?.directory).toBe("Airi_home");
   });
+
+  test("removes duplicate imported subtitle and audio alternatives during normalization", () => {
+    const project = normalizeProject({
+      schemaVersion: 1,
+      interactions: [],
+      sequences: {
+        "talk-1": {
+          duration: 4,
+          subtitles: [
+            { id: "short-cue", lineId: "MemorialLobby_1", start: 1, end: 1.1, text: { en: "Same" } },
+            { id: "long-cue", lineId: "MemorialLobby_1", start: 1, end: 3, text: { en: "Same" } },
+          ],
+          audio: [
+            { id: "short-audio", lineId: "MemorialLobby_1", path: "short.ogg", start: 1, end: 1.1 },
+            { id: "long-audio", lineId: "MemorialLobby_1", path: "long.ogg", start: 1, end: 3 },
+          ],
+        },
+      },
+    }, "Airi_home")!;
+    expect(project.sequences?.["talk-1"]?.subtitles).toHaveLength(1);
+    expect(project.sequences?.["talk-1"]?.subtitles[0]).toMatchObject({ id: "long-cue", end: 3 });
+    expect(project.sequences?.["talk-1"]?.audio).toHaveLength(1);
+    expect(project.sequences?.["talk-1"]?.audio[0]).toMatchObject({ id: "long-audio", path: "long.ogg", end: 3 });
+  });
 });

@@ -470,6 +470,46 @@ function normalizeAudioClip(value: Partial<EditorAudioClip>, index: number, dura
   };
 }
 
+function collapseDuplicateSubtitles(cues: EditorSubtitleCue[]): EditorSubtitleCue[] {
+  const result: EditorSubtitleCue[] = [];
+  const indexes = new Map<string, number>();
+  for (const cue of cues) {
+    if (!cue.lineId) {
+      result.push(cue);
+      continue;
+    }
+    const key = `${cue.lineId}\u0000${cue.start.toFixed(6)}\u0000${cue.text.en}\u0000${cue.text.ja}\u0000${cue.text.ko}`;
+    const previousIndex = indexes.get(key);
+    if (previousIndex === undefined) {
+      indexes.set(key, result.length);
+      result.push(cue);
+    } else if (cue.end > result[previousIndex]!.end) {
+      result[previousIndex] = cue;
+    }
+  }
+  return result;
+}
+
+function collapseDuplicateAudio(clips: EditorAudioClip[]): EditorAudioClip[] {
+  const result: EditorAudioClip[] = [];
+  const indexes = new Map<string, number>();
+  for (const clip of clips) {
+    if (!clip.lineId) {
+      result.push(clip);
+      continue;
+    }
+    const key = `${clip.lineId}\u0000${clip.start.toFixed(6)}`;
+    const previousIndex = indexes.get(key);
+    if (previousIndex === undefined) {
+      indexes.set(key, result.length);
+      result.push(clip);
+    } else if (clip.end > result[previousIndex]!.end) {
+      result[previousIndex] = clip;
+    }
+  }
+  return result;
+}
+
 export function normalizeTimeline(value: unknown, directory: string): EditorTimeline {
   if (!value || typeof value !== "object") return createTimeline(directory);
   const raw = value as Partial<EditorTimeline>;
@@ -478,13 +518,13 @@ export function normalizeTimeline(value: unknown, directory: string): EditorTime
     .filter((item) => Boolean(item && typeof item === "object"))
     .map((item, index) => normalizeTimelineLayer(item as Partial<EditorTimelineLayer>, index, duration))
     .filter((item): item is EditorTimelineLayer => item !== null);
-  const subtitles = (Array.isArray(raw.subtitles) ? raw.subtitles as unknown[] : [])
+  const subtitles = collapseDuplicateSubtitles((Array.isArray(raw.subtitles) ? raw.subtitles as unknown[] : [])
     .filter((item) => Boolean(item && typeof item === "object"))
-    .map((item, index) => normalizeSubtitleCue(item as Partial<EditorSubtitleCue>, index, duration));
-  const audio = (Array.isArray(raw.audio) ? raw.audio as unknown[] : [])
+    .map((item, index) => normalizeSubtitleCue(item as Partial<EditorSubtitleCue>, index, duration)));
+  const audio = collapseDuplicateAudio((Array.isArray(raw.audio) ? raw.audio as unknown[] : [])
     .filter((item) => Boolean(item && typeof item === "object"))
     .map((item, index) => normalizeAudioClip(item as Partial<EditorAudioClip>, index, duration))
-    .filter((item): item is EditorAudioClip => item !== null);
+    .filter((item): item is EditorAudioClip => item !== null));
   const selectedLayer = typeof raw.selectedLayerId === "string" && layers.some((layer) => layer.id === raw.selectedLayerId) ? raw.selectedLayerId : layers[0]?.id ?? null;
   const selectedCue = typeof raw.selectedCueId === "string" && subtitles.some((cue) => cue.id === raw.selectedCueId) ? raw.selectedCueId : subtitles[0]?.id ?? null;
   return {
