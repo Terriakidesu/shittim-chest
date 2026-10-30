@@ -121,13 +121,13 @@ export interface EditorProject {
 export type EditorViewSettings = Pick<EditorProject, "showBones" | "showBoneNames" | "showConstraints" | "showInactiveBones">;
 
 export const DEFAULT_EDITOR_VIEW_SETTINGS: EditorViewSettings = {
-  showBones: true,
+  showBones: false,
   showBoneNames: false,
-  showConstraints: true,
+  showConstraints: false,
   showInactiveBones: false,
 };
 
-export const EDITOR_VIEW_SETTINGS_KEY = `shittim-spine-editor:view-settings:v${EDITOR_SCHEMA_VERSION}`;
+export const EDITOR_VIEW_SETTINGS_KEY = "shittim-spine-editor:view-settings:v3";
 
 export const LEGACY_PROJECT_STORAGE_PREFIX = `shittim-spine-editor:v${LEGACY_EDITOR_SCHEMA_VERSION}:`;
 
@@ -144,9 +144,9 @@ export function normalizeViewSettings(value: unknown): EditorViewSettings | null
   if (!value || typeof value !== "object") return null;
   const settings = value as Partial<EditorViewSettings>;
   return {
-    showBones: settings.showBones !== false,
+    showBones: settings.showBones === true,
     showBoneNames: settings.showBoneNames === true,
-    showConstraints: settings.showConstraints !== false,
+    showConstraints: settings.showConstraints === true,
     showInactiveBones: settings.showInactiveBones === true,
   };
 }

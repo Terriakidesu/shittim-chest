@@ -19,7 +19,6 @@ import {
   projectStorageKey,
   repairPinchRegions,
   validateProject,
-  viewSettingsFromProject,
   type EditorInteraction,
   type EditorProject,
   type EditorRegion,
@@ -38,12 +37,12 @@ function displayName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-function readStoredViewSettings(): EditorViewSettings | null {
+function readStoredViewSettings(): EditorViewSettings {
   try {
     const stored = localStorage.getItem(EDITOR_VIEW_SETTINGS_KEY);
-    return stored ? normalizeViewSettings(JSON.parse(stored) as unknown) : null;
+    return (stored ? normalizeViewSettings(JSON.parse(stored) as unknown) : null) ?? DEFAULT_EDITOR_VIEW_SETTINGS;
   } catch {
-    return null;
+    return DEFAULT_EDITOR_VIEW_SETTINGS;
   }
 }
 
@@ -258,10 +257,11 @@ export function Editor() {
   const [selectedAnimation, setSelectedAnimation] = useState("");
   const [project, setProject] = useState<EditorProject | null>(null);
   const timelineSaveRef = useRef<(() => Promise<void>) | null>(null);
-  const [viewSettings, setViewSettings] = useState<EditorViewSettings | null>(() => readStoredViewSettings());
+  const [viewSettings, setViewSettings] = useState<EditorViewSettings>(() => readStoredViewSettings());
   const [undo, setUndo] = useState<EditorProject[]>([]);
   const [redo, setRedo] = useState<EditorProject[]>([]);
   const [boneSearch, setBoneSearch] = useState("");
+  const [collapsedBones, setCollapsedBones] = useState<Set<string>>(() => new Set());
   const [interactionSearch, setInteractionSearch] = useState("");
   const [status, setStatus] = useState("Open a Spine asset folder to begin.");
   const [error, setError] = useState<string | null>(null);
@@ -273,16 +273,11 @@ export function Editor() {
   projectRef.current = project;
   directoryRef.current = directory;
   metaRef.current = meta;
-  const viewSettingsRef = useRef<EditorViewSettings | null>(viewSettings);
+  const viewSettingsRef = useRef<EditorViewSettings>(viewSettings);
   viewSettingsRef.current = viewSettings;
 
   function withCurrentViewSettings(next: EditorProject): EditorProject {
-    const settings = viewSettingsRef.current ?? viewSettingsFromProject(next);
-    if (!viewSettingsRef.current) {
-      viewSettingsRef.current = settings;
-      setViewSettings(settings);
-    }
-    return { ...next, ...settings };
+    return { ...next, ...viewSettingsRef.current };
   }
 
   const callbacksRef = useRef({
@@ -595,14 +590,43 @@ export function Editor() {
 
   const selectedInteraction = project?.interactions.find((item) => item.id === project.selectedInteractionId) ?? null;
   const selectedRegion = selectedInteraction?.regions.find((item) => item.id === project?.selectedRegionId) ?? null;
+  const displaySettings = viewSettings;
   const visibleBones = useMemo(() => {
     const query = boneSearch.trim().toLocaleLowerCase();
-    return frame?.bones.filter((bone) => !query || `${bone.name} ${bone.path}`.toLocaleLowerCase().includes(query)) ?? [];
-  }, [boneSearch, frame]);
+    const bones = frame?.bones.filter((bone) => displaySettings.showInactiveBones || bone.active) ?? [];
+    if (!query) {
+      return bones.filter((bone) => !bone.path.split("/").slice(0, -1).some((_, index, parts) => collapsedBones.has(parts.slice(0, index + 1).join("/"))));
+    }
+    const matches = new Set<string>();
+    for (const bone of bones) {
+      if (!`${bone.name} ${bone.path}`.toLocaleLowerCase().includes(query)) continue;
+      const parts = bone.path.split("/");
+      parts.forEach((_, index) => matches.add(parts.slice(0, index + 1).join("/")));
+    }
+    return bones.filter((bone) => matches.has(bone.path));
+  }, [boneSearch, collapsedBones, displaySettings.showInactiveBones, frame]);
   const visibleInteractions = project?.interactions.filter((item) => !interactionSearch.trim() || item.name.toLocaleLowerCase().includes(interactionSearch.trim().toLocaleLowerCase())) ?? [];
   const validationWarnings = useMemo(() => project && meta && frame ? validateProject(project, meta.animations, frame.bones) : [], [frame, meta, project]);
-  const displaySettings = viewSettings ?? (project ? viewSettingsFromProject(project) : DEFAULT_EDITOR_VIEW_SETTINGS);
   const renderedViewSettings = testing ? { ...displaySettings, showBones: false, showConstraints: false } : displaySettings;
+
+  function toggleBone(path: string) {
+    setCollapsedBones((value) => {
+      const next = new Set(value);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return next;
+    });
+  }
+
+  function revealSelectedBone() {
+    const path = project?.selectedBonePath;
+    if (!path) return;
+    const parts = path.split("/");
+    setCollapsedBones((value) => {
+      const next = new Set(value);
+      parts.forEach((_, index) => next.delete(parts.slice(0, index + 1).join("/")));
+      return next;
+    });
+  }
 
   function updateInteraction(field: keyof EditorInteraction, value: string | number | boolean | null) {
     if (!selectedInteraction) return;
@@ -835,28 +859,27 @@ export function Editor() {
           <section className="editor-section editor-bone-section">
             <div className="editor-section-title"><strong>Rig hierarchy</strong><span>{visibleBones.length}/{frame?.bones.length ?? 0}</span></div>
             <input className="editor-search" value={boneSearch} onChange={(event) => setBoneSearch(event.target.value)} placeholder="Search bones…" />
-            <div className="editor-checks">
-              <label><input type="checkbox" checked={displaySettings.showBones} onChange={(event) => updateViewSetting("showBones", event.target.checked)} /> Show bones</label>
-              <label><input type="checkbox" checked={displaySettings.showBoneNames} onChange={(event) => updateViewSetting("showBoneNames", event.target.checked)} /> Names</label>
-              <label><input type="checkbox" checked={displaySettings.showConstraints} onChange={(event) => updateViewSetting("showConstraints", event.target.checked)} /> Constraints</label>
-              <label><input type="checkbox" checked={displaySettings.showInactiveBones} onChange={(event) => updateViewSetting("showInactiveBones", event.target.checked)} /> Inactive</label>
-            </div>
             <div className="editor-bone-list">
               {visibleBones.map((bone) => {
                 const depth = bone.path.split("/").length - 1;
-                return <button key={bone.path} className={project?.selectedBonePath === bone.path ? "is-selected" : ""} style={{ paddingLeft: `${10 + depth * 14}px` }} onClick={() => live((current) => ({ ...current, selectedBonePath: bone.path }))}>
-                  <span className="editor-bone-dot" />{bone.name}<small>{bone.length.toFixed(0)}</small>
-                </button>;
+                const hasChildren = frame?.bones.some((candidate) => candidate.path.startsWith(`${bone.path}/`)) ?? false;
+                const collapsed = collapsedBones.has(bone.path);
+                return <div key={bone.path} className="editor-bone-row" style={{ paddingLeft: `${Math.min(32, depth * 12)}px` }}>
+                  <button className="editor-bone-toggle" disabled={!hasChildren} aria-label={`${collapsed ? "Expand" : "Collapse"} ${bone.name}`} aria-expanded={hasChildren ? !collapsed : undefined} onClick={() => toggleBone(bone.path)}>{hasChildren ? collapsed ? "▸" : "▾" : "·"}</button>
+                  <button className={`editor-bone-item${project?.selectedBonePath === bone.path ? " is-selected" : ""}`} title={bone.path} onClick={() => live((current) => ({ ...current, selectedBonePath: bone.path }))}>
+                    <span className="editor-bone-dot" />{bone.name}
+                  </button>
+                </div>;
               })}
             </div>
           </section>
-          <section className="editor-section">
-            <div className="editor-section-title"><strong>Constraints</strong><span>{frame?.constraints.length ?? 0}</span></div>
+          <details className="editor-section editor-constraints">
+            <summary className="editor-section-title"><strong>Constraints</strong><span>{frame?.constraints.length ?? 0}</span></summary>
             <div className="editor-constraint-list">
               {frame?.constraints.map((constraint) => <div key={`${constraint.type}-${constraint.name}`}><b>{constraint.type}</b> {constraint.name}<small>{constraint.target || "physics"}</small></div>)}
               {!frame?.constraints.length && <p className="editor-muted">No constraints in this skeleton.</p>}
             </div>
-          </section>
+          </details>
         </aside>
 
         <section className="editor-center">
@@ -879,6 +902,15 @@ export function Editor() {
             <button className={`editor-button${!testing && tool === "draw" ? " active" : ""}`} disabled={!selectedInteraction} onClick={() => { setTesting(false); setTool("draw"); setStatus("Click and drag on the canvas to draw a hit region."); }} title="Draw a hit region (R)">Draw region</button>
             <button className={`editor-button${testing ? " active test" : ""}`} onClick={toggleTest} disabled={!project} title="Run the full authored interaction (T)">{testing ? "● Test" : "▶ Test"}</button>
             <button className="editor-button" onClick={() => rendererRef.current?.resetCamera()} title="Fit artwork to canvas (F)">Fit</button>
+            <details className="editor-overlay-menu">
+              <summary className="editor-button">Overlays ▾</summary>
+              <div className="editor-overlay-menu-popover">
+                <label><input type="checkbox" checked={displaySettings.showBones} onChange={(event) => updateViewSetting("showBones", event.target.checked)} /> Bones</label>
+                <label><input type="checkbox" checked={displaySettings.showBoneNames} onChange={(event) => updateViewSetting("showBoneNames", event.target.checked)} /> Names</label>
+                <label><input type="checkbox" checked={displaySettings.showConstraints} onChange={(event) => updateViewSetting("showConstraints", event.target.checked)} /> Constraints</label>
+                <label><input type="checkbox" checked={displaySettings.showInactiveBones} onChange={(event) => updateViewSetting("showInactiveBones", event.target.checked)} /> Inactive bones</label>
+              </div>
+            </details>
             <button className="editor-button" onClick={resetPreview} disabled={!meta}>Reset idle</button>
             <button className="editor-button" onClick={() => setRightHidden((value) => !value)} title="Toggle inspector">Inspector ☰</button>
           </div>
@@ -905,7 +937,7 @@ export function Editor() {
             {drawBox && frame && <svg className="editor-draw-ghost" viewBox={`0 0 ${frame.canvasWidth} ${frame.canvasHeight}`} preserveAspectRatio="none"><ellipse cx={drawBox.x + drawBox.width / 2} cy={drawBox.y + drawBox.height / 2} rx={drawBox.width / 2} ry={drawBox.height / 2} /></svg>}
             {!frame && <div className="editor-empty"><strong>Open a Spine asset folder</strong><span>The desktop editor reads .atlas, .skel, and local texture files from the selected root.</span></div>}
             {frame && <div className="editor-canvas-badge">{frame.animation ?? "No animation"} · {frame.bones.length} bones</div>}
-            <div className="editor-stage-hint">{testing ? `${previewStatus} · Press a region, hold/drag, release` : tool === "draw" ? "Drag to draw a new region" : tool === "pan" ? "Drag to pan · Wheel to zoom · F to fit" : "Drag region to move · Corner to resize · Round handle to rotate"}</div>
+             {(testing || tool !== "select") && <div className="editor-stage-hint">{testing ? `${previewStatus} · Press a region, hold/drag, release` : tool === "draw" ? "Drag to draw a new region" : "Drag to pan · Wheel to zoom · F to fit"}</div>}
           </div>
           {testing && <div className="editor-testbar"><strong aria-live="polite">{previewStatus}</strong><label><input type="checkbox" checked={showTestRegions} onChange={(event) => setShowTestRegions(event.target.checked)} /> Hit regions</label><span>Target: {previewRef.current.interaction?.followTargetBone?.split("/").pop() ?? "—"}</span></div>}
           <div className="editor-timeline">
@@ -922,7 +954,7 @@ export function Editor() {
         </section>
 
         <aside className={`editor-panel editor-right-panel tab-${inspectorTab}`} hidden={!assetLoaded || rightHidden}>
-          <nav className="editor-tabs" aria-label="Inspector sections">{(["region", "animation", "movement"] as const).map((tab) => <button key={tab} aria-pressed={inspectorTab === tab} onClick={(event) => { setInspectorTab(tab); event.currentTarget.closest("aside")?.scrollTo({ top: 0 }); }}>{tab === "region" ? "Regions" : tab === "animation" ? "Animations" : "Movement"}</button>)}</nav>
+           <nav className="editor-tabs" aria-label="Inspector sections">{(["region", "animation", "movement"] as const).map((tab) => <button key={tab} aria-pressed={inspectorTab === tab} onClick={(event) => { setInspectorTab(tab); event.currentTarget.closest("aside")?.scrollTo({ top: 0 }); }}>{tab === "region" ? "Region" : tab === "animation" ? "Animation" : "Movement"}</button>)}</nav>
           <section className="editor-section editor-interactions-section">
             <div className="editor-section-title"><strong>Interactions</strong><button onClick={addInteraction} disabled={!project || !frame}>＋ Add</button></div>
             <input className="editor-search" value={interactionSearch} onChange={(event) => setInteractionSearch(event.target.value)} placeholder="Filter interactions…" />
@@ -937,11 +969,14 @@ export function Editor() {
               ? <p className="editor-muted">No missing animations, bones, or overlapping regions.</p>
               : <div className="editor-validation-list">{validationWarnings.map((warning) => <div key={warning.id}><b>{warning.kind.replace("-", " ")}</b><span>{warning.message}</span></div>)}</div>}
           </details>
-          {selectedInteraction && <section className="editor-section editor-inspector">
-            <div className="editor-section-title"><strong>Interaction</strong><span><button onClick={duplicateInteraction} title="Duplicate interaction and its regions">Duplicate</button> <button className="danger" onClick={() => { if (confirm("Delete this interaction and all its regions?")) deleteInteraction(); }}>Delete</button></span></div>
-            <label>Name<input value={selectedInteraction.name} onChange={(event) => updateInteraction("name", event.target.value)} /></label>
-            <div className="editor-two-fields"><label>Trigger<select value={selectedInteraction.trigger} onChange={(event) => updateInteraction("trigger", event.target.value)}><option value="press">Press</option><option value="hold">Hold</option><option value="drag">Drag</option></select></label><label>Color<input type="color" value={selectedInteraction.color} onChange={(event) => updateInteraction("color", event.target.value)} /></label></div>
-            <label><input type="checkbox" checked={selectedInteraction.enabled} onChange={(event) => updateInteraction("enabled", event.target.checked)} /> Enabled</label>
+           {selectedInteraction && <section className="editor-section editor-inspector">
+             <div className="editor-section-title"><strong>Interaction</strong><span><button onClick={duplicateInteraction} title="Duplicate interaction and its regions">Duplicate</button> <button className="danger" onClick={() => { if (confirm("Delete this interaction and all its regions?")) deleteInteraction(); }}>Delete</button></span></div>
+             <details className="editor-interaction-settings" open={inspectorTab !== "region"}>
+               <summary>Interaction settings</summary>
+               <div className="editor-settings-body">
+             <label>Name<input value={selectedInteraction.name} onChange={(event) => updateInteraction("name", event.target.value)} /></label>
+             <div className="editor-two-fields"><label>Trigger<select value={selectedInteraction.trigger} onChange={(event) => updateInteraction("trigger", event.target.value)}><option value="press">Press</option><option value="hold">Hold</option><option value="drag">Drag</option></select></label><label>Color<input type="color" value={selectedInteraction.color} onChange={(event) => updateInteraction("color", event.target.value)} /></label></div>
+             <label><input type="checkbox" checked={selectedInteraction.enabled} onChange={(event) => updateInteraction("enabled", event.target.checked)} /> Enabled</label>
              <div className="editor-animation-fields">
              <div className="editor-subheading">On press → While held → On release</div>
              <p className="editor-muted">Body and face tracks play together over idle. Test runs the complete sequence.</p>
@@ -962,16 +997,17 @@ export function Editor() {
             <label>Target bone<select value={selectedInteraction.followTargetBone ?? ""} onChange={(event) => updateInteraction("followTargetBone", event.target.value || null)}><option value="">None</option>{frame?.bones.map((bone) => <option key={bone.path} value={bone.path}>{bone.path}</option>)}</select></label>
             <div className="editor-three-fields"><label>Sensitivity<input type="number" min="0" max="2" step="0.05" value={selectedInteraction.sensitivity} onChange={(event) => updateInteraction("sensitivity", Number(event.target.value))} /></label><label>Limit X<input type="number" min="0" step="1" value={selectedInteraction.limitX} onChange={(event) => updateInteraction("limitX", Number(event.target.value))} /></label><label>Limit Y<input type="number" min="0" step="1" value={selectedInteraction.limitY} onChange={(event) => updateInteraction("limitY", Number(event.target.value))} /></label></div>
              <label>Smoothing · {selectedInteraction.smoothing.toFixed(1)} (higher = faster response)<input type="range" min="1" max="24" step="0.5" value={selectedInteraction.smoothing} onChange={(event) => updateInteraction("smoothing", Number(event.target.value))} /></label>
-             <button className="editor-preview-button" disabled={!project?.selectedBonePath} onClick={() => updateInteraction("followTargetBone", project?.selectedBonePath ?? null)}>Use selected bone as movement target</button>
-             </div>
-             <div className="editor-region-fields">
+              <button className="editor-preview-button" disabled={!project?.selectedBonePath} onClick={() => updateInteraction("followTargetBone", project?.selectedBonePath ?? null)}>Use selected bone as movement target</button>
+              </div>
+               </div>
+             </details>
+              <div className="editor-region-fields">
              <div className="editor-subheading editor-region-heading"><span>Hit regions</span><button onClick={addRegion}>＋ Add region</button></div>
             <div className="editor-region-list">
               {selectedInteraction.regions.map((region) => <button key={region.id} className={region.id === project?.selectedRegionId ? "is-selected" : ""} onClick={() => live((current) => ({ ...current, selectedRegionId: region.id }))}><i style={{ background: selectedInteraction.color }} />{region.name}<small>{region.shape}</small></button>)}
               {!selectedInteraction.regions.length && <p className="editor-muted">No hit regions. Add one to make this interaction clickable.</p>}
              </div>
-             <button className="editor-preview-button" onClick={() => { setTesting(false); setTool("draw"); }}>Draw a region on canvas</button>
-             </div>
+              </div>
            </section>}
            {inspectorTab === "region" && selectedRegion && selectedInteraction && <section className="editor-section editor-inspector">
              <div className="editor-section-title"><strong>Region</strong><span><button onClick={duplicateRegion}>Duplicate</button> <button className="danger" onClick={deleteRegion}>Delete</button></span></div>
@@ -987,7 +1023,7 @@ export function Editor() {
           </section>}
         </aside>
       </main>
-      {workspace === "timeline" && assetLoaded && <TimelineWorkspace source={source} directory={directory} directories={directories} project={project} onMutate={mutate} onLive={live} onBeginEdit={beginTimelineEdit} onSave={() => saveProject(true)} onRegisterSave={(callback) => { timelineSaveRef.current = callback; }} help={help} onStatus={setStatus} onError={setError} />}
+      {workspace === "timeline" && assetLoaded && <TimelineWorkspace source={source} directory={directory} directories={directories} project={project} onMutate={mutate} onLive={live} onBeginEdit={beginTimelineEdit} onSave={() => saveProject(true)} onRegisterSave={(callback) => { timelineSaveRef.current = callback; }} onStatus={setStatus} onError={setError} />}
       <footer className="editor-statusbar">
         <span className={error ? "editor-error" : ""}>{error ?? status}</span>
         <span>{directory ? `${displayName(directory)} · ${files?.size ?? 0} files` : "No asset loaded"} · {testing ? "TEST MODE" : workspace === "timeline" ? "TIMELINE" : "EDIT MODE"}</span>

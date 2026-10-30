@@ -55,7 +55,6 @@ interface TimelineWorkspaceProps {
   onBeginEdit: () => void;
   onSave: () => void | Promise<void>;
   onRegisterSave: (callback: (() => Promise<void>) | null) => void;
-  help: boolean;
   onStatus: (value: string) => void;
   onError: (value: string | null) => void;
 }
@@ -176,7 +175,7 @@ function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, refe
 }
 
 function seconds(value: number): string {
-  return `${value.toFixed(2)}s`;
+  return `${value.toFixed(3)}s`;
 }
 
 function snapTime(value: number, snap: number, duration: number): number {
@@ -278,15 +277,15 @@ async function findAudioFile(source: DesktopAssetSource, path: string): Promise<
   return null;
 }
 
-export function TimelineWorkspace({ source, directory, directories, project, onMutate, onLive, onBeginEdit, onSave, onRegisterSave, help, onStatus, onError }: TimelineWorkspaceProps) {
+export function TimelineWorkspace({ source, directory, directories, project, onMutate, onLive, onBeginEdit, onSave, onRegisterSave, onStatus, onError }: TimelineWorkspaceProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
+  const [previewUntil, setPreviewUntil] = useState<number | null>(null);
   const [metas, setMetas] = useState<Record<string, SpineMeta | null>>({});
   const [sharedCameraPose, setSharedCameraPose] = useState<SpineCameraPose | null>(null);
   const [files, setFiles] = useState<Record<string, SpineFiles | null>>({});
   const [animationDurations, setAnimationDurations] = useState<Record<string, number>>({});
-  const [layerSearch, setLayerSearch] = useState("");
   const [zoom, setZoom] = useState(1);
   const [markers, setMarkers] = useState<number[]>([]);
   const [inspector, setInspector] = useState<"sequence" | "layer" | "cue" | "audio">("sequence");
@@ -307,11 +306,10 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   const duration = Math.max(MIN_TIMELINE_DURATION, timeline?.duration ?? 12);
   const discovered = useMemo(() => directory ? compositionDirectories(directory, directories) : [], [directory, directories]);
   const displayLayers = useMemo(() => [...(timeline?.layers ?? [])].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)), [timeline?.layers]);
-  const visibleLayers = displayLayers.filter((layer) => !layerSearch.trim() || `${layer.name} ${layer.role}`.toLocaleLowerCase().includes(layerSearch.trim().toLocaleLowerCase()));
-  const selectedLayer = timeline?.layers.find((layer) => layer.id === timeline.selectedLayerId) ?? displayLayers.at(-1) ?? null;
-  const selectedCue = timeline?.subtitles.find((cue) => cue.id === timeline.selectedCueId) ?? timeline?.subtitles[0] ?? null;
+  const selectedLayer = timeline?.layers.find((layer) => layer.id === timeline.selectedLayerId) ?? null;
+  const selectedCue = timeline?.subtitles.find((cue) => cue.id === timeline.selectedCueId) ?? null;
   const selectedCueIndex = selectedCue && timeline ? timeline.subtitles.findIndex((cue) => cue.id === selectedCue.id) : -1;
-  const selectedAudio = timeline?.audio.find((clip) => clip.id === selectedAudioId) ?? timeline?.audio[0] ?? null;
+  const selectedAudio = timeline?.audio.find((clip) => clip.id === selectedAudioId) ?? null;
   const layerDirectoriesKey = displayLayers.map((layer) => layer.directory).join("|");
   const trackWidth = Math.max(640, duration * TIMELINE_SCALE * zoom + 48);
   const characterMeta = displayLayers.map((layer) => layer.role === "character" ? metas[layer.id] : null).find(Boolean);
@@ -343,7 +341,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
 
   function chooseSequence(id: string) {
     onMutate((current) => switchSequence(current, id, animations, directories));
-    setCurrentTime(0); setPlaying(false); setInspector("sequence");
+    setCurrentTime(0); setPlaying(false); setPreviewUntil(null); setSelectedAudioId(null); setInspector("sequence");
   }
 
   useEffect(() => {
@@ -475,7 +473,13 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
       previous = now;
       setCurrentTime((value) => {
         const next = value + delta * speed;
-        if (next < duration) return next;
+        const stopAt = previewUntil === null ? duration : Math.min(duration, previewUntil);
+        if (next < stopAt) return next;
+        if (previewUntil !== null) {
+          setPreviewUntil(null);
+          setPlaying(false);
+          return stopAt;
+        }
         if (timeline?.loop) return next % duration;
         setPlaying(false);
         return duration;
@@ -484,7 +488,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [duration, playing, speed, timeline?.loop]);
+  }, [duration, playing, previewUntil, speed, timeline?.loop]);
 
   useEffect(() => {
     if (!timeline) return;
@@ -536,17 +540,23 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   }
 
   function setSelectedLayer(id: string) {
-    setInspector("layer"); updateTimeline((value) => ({ ...value, selectedLayerId: id }), false);
+    setPreviewUntil(null); setInspector("layer"); updateTimeline((value) => ({ ...value, selectedLayerId: id }), false);
   }
 
   function setSelectedCue(id: string | null) {
-    setInspector("cue"); updateTimeline((value) => ({ ...value, selectedCueId: id }), false);
+    setPreviewUntil(null); setInspector(id ? "cue" : "sequence"); updateTimeline((value) => ({ ...value, selectedCueId: id }), false);
+  }
+
+  function setSelectedAudio(id: string | null) {
+    setPreviewUntil(null); setSelectedAudioId(id);
+    setInspector(id ? "audio" : "sequence");
   }
 
   function addCue() {
     if (!timeline) return;
     const start = Math.min(duration - 0.05, snapTime(currentTime, timeline.snap, duration));
     setInspector("cue");
+    setPreviewUntil(null);
     const cue: EditorSubtitleCue = {
       id: `subtitle-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
       start,
@@ -614,7 +624,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
       return { id, name: path.split(/[\\/]/).pop() ?? path, path, autoEnd: true, start, end: Math.min(duration, start + 2), enabled: true, volume: 1 };
     });
     updateTimeline((value) => ({ ...value, audio: [...value.audio, ...clips] }));
-    setSelectedAudioId(clips[0]?.id ?? null);
+    setSelectedAudio(clips[0]?.id ?? null);
     onStatus(`Added ${clips.length} local audio clip${clips.length === 1 ? "" : "s"}.`);
   }
 
@@ -641,8 +651,9 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
     if (!selectedCue) return;
     updateTimeline((value) => {
       const subtitles = value.subtitles.filter((cue) => cue.id !== selectedCue.id);
-      return { ...value, subtitles, selectedCueId: subtitles[0]?.id ?? null };
+      return { ...value, subtitles, selectedCueId: null };
     });
+    setInspector("sequence");
   }
 
   function deleteAudio() {
@@ -652,6 +663,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
       return { ...value, audio };
     });
     setSelectedAudioId(null);
+    setInspector("sequence");
   }
 
   function addLayer(directoryToAdd: string) {
@@ -660,6 +672,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
     const role = found?.role ?? (/_scene$/i.test(directoryToAdd) ? "scene" : /_bg$/i.test(directoryToAdd) ? "background" : "overlay");
     const layer = createTimelineLayer(directoryToAdd, role, timeline.layers.length, duration);
     updateTimeline((value) => ({ ...value, layers: [...value.layers, layer], selectedLayerId: layer.id }));
+    setInspector("layer");
     onStatus(`Added ${directoryToAdd} as a ${role} layer.`);
   }
 
@@ -709,6 +722,10 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   function seekFromEvent(event: ReactPointerEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest(".timeline-cue, .timeline-layer-clip, .timeline-audio-clip")) return;
     event.preventDefault();
+    setInspector("sequence");
+    setPreviewUntil(null);
+    setSelectedAudioId(null);
+    updateTimeline((value) => ({ ...value, selectedLayerId: null, selectedCueId: null }), false);
     event.currentTarget.setPointerCapture(event.pointerId);
     scrubRef.current = true;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -719,6 +736,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
 
   function scrubMove(event: ReactPointerEvent<HTMLDivElement>) {
     if (!scrubRef.current) return;
+    setPreviewUntil(null);
     const rect = event.currentTarget.getBoundingClientRect();
     setCurrentTime(Math.max(0, Math.min(duration, (event.clientX - rect.left) / (TIMELINE_SCALE * zoom))));
   }
@@ -731,7 +749,12 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
     updateTimeline((value) => ({ ...value, subtitles: [...value.subtitles, cue], selectedCueId: cue.id }));
   }
 
-  function fitTimeline() { setZoom(Math.max(0.1, ((scrollRef.current?.clientWidth ?? 900) - 160) / (duration * TIMELINE_SCALE))); }
+  function fitTimeline() { setZoom(Math.max(0.1, ((scrollRef.current?.clientWidth ?? 900) - 124) / (duration * TIMELINE_SCALE))); }
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(fitTimeline);
+    return () => cancelAnimationFrame(frame);
+  }, [directory, timeline?.sequenceId]);
 
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
@@ -757,15 +780,16 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
   return (
     <div className="timeline-workspace">
       <aside className="editor-panel sequence-browser">
-        <div className="editor-section"><span className="editor-kicker">LOBBY DIRECTOR</span><h2>Sequences</h2><p className="editor-muted">Edit each talk on its own clock. Opening controls the entry into the lobby.</p>
-          {sequenceIds.map((id) => <button key={id} className={`sequence-button${timeline.sequenceId === id ? " active" : ""}`} onClick={() => chooseSequence(id)}><strong>{id === "opening" ? "◈ Opening" : `♫ Talk ${id.replace("talk-", "").padStart(2, "0")}`}</strong><small>{id === "opening" ? "Scene → Intro → Idle" : "Body · Face · Voice · Subtitles"}</small></button>)}
-          {(!timeline.sequenceId || timeline.sequenceId === "legacy") && <button className="sequence-button active"><strong>Recovered composition</strong><small>Existing edits kept separately</small></button>}
-          <button className="editor-button" onClick={() => void importSubtitles()}>Import character subtitles</button>
+        <div className="editor-section">
+          <div className="editor-section-title"><strong>Sequences</strong><span>{sequenceIds.length}</span></div>
+          <div className="sequence-list">
+            {sequenceIds.map((id) => <button key={id} className={`sequence-button${timeline.sequenceId === id ? " active" : ""}`} onClick={() => chooseSequence(id)}><strong>{id === "opening" ? "Opening" : `Talk ${id.replace("talk-", "").padStart(2, "0")}`}</strong></button>)}
+            {(!timeline.sequenceId || timeline.sequenceId === "legacy") && <button className="sequence-button active"><strong>Recovered composition</strong></button>}
+          </div>
         </div>
       </aside>
       <section className="timeline-main">
-        <div className="sequence-heading"><div><strong>{timeline.sequenceId === "opening" ? "Opening sequence" : timeline.sequenceId?.startsWith("talk-") ? `Talk ${timeline.sequenceId.replace("talk-", "")}` : "Recovered composition"}</strong><small>Non-destructive authoring · local time</small></div><button className="editor-button" onClick={() => setInspector("sequence")}>Sequence settings</button></div>
-        {help && <div className="editor-help">Space Play/pause · ←/→ Frame · Shift+←/→ 10 frames · Home/End · S Split subtitle · Ctrl/⌘ D Duplicate · Delete Remove · F Fit · Ctrl/⌘ Z Undo · Ctrl/⌘ S Save</div>}
+        <div className="sequence-heading"><strong>{timeline.sequenceId === "opening" ? "Opening" : timeline.sequenceId?.startsWith("talk-") ? `Talk ${timeline.sequenceId.replace("talk-", "")}` : "Recovered composition"}</strong></div>
         <div className="timeline-stage-wrap">
           <div className="timeline-stage">
              {displayLayers.map((layer) => <TimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} sceneDuration={timeline.sceneDuration} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
@@ -773,23 +797,20 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
             <div className="timeline-subtitle-preview" aria-live="polite">
               {timeline.subtitles.filter((cue) => cue.enabled && currentTime >= cue.start && currentTime <= cue.end).map((cue) => <div key={cue.id}>{cueText(cue, timeline.language)}</div>)}
             </div>
-            {!displayLayers.length && <div className="timeline-empty"><strong>No layers</strong><span>Add a Spine set from the layer inspector.</span></div>}
-            <div className="timeline-stage-badge">{seconds(currentTime)} / {seconds(duration)} · {displayLayers.length} Spine layers</div>
-          </div>
+             {!displayLayers.length && <div className="timeline-empty"><strong>No layers</strong><span>Add a Spine set from the ＋ Add menu.</span></div>}
+           </div>
         </div>
 
         <div className="timeline-transport">
-          <button className="editor-icon-button" onClick={() => setPlaying((value) => !value)}>{playing ? "❚❚" : "▶"}</button>
-          <button className="editor-button" onClick={() => { setCurrentTime(0); setPlaying(false); }}>⏮ Start</button>
-          <button className="editor-button" onClick={() => { setCurrentTime(duration); setPlaying(false); }}>End ⏭</button>
+           <button className="editor-icon-button" aria-label={playing ? "Pause sequence" : "Play sequence"} onClick={() => { setPreviewUntil(null); setPlaying((value) => !value); }}>{playing ? "❚❚" : "▶"}</button>
+           <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(0); setPlaying(false); }}>⏮ Start</button>
+           <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(duration); setPlaying(false); }}>End ⏭</button>
           <label className="editor-speed">Speed <input type="number" min="0.1" max="3" step="0.1" value={speed} onChange={(event) => setSpeed(Math.max(0.1, Number(event.target.value) || 1))} /></label>
           <label className="timeline-loop"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop</label>
           <span className="editor-time">{seconds(currentTime)} / {seconds(duration)}</span>
         </div>
 
-        <input className="sequence-scrubber" aria-label="Sequence playhead" type="range" min="0" max={duration} step={1 / 60} value={currentTime} onChange={(event) => { setPlaying(false); setCurrentTime(Number(event.target.value)); }} />
-
-        <div className="timeline-editor-scroll" ref={scrollRef}>
+         <div className="timeline-editor-scroll" ref={scrollRef}>
         <div className="timeline-ruler-row" style={{ minWidth: trackWidth + 116 }}>
           <div className="timeline-track-label">TRACKS</div>
           <div className="timeline-track timeline-ruler" style={{ width: trackWidth }} onPointerDown={seekFromEvent} onPointerMove={scrubMove} onPointerUp={() => { scrubRef.current = false; }} onPointerCancel={() => { scrubRef.current = false; }}>
@@ -799,7 +820,7 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
           </div>
         </div>
           <div className="timeline-track-rows" style={{ minWidth: trackWidth + 116 }} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
-                {visibleLayers.map((layer) => <div className="timeline-row" key={layer.id}>
+                {displayLayers.map((layer) => <div className="timeline-row" key={layer.id}>
                <div className="timeline-track-label" title={layer.directory}><b>{roleLabel(layer.role)}</b><span>{layer.name}</span></div>
                <div className={`timeline-track timeline-layer-track${layer.id === timeline.selectedLayerId ? " is-selected" : ""}`} onPointerDown={seekFromEvent}>
                  <div className="timeline-layer-clip" style={{ left: layer.start * TIMELINE_SCALE * zoom, width: Math.max(8, (layerEnd(layer) - layer.start) * TIMELINE_SCALE * zoom), zIndex: layer.order }} onPointerDown={(event) => { setSelectedLayer(layer.id); beginDrag(event, "layer", layer.id, layer.start, layerEnd(layer)); }}>
@@ -822,86 +843,75 @@ export function TimelineWorkspace({ source, directory, directories, project, onM
             <div className="timeline-row audio-row">
               <div className="timeline-track-label"><b>AUDIO</b><span>{timeline.audio.length} clip{timeline.audio.length === 1 ? "" : "s"}</span></div>
               <div className="timeline-track timeline-audio-track" onPointerDown={seekFromEvent}>
-                {timeline.audio.map((clip) => <div key={clip.id} className={`timeline-audio-clip${clip.id === selectedAudio?.id ? " is-selected" : ""}${clip.enabled ? "" : " is-disabled"}`} style={{ left: clip.start * TIMELINE_SCALE * zoom, width: Math.max(12, (clip.end - clip.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { setInspector("audio"); setSelectedAudioId(clip.id); beginDrag(event, "audio", clip.id, clip.start, clip.end); }}><AudioWaveform url={audioUrls[clip.id]} onDuration={(value) => applyDecodedAudioDuration(clip.id, value)} /><span>♫ {clip.name}</span></div>)}
+                 {timeline.audio.map((clip) => <div key={clip.id} className={`timeline-audio-clip${clip.id === selectedAudio?.id ? " is-selected" : ""}${clip.enabled ? "" : " is-disabled"}`} style={{ left: clip.start * TIMELINE_SCALE * zoom, width: Math.max(12, (clip.end - clip.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { setSelectedAudio(clip.id); beginDrag(event, "audio", clip.id, clip.start, clip.end); }}><AudioWaveform url={audioUrls[clip.id]} onDuration={(value) => applyDecodedAudioDuration(clip.id, value)} /><span>♫ {clip.name}</span></div>)}
                 <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
               </div>
             </div>
           </div>
-        </div>
-        <div className="timeline-bottom-tools">
-          <label>Timeline length <input type="number" min="1" step="0.1" value={timeline.duration} onChange={(event) => updateTimeline((value) => ({ ...value, duration: Math.max(1, Number(event.target.value) || 1) }))} /> s</label>
-          <label>Snap <select value={timeline.snap} onChange={(event) => updateTimeline((value) => ({ ...value, snap: Number(event.target.value) }))}><option value="0">Off</option><option value="0.01">10 ms</option><option value="0.1">100 ms</option><option value="0.25">250 ms</option><option value="0.5">500 ms</option></select></label>
-          <label>Zoom <input type="range" min="0.5" max="3" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
-          <button className="editor-button" onClick={addCue}>＋ Subtitle cue</button>
-          <button className="editor-button" onClick={fitTimeline}>Fit timeline (F)</button>
-          <button className="editor-button" onClick={() => void importAudio()}>＋ Audio</button>
-        </div>
+         </div>
+         <div className="timeline-bottom-tools">
+           <label>Snap <select value={timeline.snap} onChange={(event) => updateTimeline((value) => ({ ...value, snap: Number(event.target.value) }))}><option value="0">Off</option><option value="0.01">10 ms</option><option value="0.1">100 ms</option><option value="0.25">250 ms</option><option value="0.5">500 ms</option></select></label>
+           <label>Zoom <input type="range" min="0.5" max="3" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
+           <button className="editor-button" onClick={fitTimeline}>Fit (F)</button>
+           <details className="timeline-add-menu">
+             <summary className="editor-button">＋ Add</summary>
+             <div className="timeline-add-menu-popover">
+               <button className="editor-button" onClick={addCue}>Subtitle cue</button>
+               <button className="editor-button" onClick={() => void importAudio()}>Audio files</button>
+               <button className="editor-button" onClick={() => void importSubtitles()}>Import subtitles</button>
+               <label>Spine layer<select value="" onChange={(event) => { addLayer(event.target.value); event.target.value = ""; }}><option value="">Choose layer…</option>{directories.filter((item) => !timeline.layers.some((layer) => layer.directory === item)).map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+             </div>
+           </details>
+         </div>
       </section>
 
       <aside className="editor-panel timeline-inspector">
-        {inspector === "sequence" && <section className="editor-section editor-inspector"><h2>Sequence</h2>
-          {timeline.sequenceId === "opening" && <><label>Opening flow<select value={timeline.openingMode ?? "direct"} onChange={(event) => updateTimeline((value) => ({ ...value, openingMode: event.target.value as "direct" | "scene-first" | "skip" }))}><option value="scene-first">Scene first → Intro → Idle</option><option value="direct">Direct Intro → Idle</option><option value="skip">Skip intro → Idle</option></select></label>{timeline.openingMode === "scene-first" && <label>Scene lead-in (seconds)<input type="number" min="0" step="0.1" value={timeline.sceneDuration ?? 3} onChange={(event) => updateTimeline((value) => ({ ...value, sceneDuration: Math.max(0, Number(event.target.value)) }))} /></label>}</>}
-          <p className="editor-muted">Select a layer, subtitle, or voice clip to edit its properties. Space plays this sequence once unless Loop is enabled.</p>
+        {inspector === "sequence" && <section className="editor-section editor-inspector">
+          <div className="editor-section-title"><strong>Sequence settings</strong><span>{seconds(duration)}</span></div>
+          <label>Length (s)<input type="number" min="1" step="0.1" value={Number(timeline.duration.toFixed(3))} onChange={(event) => updateTimeline((value) => ({ ...value, duration: Math.max(1, Number(event.target.value) || 1) }))} /></label>
+          <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop sequence</span></label>
+          {timeline.sequenceId === "opening" && <><label>Opening flow<select value={timeline.openingMode ?? "direct"} onChange={(event) => updateTimeline((value) => ({ ...value, openingMode: event.target.value as "direct" | "scene-first" | "skip" }))}><option value="scene-first">Scene first → Intro → Idle</option><option value="direct">Direct Intro → Idle</option><option value="skip">Skip intro → Idle</option></select></label>{timeline.openingMode === "scene-first" && <label>Scene lead-in (s)<input type="number" min="0" step="0.1" value={Number((timeline.sceneDuration ?? 3).toFixed(3))} onChange={(event) => updateTimeline((value) => ({ ...value, sceneDuration: Math.max(0, Number(event.target.value) || 0) }))} /></label>}</>}
+          <div className="timeline-context-summary"><span>Layers <b>{displayLayers.length}</b></span><span>Subtitles <b>{timeline.subtitles.length}</b></span><span>Audio <b>{timeline.audio.length}</b></span></div>
+          <p className="editor-muted">Select a clip in the timeline to edit its properties. Add content from the <b>＋ Add</b> menu.</p>
           {timeline.subtitles.some((cue, index, all) => all.some((other, j) => index !== j && cue.start < other.end && cue.end > other.start)) && <p className="editor-error">Overlapping subtitle cues: review timing before export.</p>}
         </section>}
-        <section className="editor-section">
-          <div className="editor-section-title"><strong>Composition layers</strong><span>{displayLayers.length}</span></div>
-          <input className="editor-search" placeholder="Filter layers…" value={layerSearch} onChange={(event) => setLayerSearch(event.target.value)} />
-          <div className="timeline-layer-list">
-            {visibleLayers.map((layer) => <button key={layer.id} className={layer.id === timeline.selectedLayerId ? "is-selected" : ""} onClick={() => setSelectedLayer(layer.id)}><i className={`timeline-role-dot ${layer.role}`} /><span>{layer.name}</span><small>{roleLabel(layer.role)}</small></button>)}
-          </div>
-          <div className="timeline-add-layer"><select value="" onChange={(event) => { addLayer(event.target.value); event.target.value = ""; }}><option value="">＋ Add Spine layer…</option>{directories.filter((item) => !timeline.layers.some((layer) => layer.directory === item)).map((item) => <option key={item} value={item}>{item}</option>)}</select></div>
-        </section>
 
         {inspector === "layer" && selectedLayer && <section className="editor-section editor-inspector">
-          <div className="editor-section-title"><strong>Layer</strong><button className="danger" onClick={removeLayer} disabled={selectedLayer.role === "character"}>Remove</button></div>
+          <div className="editor-section-title"><strong>Layer</strong><span><i className={`timeline-role-dot ${selectedLayer.role}`} /> {roleLabel(selectedLayer.role)} <button className="danger" onClick={removeLayer} disabled={selectedLayer.role === "character"}>Remove</button></span></div>
           <label>Name<input value={selectedLayer.name} onChange={(event) => updateLayer(selectedLayer.id, { name: event.target.value })} /></label>
           <div className="editor-two-fields"><label>Role<select value={selectedLayer.role} onChange={(event) => updateLayer(selectedLayer.id, { role: event.target.value as TimelineLayerRole })}><option value="background">Background</option><option value="scene">Scene</option><option value="character">Character</option><option value="overlay">Overlay</option></select></label><label>Order<input type="number" min="0" step="1" value={selectedLayer.order} onChange={(event) => updateLayer(selectedLayer.id, { order: Math.max(0, Number(event.target.value) || 0) })} /></label></div>
-           <label>Animation<select value={selectedLayer.animation || metas[selectedLayer.id]?.idleAnimation || ""} onChange={(event) => updateLayer(selectedLayer.id, { animation: event.target.value })}><option value="">Auto idle</option>{(metas[selectedLayer.id]?.animations ?? []).map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
-           <label>Face / secondary animation<select value={selectedLayer.faceAnimation ?? ""} onChange={(event) => updateLayer(selectedLayer.id, { faceAnimation: event.target.value })}><option value="">None</option>{(metas[selectedLayer.id]?.animations ?? []).map((name) => <option key={name}>{name}</option>)}</select></label>
-           <div className="editor-two-fields"><label>Start (s)<input type="number" min="0" step="0.01" value={selectedLayer.start} onChange={(event) => updateLayer(selectedLayer.id, { start: Math.max(0, Number(event.target.value) || 0) })} /></label><label>End (s)<input type="number" min="0.01" step="0.01" value={selectedLayer.end} onChange={(event) => updateLayer(selectedLayer.id, { endMode: "manual", end: Math.max(selectedLayer.start + 0.01, Number(event.target.value) || selectedLayer.start + 0.01) })} /></label></div>
-           <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.endMode !== "manual"} onChange={(event) => updateLayer(selectedLayer.id, { endMode: event.target.checked ? "auto" : "manual" })} /> Use Spine animation end</span></label>
-          <div className="editor-two-fields"><label>Animation offset<input type="number" min="0" step="0.01" value={selectedLayer.animationOffset} onChange={(event) => updateLayer(selectedLayer.id, { animationOffset: Math.max(0, Number(event.target.value) || 0) })} /></label><label><span>Playback</span><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.loop} onChange={(event) => updateLayer(selectedLayer.id, { loop: event.target.checked })} /> Loop</span></label></div>
+          <label>Animation<select value={selectedLayer.animation || metas[selectedLayer.id]?.idleAnimation || ""} onChange={(event) => updateLayer(selectedLayer.id, { animation: event.target.value })}><option value="">Auto idle</option>{(metas[selectedLayer.id]?.animations ?? []).map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
+          <label>Face / secondary animation<select value={selectedLayer.faceAnimation ?? ""} onChange={(event) => updateLayer(selectedLayer.id, { faceAnimation: event.target.value })}><option value="">None</option>{(metas[selectedLayer.id]?.animations ?? []).map((name) => <option key={name}>{name}</option>)}</select></label>
+          <div className="editor-two-fields"><label>Start (s)<input type="number" min="0" step="0.001" value={Number(selectedLayer.start.toFixed(3))} onChange={(event) => updateLayer(selectedLayer.id, { start: Math.max(0, Number(event.target.value) || 0) })} /></label><label>End (s)<input type="number" min="0.01" step="0.001" value={Number(selectedLayer.end.toFixed(3))} onChange={(event) => updateLayer(selectedLayer.id, { endMode: "manual", end: Math.max(selectedLayer.start + 0.01, Number(event.target.value) || selectedLayer.start + 0.01) })} /></label></div>
+          <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.endMode !== "manual"} onChange={(event) => updateLayer(selectedLayer.id, { endMode: event.target.checked ? "auto" : "manual" })} /> Use Spine animation end</span></label>
+          <div className="editor-two-fields"><label>Animation offset (s)<input type="number" min="0" step="0.001" value={Number(selectedLayer.animationOffset.toFixed(3))} onChange={(event) => updateLayer(selectedLayer.id, { animationOffset: Math.max(0, Number(event.target.value) || 0) })} /></label><label><span>Playback</span><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.loop} onChange={(event) => updateLayer(selectedLayer.id, { loop: event.target.checked })} /> Loop</span></label></div>
           <details><summary>Advanced transforms</summary><div className="editor-three-fields"><label>X<input type="number" step="1" value={selectedLayer.x} onChange={(event) => updateLayer(selectedLayer.id, { x: Number(event.target.value) || 0 })} /></label><label>Y<input type="number" step="1" value={selectedLayer.y} onChange={(event) => updateLayer(selectedLayer.id, { y: Number(event.target.value) || 0 })} /></label><label>Scale<input type="number" min="0.01" step="0.01" value={selectedLayer.scale} onChange={(event) => updateLayer(selectedLayer.id, { scale: Math.max(0.01, Number(event.target.value) || 0.01) })} /></label></div></details>
           <label>Opacity · {Math.round(selectedLayer.opacity * 100)}%<input type="range" min="0" max="1" step="0.01" value={selectedLayer.opacity} onChange={(event) => updateLayer(selectedLayer.id, { opacity: Number(event.target.value) })} /></label>
           <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.enabled} onChange={(event) => updateLayer(selectedLayer.id, { enabled: event.target.checked })} /> Visible</span></label>
         </section>}
 
-        <section className="editor-section editor-inspector">
-          <div className="editor-section-title"><strong>Subtitles</strong><span>{timeline.subtitles.length}</span></div>
-          <div className="subtitle-card-tabs" role="tablist" aria-label="Subtitle cues">
-            {timeline.subtitles.map((cue, index) => <button key={cue.id} role="tab" aria-selected={cue.id === timeline.selectedCueId} className={`subtitle-card-tab${cue.id === timeline.selectedCueId ? " is-selected" : ""}`} onClick={() => setSelectedCue(cue.id)}>
-              <strong>Subtitle #{index + 1}</strong>
-              <small>{seconds(cue.start)}–{seconds(cue.end)}</small>
-            </button>)}
-          </div>
-          {!timeline.subtitles.length && <p className="editor-muted">Add a subtitle cue to create Subtitle #1. Each card has its own timing and EN, JA, and KO fields.</p>}
-          {inspector === "cue" && selectedCue && <div className="subtitle-editor-card">
-            <div className="subtitle-editor-heading"><strong>Subtitle #{selectedCueIndex + 1}</strong><span>{seconds(selectedCue.start)}–{seconds(selectedCue.end)}</span></div>
-            <div className="editor-two-fields subtitle-actions"><button className="editor-button" onClick={() => updateCue(selectedCue.id, { start: Math.min(currentTime, selectedCue.end - 0.01) })}>Start at playhead</button><button className="editor-button" onClick={() => updateCue(selectedCue.id, { end: Math.max(currentTime, selectedCue.start + 0.01) })}>End at playhead</button></div>
-            <div className="editor-two-fields"><label>Start (s)<input aria-label="Subtitle start" type="number" min="0" step="0.01" value={selectedCue.start} onChange={(event) => updateCue(selectedCue.id, { start: Math.max(0, Math.min(selectedCue.end - 0.01, Number(event.target.value) || 0)) })} /></label><label>End (s)<input aria-label="Subtitle end" type="number" min="0.01" step="0.01" value={selectedCue.end} onChange={(event) => updateCue(selectedCue.id, { end: Math.max(selectedCue.start + 0.01, Math.min(duration, Number(event.target.value) || selectedCue.start + 0.01)) })} /></label></div>
-            <div className="subtitle-language-grid">
-              {(["en", "ja", "ko"] as const).map((language) => <label className={`subtitle-language-field subtitle-language-${language}`} key={language}><span>{language.toUpperCase()}</span><textarea aria-label={`${language.toUpperCase()} Subtitle #${selectedCueIndex + 1}`} className="timeline-textarea" value={selectedCue.text[language]} onChange={(event) => updateCue(selectedCue.id, { text: { ...selectedCue.text, [language]: event.target.value } })} /></label>)}
-            </div>
-            <div className="subtitle-preview-language"><span>Preview language</span><div className="timeline-language-tabs">{(["en", "ja", "ko"] as const).map((language) => <button key={language} className={timeline.language === language ? "is-selected" : ""} onClick={() => updateTimeline((value) => ({ ...value, language }))}>{language.toUpperCase()}</button>)}</div></div>
-            <div className="editor-two-fields subtitle-actions"><button className="editor-button" onClick={() => updateTimeline((value) => splitCue(value, selectedCue.id, currentTime))}>Split (S)</button><button className="editor-button" onClick={duplicateCue}>Duplicate</button><button className="editor-button" onClick={() => { setCurrentTime(selectedCue.start); setPlaying(true); }}>Preview cue</button></div>
-            <div className="editor-two-fields"><label><span className="timeline-inline-check"><input type="checkbox" checked={selectedCue.enabled} onChange={(event) => updateCue(selectedCue.id, { enabled: event.target.checked })} /> Visible</span></label><button className="editor-preview-button" onClick={deleteCue}>Delete cue</button></div>
-          </div>}
-        </section>
+        {inspector === "cue" && selectedCue && <section className="editor-section editor-inspector">
+          <div className="editor-section-title"><strong>Subtitle #{selectedCueIndex + 1}</strong><span>{seconds(selectedCue.start)}–{seconds(selectedCue.end)}</span></div>
+          <div className="editor-two-fields subtitle-actions"><button className="editor-button" onClick={() => updateCue(selectedCue.id, { start: Math.min(currentTime, selectedCue.end - 0.01) })}>Start at playhead</button><button className="editor-button" onClick={() => updateCue(selectedCue.id, { end: Math.max(currentTime, selectedCue.start + 0.01) })}>End at playhead</button></div>
+          <div className="editor-two-fields"><label>Start (s)<input aria-label="Subtitle start" type="number" min="0" step="0.001" value={Number(selectedCue.start.toFixed(3))} onChange={(event) => updateCue(selectedCue.id, { start: Math.max(0, Math.min(selectedCue.end - 0.01, Number(event.target.value) || 0)) })} /></label><label>End (s)<input aria-label="Subtitle end" type="number" min="0.01" step="0.001" value={Number(selectedCue.end.toFixed(3))} onChange={(event) => updateCue(selectedCue.id, { end: Math.max(selectedCue.start + 0.01, Math.min(duration, Number(event.target.value) || selectedCue.start + 0.01)) })} /></label></div>
+          <div className="subtitle-language-grid">{(["en", "ja", "ko"] as const).map((language) => <label className={`subtitle-language-field subtitle-language-${language}`} key={language}><span>{language.toUpperCase()}</span><textarea aria-label={`${language.toUpperCase()} Subtitle #${selectedCueIndex + 1}`} className="timeline-textarea" value={selectedCue.text[language]} onChange={(event) => updateCue(selectedCue.id, { text: { ...selectedCue.text, [language]: event.target.value } })} /></label>)}</div>
+          <div className="subtitle-preview-language"><span>Preview language</span><div className="timeline-language-tabs">{(["en", "ja", "ko"] as const).map((language) => <button key={language} className={timeline.language === language ? "is-selected" : ""} onClick={() => updateTimeline((value) => ({ ...value, language }))}>{language.toUpperCase()}</button>)}</div></div>
+          <div className="editor-two-fields subtitle-actions"><button className="editor-button" onClick={() => updateTimeline((value) => splitCue(value, selectedCue.id, currentTime))}>Split (S)</button><button className="editor-button" onClick={duplicateCue}>Duplicate</button><button className="editor-button" onClick={() => { setCurrentTime(selectedCue.start); setPreviewUntil(selectedCue.end); setPlaying(true); }}>Preview cue</button></div>
+          <div className="editor-two-fields"><label><span className="timeline-inline-check"><input type="checkbox" checked={selectedCue.enabled} onChange={(event) => updateCue(selectedCue.id, { enabled: event.target.checked })} /> Visible</span></label><button className="editor-preview-button danger" onClick={deleteCue}>Delete cue</button></div>
+        </section>}
 
-        <section className="editor-section editor-inspector">
-          <div className="editor-section-title"><strong>Audio clips</strong><span>{timeline.audio.length}</span></div>
-          {!timeline.audio.length && <p className="editor-muted">Import audio files or import a subtitle JSON containing audio paths.</p>}
-          {timeline.audio.length > 0 && <div className="timeline-audio-list">{timeline.audio.map((clip) => <button key={clip.id} className={clip.id === selectedAudio?.id ? "is-selected" : ""} onClick={() => { setInspector("audio"); setSelectedAudioId(clip.id); }}><span>{seconds(clip.start)}–{seconds(clip.end)}</span><small>{clip.name}</small></button>)}</div>}
-          {missingAudio.filter((path) => timeline.audio.some((clip) => clip.path === path)).length > 0 && <><p className="editor-error">Some audio files are outside the selected source. Open the parent asset root containing <code>lobbies/</code> and <code>audios/voicelines/</code>, or relink matching files for this session.</p><button className="editor-button" onClick={() => void relinkAudio()}>Relink missing audio</button></>}
-          {inspector === "audio" && selectedAudio && <>
-            <label>Name<input value={selectedAudio.name} onChange={(event) => updateAudio(selectedAudio.id, { name: event.target.value })} /></label>
-            <div className="editor-two-fields"><label>Start (s)<input type="number" min="0" step="0.01" value={selectedAudio.start} onChange={(event) => updateAudio(selectedAudio.id, { start: Math.max(0, Math.min(selectedAudio.end - 0.01, Number(event.target.value) || 0)) })} /></label><label>End (s)<input type="number" min="0.01" step="0.01" value={selectedAudio.end} onChange={(event) => updateAudio(selectedAudio.id, { end: Math.max(selectedAudio.start + 0.01, Math.min(duration, Number(event.target.value) || selectedAudio.start + 0.01)) })} /></label></div>
-            <label>Volume · {Math.round(selectedAudio.volume * 100)}%<input type="range" min="0" max="1" step="0.01" value={selectedAudio.volume} onChange={(event) => updateAudio(selectedAudio.id, { volume: Number(event.target.value) })} /></label>
-            <div className="editor-two-fields"><label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAudio.enabled} onChange={(event) => updateAudio(selectedAudio.id, { enabled: event.target.checked })} /> Enabled</span></label><button className="editor-preview-button" onClick={deleteAudio}>Delete clip</button></div>
-            <p className="editor-muted">{selectedAudio.path}</p>
-          </>}
-        </section>
+        {inspector === "audio" && selectedAudio && <section className="editor-section editor-inspector">
+          <div className="editor-section-title"><strong>Audio clip</strong><span>{seconds(selectedAudio.start)}–{seconds(selectedAudio.end)}</span></div>
+          <label>Name<input value={selectedAudio.name} onChange={(event) => updateAudio(selectedAudio.id, { name: event.target.value })} /></label>
+          <div className="editor-two-fields"><label>Start (s)<input type="number" min="0" step="0.001" value={Number(selectedAudio.start.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { start: Math.max(0, Math.min(selectedAudio.end - 0.01, Number(event.target.value) || 0)) })} /></label><label>End (s)<input type="number" min="0.01" step="0.001" value={Number(selectedAudio.end.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { end: Math.max(selectedAudio.start + 0.01, Math.min(duration, Number(event.target.value) || selectedAudio.start + 0.01)) })} /></label></div>
+          <label>Volume · {Math.round(selectedAudio.volume * 100)}%<input type="range" min="0" max="1" step="0.01" value={selectedAudio.volume} onChange={(event) => updateAudio(selectedAudio.id, { volume: Number(event.target.value) })} /></label>
+          <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAudio.enabled} onChange={(event) => updateAudio(selectedAudio.id, { enabled: event.target.checked })} /> Enabled</span></label>
+          {missingAudio.includes(selectedAudio.path) && <><p className="editor-error">Audio file is missing from the selected asset root.</p><button className="editor-button" onClick={() => void relinkAudio()}>Relink audio</button></>}
+          <button className="editor-preview-button danger" onClick={deleteAudio}>Delete clip</button>
+          <p className="editor-muted" title={selectedAudio.path}>{selectedAudio.path}</p>
+        </section>}
+
+        {((inspector === "layer" && !selectedLayer) || (inspector === "cue" && !selectedCue) || (inspector === "audio" && !selectedAudio)) && <div className="timeline-empty timeline-inspector-empty"><strong>Select a clip</strong><span>Choose a layer, subtitle, or audio clip in the timeline.</span></div>}
       </aside>
     </div>
   );
