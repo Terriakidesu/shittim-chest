@@ -259,7 +259,7 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--editor-cy
 .timeline-stage-wrap { min-height: 320px; flex: 1 1 52%; padding: 8px; background: #08121b; }
 .timeline-stage { position: relative; width: 100%; height: 100%; min-height: 300px; overflow: hidden; background: #08121b; background-image: linear-gradient(45deg, #ffffff05 25%, transparent 25%), linear-gradient(-45deg, #ffffff05 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ffffff05 75%), linear-gradient(-45deg, transparent 75%, #ffffff05 75%); background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0; }
 .timeline-layer-canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; transform-origin: center center; pointer-events: none; }
-.timeline-subtitle-preview { position: absolute; left: 8%; right: 8%; bottom: 8%; display: grid; gap: 3px; color: #fff; font-size: clamp(12px, 1.6vw, 19px); font-weight: 700; text-align: center; text-shadow: 0 2px 4px #000, 0 0 8px #000; pointer-events: none; white-space: pre-line; }
+.timeline-subtitle-preview { position: absolute; z-index: 3; left: 50%; bottom: clamp(33px, 8%, 72px); width: min(760px, calc(100% - 34px)); box-sizing: border-box; transform: translateX(-50%); padding: 8px 13px; border: 1px solid #ffffff35; border-radius: 7px; background: #10202dcc; color: #f4fbff; font-size: clamp(11px, 1.4vw, 15px); line-height: 1.45; text-align: center; text-shadow: 0 1px 2px #0008; white-space: pre-line; pointer-events: none; }
 .timeline-transport { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 8px 10px; border-top: 1px solid var(--editor-line); background: var(--editor-surface); }
 .timeline-transport .editor-time { margin-left: auto; }
 .timeline-loop, .timeline-bottom-tools label, .timeline-inline-check { display: flex; align-items: center; gap: 5px; color: var(--editor-muted); font-size: 10px; }
@@ -337,7 +337,6 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--editor-cy
 .opening-phase i { flex: none; color: var(--editor-cyan); font-style: normal; font-size: 10px; }
 .timeline-stage-wrap { display: flex; justify-content: center; min-height: 320px; flex: 1 1 52%; overflow: hidden; }
 .timeline-stage { width: auto; max-width: 100%; height: 100%; min-height: 300px; aspect-ratio: 16 / 9; isolation: isolate; }
-.timeline-subtitle-preview { z-index: 10000; bottom: 6%; left: 5%; right: 5%; font-size: clamp(12px, 1.1vw, 19px); }
 .timeline-editor-scroll { overflow: auto; flex: 0 1 290px; min-height: 150px; }
 .timeline-track-rows { min-height: 0; }
 .timeline-ruler { touch-action: none; cursor: ew-resize; }
