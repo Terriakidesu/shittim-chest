@@ -14,7 +14,7 @@ import {
 import type { DesktopAssetSource } from "./desktopSource";
 import { audioPlaybackDecision, clampAudioEnd, clampAudioStart, decodedAudioTiming } from "./audioModel";
 import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, openingPhaseTimings, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
-import { timelineLayerSampleTime } from "../../../src/client/spine/spineTimeline";
+import { timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineLayerAnimation, timelineLayerSampleTime, timelineMainAnimation } from "../../../src/client/spine/spineTimeline";
 import { serializeSubtitleDocument } from "./subtitleDocument";
 import type { RecentFile } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
@@ -96,11 +96,6 @@ interface TimelineLayerCanvasProps {
   onError: (value: string | null) => void;
 }
 
-function matchingAnimation(meta: SpineMeta, requested: string): string | null {
-  if (!requested) return null;
-  return meta.animations.find((name) => name.toLocaleLowerCase() === requested.toLocaleLowerCase()) ?? null;
-}
-
 function TimelineLayerCanvas({ layer, files, currentTime, mainAnimation, mainAnimationTime, mainAnimationLoop, sharedCameraPose, referenceCamera, onMeta, onCameraPose, onAnimationDuration, onError, openingMode, sequenceId, onMarkers }: TimelineLayerCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<SpineRenderer | null>(null);
@@ -155,14 +150,9 @@ function TimelineLayerCanvas({ layer, files, currentTime, mainAnimation, mainAni
     return () => renderer.clear();
   }, [files, layer.directory]);
 
-  const opening = sequenceId === "opening";
-  const openingCharacter = opening && layer.role === "character";
   const intro = meta?.introAnimation;
   const introLength = intro ? rendererRef.current?.getEditorAnimationInfo(intro).duration ?? 0 : 0;
-  const useIntro = openingCharacter && openingMode !== "skip" && currentTime >= layer.start && currentTime - layer.start < introLength;
-  const fallbackAnimation = layer.animation || meta?.idleAnimation || meta?.animations[0] || "";
-  const followedAnimation = layer.followMainAnimation && meta && mainAnimation ? matchingAnimation(meta, mainAnimation) : null;
-  const animation = followedAnimation || (useIntro ? intro! : fallbackAnimation);
+  const animation = meta ? timelineLayerAnimation(layer, meta, mainAnimation, currentTime, sequenceId ?? "legacy", openingMode ?? "direct", introLength) : "";
   const animationDuration = rendererRef.current?.getEditorAnimationInfo(animation).duration ?? 0;
   const talkCharacter = sequenceId?.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
   const followMainClock = Boolean(layer.followMainAnimation && mainAnimationTime !== undefined);
@@ -186,9 +176,9 @@ function TimelineLayerCanvas({ layer, files, currentTime, mainAnimation, mainAni
     const time = followMainClock
       ? mainAnimationTime!
       : timelineLayerSampleTime(layer, currentTime, sequenceId ?? "legacy", openingMode ?? "direct", introLength, animationDuration);
-    renderer?.sampleEditorAnimation(animation, layer.faceAnimation ?? "", time, effectiveLoop, /^talk/i.test(animation));
+    renderer?.sampleEditorAnimation(animation, layer.faceAnimation ?? "", time, effectiveLoop, timelineAnimationNeedsIdleUnderlay(animation));
     if (referenceCamera) onMarkers(renderer?.getEditorAnimationInfo(animation).markers ?? []);
-  }, [animation, currentTime, effectiveLoop, followMainClock, layer, mainAnimationLoop, mainAnimationTime, meta, openingCharacter, openingMode, introLength, useIntro]);
+  }, [animation, currentTime, effectiveLoop, followMainClock, layer, mainAnimationLoop, mainAnimationTime, meta, openingMode, introLength, sequenceId]);
 
   useEffect(() => {
     if (!referenceCamera && sharedCameraPose) rendererRef.current?.setCameraPose(sharedCameraPose);
@@ -235,10 +225,6 @@ interface SelectedClipDetail extends TimelineSelection {
 
 function cueText(cue: EditorSubtitleCue, language: TimelineLanguage): string {
   return cue.text[language] || cue.text.en || cue.text.ja || cue.text.ko || "Untitled subtitle";
-}
-
-function previewCueText(cue: EditorSubtitleCue, language: TimelineLanguage): string {
-  return cue.text[language] || cue.text.en || cue.text.ja || cue.text.ko || "";
 }
 
 function roleLabel(role: TimelineLayerRole): string {
@@ -426,14 +412,12 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const openingNaturalDuration = Math.max(MIN_TIMELINE_DURATION, openingIntroStart + (openingMode === "skip" ? 0 : introDuration) + openingIdleDuration);
   const mainCharacterAnimation = characterLayer ? layerAnimation(characterLayer) : "";
   const mainCharacterDuration = characterLayer && mainCharacterAnimation ? animationDurations[`${characterLayer.id}:${mainCharacterAnimation}`] ?? 0 : 0;
-  const mainUsesIntro = Boolean(timeline?.sequenceId === "opening" && openingMode !== "skip" && characterLayer && introAnimation && currentTime >= characterLayer.start && currentTime - characterLayer.start < introDuration);
-  const mainAnimation = mainUsesIntro ? introAnimation : mainCharacterAnimation;
-  const mainAnimationTime = characterLayer && timeline
-    ? timelineLayerSampleTime(characterLayer, currentTime, timeline.sequenceId ?? "legacy", openingMode, introDuration, mainCharacterDuration)
-    : undefined;
-  const mainAnimationLoop = characterLayer
-    ? timeline?.sequenceId?.startsWith("talk-") && characterLayer.endMode !== "manual" ? false : characterLayer.loop
-    : undefined;
+  const mainAnimationState = characterLayer && characterMeta && timeline
+    ? timelineMainAnimation(characterLayer, characterMeta, currentTime, timeline.sequenceId ?? "legacy", openingMode, introDuration, mainCharacterDuration)
+    : null;
+  const mainAnimation = mainAnimationState?.animation ?? "";
+  const mainAnimationTime = mainAnimationState?.time;
+  const mainAnimationLoop = mainAnimationState?.loop;
   const authoredEnd = timeline ? authoredTimelineEnd(timeline) : 0;
   const openingManualLayerEnd = timeline?.sequenceId === "opening"
     ? Math.max(0, ...timeline.layers.filter((layer) => layer.endMode === "manual").map((layer) => layer.end))
@@ -1275,10 +1259,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   if (!project || !timeline) return <div className="timeline-empty"><strong>Open a Spine asset folder first</strong><span>The timeline uses the selected character set plus matching <code>_bg</code> and <code>_scene</code> directories.</span></div>;
 
   const availableLayerDirectories = directories.filter((item) => !timeline.layers.some((layer) => layer.directory === item));
-  const activeSubtitleTexts = timeline.subtitles
-    .filter((cue) => cue.enabled && currentTime >= cue.start && currentTime <= cue.end)
-    .map((cue) => previewCueText(cue, timeline.language))
-    .filter((text) => text.trim().length > 0);
+  const activeSubtitleTexts = timelineActiveSubtitleTexts(timeline, currentTime);
   const selectedClipDetails: SelectedClipDetail[] = [];
   for (const selection of selectedClips) {
     if (selection.kind === "layer") {

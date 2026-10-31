@@ -1,4 +1,5 @@
 import { ensureTimelineLayers, type EditorProject, type EditorTimeline, type EditorTimelineLayer } from "./editorModel";
+import { timelineLayerPlaybackEnd } from "../../../src/client/spine/spineTimeline";
 
 export type OpeningPhaseId = "scene" | "intro" | "idle";
 
@@ -10,8 +11,7 @@ export interface OpeningPhaseTiming {
 
 /** Resolve a non-looping layer's visible end from the actual Spine animation. */
 export function animationEndForLayer(layer: Pick<EditorTimelineLayer, "start" | "end" | "endMode" | "loop" | "animationOffset">, animationDuration: number): number {
-  if (layer.loop || layer.endMode === "manual" || !Number.isFinite(animationDuration) || animationDuration <= 0) return layer.end;
-  return Math.max(layer.start + 0.01, layer.start + Math.max(0.01, animationDuration - Math.max(0, layer.animationOffset)));
+  return timelineLayerPlaybackEnd(layer, animationDuration);
 }
 
 /** Talk playback is bounded by its character animations, never by subtitle/audio clips. */

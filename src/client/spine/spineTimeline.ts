@@ -1,3 +1,5 @@
+import type { SpineMeta } from "./spineRuntime";
+
 export type SpineTimelineLayerRole = "character" | "scene" | "background" | "overlay";
 export type SpineTimelineLanguage = "en" | "ja" | "ko";
 
@@ -9,6 +11,8 @@ export interface SpineTimelineLayer {
   enabled: boolean;
   animation: string;
   faceAnimation?: string;
+  /** Use the main character's matching animation and sample clock when available. */
+  followMainAnimation?: boolean;
   start: number;
   end: number;
   endMode?: "auto" | "manual";
@@ -39,6 +43,31 @@ export interface SpineTimelineAudio {
   volume: number;
 }
 
+export interface SpineTimelineAudioPlaybackDecision {
+  seek: boolean;
+  play: boolean;
+  started: boolean;
+}
+
+/** Keep timeline audio synchronized without restarting a clip every playhead frame. */
+export function timelineAudioPlaybackDecision(input: {
+  active: boolean;
+  playing: boolean;
+  currentTime: number;
+  previousTime: number | undefined;
+  started: boolean;
+  ended: boolean;
+}): SpineTimelineAudioPlaybackDecision {
+  if (!input.active) return { seek: false, play: false, started: false };
+  const rewound = input.previousTime !== undefined && input.currentTime < input.previousTime - 0.05;
+  const entered = !input.started || rewound;
+  return {
+    seek: entered,
+    play: input.playing && (entered || !input.ended),
+    started: true,
+  };
+}
+
 export interface SpineTimeline {
   sequenceId: string;
   openingMode: "scene-first" | "direct" | "skip";
@@ -57,6 +86,19 @@ export interface SpineTimeline {
 export interface SpineTimelineProject {
   timeline?: SpineTimeline;
   sequences?: Record<string, SpineTimeline>;
+}
+
+/** Resolve a localized cue using the same fallback order in the editor and viewer. */
+export function timelineSubtitleText(cue: Pick<SpineTimelineSubtitle, "text">, language: SpineTimelineLanguage): string {
+  return cue.text[language] || cue.text.en || cue.text.ja || cue.text.ko || "";
+}
+
+/** Return every active subtitle, preserving the authored timeline order. */
+export function timelineActiveSubtitleTexts(timeline: Pick<SpineTimeline, "subtitles" | "language">, currentTime: number): string[] {
+  return timeline.subtitles
+    .filter((cue) => cue.enabled && currentTime >= cue.start && currentTime <= cue.end)
+    .map((cue) => timelineSubtitleText(cue, timeline.language))
+    .filter((text) => text.trim().length > 0);
 }
 
 export function timelineSequenceIds(project: SpineTimelineProject): string[] {
@@ -88,6 +130,54 @@ export function timelineLayerSampleTime(layer: Pick<SpineTimelineLayer, "start" 
   const value = (openingCharacter ? Math.max(0, elapsed - introDuration) : elapsed) + layer.animationOffset;
   if (!animationDuration) return value;
   return layer.loop ? value % animationDuration : Math.min(value, animationDuration);
+}
+
+/** Resolve the visible endpoint used by both timeline previews. */
+export function timelineLayerPlaybackEnd(layer: Pick<SpineTimelineLayer, "start" | "end" | "endMode" | "loop" | "animationOffset">, animationDuration: number): number {
+  if (layer.loop || layer.endMode === "manual" || !Number.isFinite(animationDuration) || animationDuration <= 0) return layer.end;
+  return Math.max(layer.start + 0.01, layer.start + Math.max(0.01, animationDuration - Math.max(0, layer.animationOffset)));
+}
+
+/** Talk tracks retain the character's idle body underneath the authored motion. */
+export function timelineAnimationNeedsIdleUnderlay(animation: string): boolean {
+  return /^talk/i.test(animation);
+}
+
+function exactAnimation(animations: readonly string[], requested: string): string | null {
+  if (!requested) return null;
+  return animations.find((name) => name.toLocaleLowerCase() === requested.toLocaleLowerCase()) ?? null;
+}
+
+/** Resolve the animation used by a timeline layer in both the editor and viewer. */
+export function timelineLayerAnimation(layer: SpineTimelineLayer, meta: Pick<SpineMeta, "animations" | "introAnimation" | "idleAnimation">, mainAnimation: string | undefined, currentTime: number, sequenceId: string, openingMode: SpineTimeline["openingMode"], introDuration: number): string {
+  const openingCharacter = sequenceId === "opening" && layer.role === "character";
+  const useIntro = openingCharacter && openingMode !== "skip" && Boolean(meta.introAnimation) && currentTime >= layer.start && currentTime - layer.start < introDuration;
+  const fallback = layer.animation || meta.idleAnimation || meta.animations[0] || "";
+  const followed = layer.followMainAnimation && mainAnimation ? exactAnimation(meta.animations, mainAnimation) : null;
+  if (followed) return followed;
+  if (useIntro && meta.introAnimation) return exactAnimation(meta.animations, meta.introAnimation) ?? fallback;
+  return fallback;
+}
+
+export interface TimelineMainAnimationState {
+  animation: string;
+  time: number;
+  loop: boolean;
+  useIntro: boolean;
+}
+
+/** Resolve the main character animation and clock shared by all following layers. */
+export function timelineMainAnimation(layer: SpineTimelineLayer, meta: Pick<SpineMeta, "animations" | "introAnimation" | "idleAnimation">, currentTime: number, sequenceId: string, openingMode: SpineTimeline["openingMode"], introDuration: number, animationDuration: number): TimelineMainAnimationState {
+  const openingCharacter = sequenceId === "opening" && layer.role === "character";
+  const useIntro = openingCharacter && openingMode !== "skip" && Boolean(meta.introAnimation) && currentTime >= layer.start && currentTime - layer.start < introDuration;
+  const animation = useIntro && meta.introAnimation ? meta.introAnimation : layer.animation || meta.idleAnimation || meta.animations[0] || "";
+  const talkCharacter = sequenceId.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
+  return {
+    animation,
+    time: timelineLayerSampleTime(layer, currentTime, sequenceId, openingMode, introDuration, animationDuration),
+    loop: talkCharacter ? false : layer.loop,
+    useIntro,
+  };
 }
 
 function stringValue(value: unknown, fallback = ""): string {
@@ -123,14 +213,16 @@ function normalizeLayer(value: unknown, index: number, duration: number): SpineT
   const directory = stringValue(layer.directory);
   if (!directory) return null;
   const start = nonNegative(layer.start, 0);
+  const role = timelineRole(layer.role);
   return {
     id: stringValue(layer.id, `timeline-layer-${index + 1}`),
     name: stringValue(layer.name, directory),
-    role: timelineRole(layer.role),
+    role,
     directory,
     enabled: layer.enabled !== false,
     animation: stringValue(layer.animation),
     ...(typeof layer.faceAnimation === "string" ? { faceAnimation: layer.faceAnimation } : {}),
+    followMainAnimation: layer.followMainAnimation === undefined ? role === "background" : layer.followMainAnimation === true,
     start,
     end: Math.max(start + 0.01, finiteNumber(layer.end, duration)),
     ...(layer.endMode === "manual" ? { endMode: "manual" as const } : layer.endMode === "auto" ? { endMode: "auto" as const } : {}),

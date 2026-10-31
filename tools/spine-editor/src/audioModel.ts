@@ -1,3 +1,5 @@
+import { timelineAudioPlaybackDecision, type SpineTimelineAudioPlaybackDecision } from "../../../src/client/spine/spineTimeline";
+
 export interface DecodedAudioTiming {
   end: number;
 }
@@ -24,11 +26,7 @@ export function clampAudioStart(end: number, requestedStart: number, decodedDura
   return Math.min(maximumStart, Math.max(0, end - Math.max(0.01, decodedDuration), requestedStart));
 }
 
-export interface AudioPlaybackDecision {
-  seek: boolean;
-  play: boolean;
-  started: boolean;
-}
+export type AudioPlaybackDecision = SpineTimelineAudioPlaybackDecision;
 
 /**
  * An HTMLAudioElement stays ended until it is explicitly rewound. Do not call
@@ -42,12 +40,5 @@ export function audioPlaybackDecision(input: {
   started: boolean;
   ended: boolean;
 }): AudioPlaybackDecision {
-  if (!input.active) return { seek: false, play: false, started: false };
-  const rewound = input.previousTime !== undefined && input.currentTime < input.previousTime - 0.05;
-  const entered = !input.started || rewound;
-  return {
-    seek: entered,
-    play: input.playing && (entered || !input.ended),
-    started: true,
-  };
+  return timelineAudioPlaybackDecision(input);
 }
