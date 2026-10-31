@@ -10,6 +10,20 @@ export function decodedAudioTiming(start: number, decodedDuration: number): Deco
   return { end };
 }
 
+/** Keep an authored audio end inside the source file's available duration. */
+export function clampAudioEnd(start: number, requestedEnd: number, decodedDuration: number): number {
+  const minimumEnd = start + 0.01;
+  if (!Number.isFinite(decodedDuration) || decodedDuration <= 0) return Math.max(minimumEnd, requestedEnd);
+  return Math.min(start + Math.max(0.01, decodedDuration), Math.max(minimumEnd, requestedEnd));
+}
+
+/** Keep an authored audio start from exposing more source than the file contains. */
+export function clampAudioStart(end: number, requestedStart: number, decodedDuration: number): number {
+  const maximumStart = end - 0.01;
+  if (!Number.isFinite(decodedDuration) || decodedDuration <= 0) return Math.min(maximumStart, Math.max(0, requestedStart));
+  return Math.min(maximumStart, Math.max(0, end - Math.max(0.01, decodedDuration), requestedStart));
+}
+
 export interface AudioPlaybackDecision {
   seek: boolean;
   play: boolean;

@@ -12,7 +12,7 @@ import {
   type TimelineLayerRole,
 } from "./editorModel";
 import type { DesktopAssetSource } from "./desktopSource";
-import { audioPlaybackDecision, decodedAudioTiming } from "./audioModel";
+import { audioPlaybackDecision, clampAudioEnd, clampAudioStart, decodedAudioTiming } from "./audioModel";
 import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, openingPhaseTimings, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
 import { timelineLayerSampleTime } from "../../../src/client/spine/spineTimeline";
 import { serializeSubtitleDocument } from "./subtitleDocument";
@@ -214,7 +214,7 @@ function snapTime(value: number, snap: number, duration: number): number {
 type TimelineClipKind = "layer" | "cue" | "audio";
 type TimelineSelection = { kind: TimelineClipKind; id: string };
 type TimelineDragKind = TimelineClipKind | "layer-start" | "layer-end" | "cue-start" | "cue-end" | "audio-start" | "audio-end";
-interface TimelineDragItem extends TimelineSelection { start: number; end: number; linked?: boolean }
+interface TimelineDragItem extends TimelineSelection { start: number; end: number; linked?: boolean; sourceDuration?: number }
 interface TimelineDragState {
   kind: TimelineDragKind;
   id: string;
@@ -379,6 +379,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   const audioStartedRef = useRef<Record<string, boolean>>({});
   const audioPreviousTimeRef = useRef<Record<string, number | undefined>>({});
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
+  const [audioDurations, setAudioDurations] = useState<Record<string, number>>({});
   const [missingAudio, setMissingAudio] = useState<string[]>([]);
   const dragRef = useRef<TimelineDragState | null>(null);
   const subtitleDocumentsRef = useRef<Record<string, Record<string, unknown>>>({});
@@ -567,6 +568,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   useEffect(() => {
     audioStartedRef.current = {};
     audioPreviousTimeRef.current = {};
+    setAudioDurations({});
   }, [directory, source, timeline?.sequenceId]);
 
   useEffect(() => {
@@ -596,6 +598,8 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     const currentTimeline = timeline;
     const clip = currentTimeline?.audio.find((item) => item.id === id);
     if (!currentTimeline) return;
+    if (!Number.isFinite(decodedDuration) || decodedDuration <= 0) return;
+    setAudioDurations((value) => value[id] === decodedDuration ? value : { ...value, [id]: decodedDuration });
     if (!clip?.autoEnd) return;
     const timing = decodedAudioTiming(clip.start, decodedDuration);
     if (!timing) return;
@@ -1041,7 +1045,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
       return cue ? { ...selection, start: cue.start, end: cue.end } : null;
     }
     const audio = timeline.audio.find((item) => item.id === selection.id);
-    return audio ? { ...selection, start: audio.start, end: audio.end } : null;
+    return audio ? { ...selection, start: audio.start, end: audio.end, sourceDuration: audioDurations[audio.id] } : null;
   }
 
   function linkedSubtitleItems(items: TimelineDragItem[]): TimelineDragItem[] {
@@ -1096,7 +1100,10 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
         if (resize && (item.kind !== resizeKind || item.linked)) continue;
         if (!resize) {
           const start = Math.max(0, item.start + moveDelta);
-          const end = Math.max(start + 0.01, item.end + moveDelta);
+          const length = item.kind === "audio" && item.sourceDuration !== undefined
+            ? Math.min(item.end - item.start, Math.max(0.01, item.sourceDuration))
+            : item.end - item.start;
+          const end = Math.max(start + 0.01, start + length);
           if (item.kind === "layer") {
             layers = layers.map((layer) => layer.id === item.id ? { ...layer, start, end } : layer);
             if (value.sequenceId === "opening" && value.openingMode === "scene-first" && layers.find((layer) => layer.id === item.id)?.role === "character") sceneDuration = start;
@@ -1104,14 +1111,19 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
           else if (item.kind === "cue") subtitles = subtitles.map((cue) => cue.id === item.id ? { ...cue, start, end } : cue);
           else audio = audio.map((clip) => clip.id === item.id ? { ...clip, start, end } : clip);
         } else if (drag.kind.endsWith("-start")) {
-          const start = Math.min(Math.max(0, item.start + moveDelta), item.end - 0.01);
+          const start = item.kind === "audio" && item.sourceDuration !== undefined
+            ? clampAudioStart(item.end, item.start + moveDelta, item.sourceDuration)
+            : Math.min(Math.max(0, item.start + moveDelta), item.end - 0.01);
           if (item.kind === "layer") {
             layers = layers.map((layer) => layer.id === item.id ? { ...layer, start } : layer);
             if (value.sequenceId === "opening" && value.openingMode === "scene-first" && layers.find((layer) => layer.id === item.id)?.role === "character") sceneDuration = start;
           } else if (item.kind === "cue") subtitles = subtitles.map((cue) => cue.id === item.id ? { ...cue, start } : cue);
           else audio = audio.map((clip) => clip.id === item.id ? { ...clip, start } : clip);
         } else {
-          const end = Math.max(item.start + 0.01, item.end + moveDelta);
+          const requestedEnd = Math.max(item.start + 0.01, item.end + moveDelta);
+          const end = item.kind === "audio" && item.sourceDuration !== undefined
+            ? clampAudioEnd(item.start, requestedEnd, item.sourceDuration)
+            : requestedEnd;
           if (item.kind === "layer") layers = layers.map((layer) => layer.id === item.id ? { ...layer, endMode: "manual", end } : layer);
           else if (item.kind === "cue") subtitles = subtitles.map((cue) => cue.id === item.id ? { ...cue, end } : cue);
           else audio = audio.map((clip) => clip.id === item.id ? { ...clip, autoEnd: false, end } : clip);
@@ -1284,6 +1296,13 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     ["audio", selectedClipDetails.filter((item) => item.kind === "audio").length, "audio"],
   ] as const).filter(([, count]) => count > 0).map(([, count, label]) => `${count} ${label}${count === 1 ? "" : "s"}`).join(" · ");
   const deletableSelectionCount = selectedClipDetails.filter((item) => item.removable).length;
+  const selectedAudioDuration = selectedAudio ? audioDurations[selectedAudio.id] : undefined;
+  const selectedAudioMaximumEnd = selectedAudio && selectedAudioDuration !== undefined
+    ? clampAudioEnd(selectedAudio.start, Number.POSITIVE_INFINITY, selectedAudioDuration)
+    : undefined;
+  const selectedAudioMinimumStart = selectedAudio && selectedAudioDuration !== undefined
+    ? clampAudioStart(selectedAudio.end, Number.NEGATIVE_INFINITY, selectedAudioDuration)
+    : 0;
 
   return <>
     <div className="timeline-workspace">
@@ -1479,7 +1498,8 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
         {inspector === "audio" && selectedAudio && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Audio clip</strong><span>{seconds(selectedAudio.start)}–{seconds(selectedAudio.end)}</span></div>
           <label>Name<input value={selectedAudio.name} onChange={(event) => updateAudio(selectedAudio.id, { name: event.target.value })} /></label>
-            <div className="editor-two-fields"><label>Start (s)<input type="number" min="0" step="0.001" value={Number(selectedAudio.start.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { start: Math.max(0, Math.min(selectedAudio.end - 0.01, Number(event.target.value) || 0)) })} /></label><label>End (s)<input type="number" min="0.01" step="0.001" value={Number(selectedAudio.end.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { autoEnd: false, end: Math.max(selectedAudio.start + 0.01, Number(event.target.value) || selectedAudio.start + 0.01) })} /></label></div>
+             <div className="editor-two-fields"><label>Start (s)<input type="number" min={selectedAudioMinimumStart} step="0.001" value={Number(selectedAudio.start.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { start: selectedAudioDuration !== undefined ? clampAudioStart(selectedAudio.end, Number(event.target.value) || 0, selectedAudioDuration) : Math.min(selectedAudio.end - 0.01, Math.max(0, Number(event.target.value) || 0)) })} /></label><label>End (s)<input type="number" min="0.01" max={selectedAudioMaximumEnd} step="0.001" value={Number(selectedAudio.end.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { autoEnd: false, end: selectedAudioDuration !== undefined ? clampAudioEnd(selectedAudio.start, Number(event.target.value) || selectedAudio.start + 0.01, selectedAudioDuration) : Math.max(selectedAudio.start + 0.01, Number(event.target.value) || selectedAudio.start + 0.01) })} /></label></div>
+             {selectedAudioDuration !== undefined && <small className="editor-field-hint">Source duration: {seconds(selectedAudioDuration)}. The clip cannot be extended past its source.</small>}
           <label>Volume · {Math.round(selectedAudio.volume * 100)}%<input type="range" min="0" max="1" step="0.01" value={selectedAudio.volume} onChange={(event) => updateAudio(selectedAudio.id, { volume: Number(event.target.value) })} /></label>
           <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAudio.enabled} onChange={(event) => updateAudio(selectedAudio.id, { enabled: event.target.checked })} /> Enabled</span></label>
           {missingAudio.includes(selectedAudio.path) && <><p className="editor-error">Audio file is missing from the selected asset root.</p><button className="editor-button" onClick={() => void relinkAudio()}>Relink audio</button></>}
