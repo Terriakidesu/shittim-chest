@@ -54,6 +54,7 @@ export type TimelineLanguage = "en" | "ja" | "ko";
 export interface EditorTimelineLayer {
   endMode?: "auto" | "manual";
   faceAnimation?: string;
+  followMainAnimation?: boolean;
   id: string;
   name: string;
   role: TimelineLayerRole;
@@ -322,6 +323,7 @@ export function createTimelineLayer(directory: string, role: TimelineLayerRole, 
     directory,
     enabled: true,
     animation: "",
+    followMainAnimation: role === "background",
     start: 0,
     end: Math.max(1, duration),
     endMode: "auto",
@@ -434,16 +436,18 @@ function normalizeText(value: unknown): Record<TimelineLanguage, string> {
 function normalizeTimelineLayer(value: Partial<EditorTimelineLayer>, index: number, duration: number): EditorTimelineLayer | null {
   const directory = stringValue(value.directory, "");
   if (!directory) return null;
+  const role = timelineRole(value.role);
   const start = finiteNumber(value.start, 0, 0);
   const end = Math.max(start + 0.01, finiteNumber(value.end, duration, 0));
   return {
     id: stringValue(value.id, id("timeline-layer")),
     name: stringValue(value.name, directory),
-    role: timelineRole(value.role),
+    role,
     directory,
     enabled: value.enabled !== false,
     animation: stringValue(value.animation, ""),
     faceAnimation: stringValue(value.faceAnimation, ""),
+    followMainAnimation: value.followMainAnimation === undefined ? role === "background" : value.followMainAnimation === true,
     start,
     end,
     endMode: value.endMode === "manual" ? "manual" : "auto",

@@ -80,6 +80,9 @@ interface TimelineLayerCanvasProps {
   layer: EditorTimelineLayer;
   files: SpineFiles | null;
   currentTime: number;
+  mainAnimation?: string;
+  mainAnimationTime?: number;
+  mainAnimationLoop?: boolean;
   openingMode?: "scene-first" | "direct" | "skip";
   sequenceId?: string;
   onMarkers: (markers: number[]) => void;
@@ -91,7 +94,12 @@ interface TimelineLayerCanvasProps {
   onError: (value: string | null) => void;
 }
 
-function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, referenceCamera, onMeta, onCameraPose, onAnimationDuration, onError, openingMode, sequenceId, onMarkers }: TimelineLayerCanvasProps) {
+function matchingAnimation(meta: SpineMeta, requested: string): string | null {
+  if (!requested) return null;
+  return meta.animations.find((name) => name.toLocaleLowerCase() === requested.toLocaleLowerCase()) ?? null;
+}
+
+function TimelineLayerCanvas({ layer, files, currentTime, mainAnimation, mainAnimationTime, mainAnimationLoop, sharedCameraPose, referenceCamera, onMeta, onCameraPose, onAnimationDuration, onError, openingMode, sequenceId, onMarkers }: TimelineLayerCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<SpineRenderer | null>(null);
   const [meta, setMeta] = useState<SpineMeta | null>(null);
@@ -150,10 +158,13 @@ function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, refe
   const intro = meta?.introAnimation;
   const introLength = intro ? rendererRef.current?.getEditorAnimationInfo(intro).duration ?? 0 : 0;
   const useIntro = openingCharacter && openingMode !== "skip" && currentTime >= layer.start && currentTime - layer.start < introLength;
-  const animation = useIntro ? intro! : layer.animation || meta?.idleAnimation || meta?.animations[0] || "";
+  const fallbackAnimation = layer.animation || meta?.idleAnimation || meta?.animations[0] || "";
+  const followedAnimation = layer.followMainAnimation && meta && mainAnimation ? matchingAnimation(meta, mainAnimation) : null;
+  const animation = followedAnimation || (useIntro ? intro! : fallbackAnimation);
   const animationDuration = rendererRef.current?.getEditorAnimationInfo(animation).duration ?? 0;
   const talkCharacter = sequenceId?.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
-  const effectiveLoop = talkCharacter ? false : layer.loop;
+  const followMainClock = Boolean(layer.followMainAnimation && mainAnimationTime !== undefined);
+  const effectiveLoop = followMainClock && mainAnimationLoop !== undefined ? mainAnimationLoop : talkCharacter ? false : layer.loop;
   const layerEnd = animationEndForLayer(talkCharacter ? { ...layer, loop: false } : layer, animationDuration);
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -170,10 +181,12 @@ function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, refe
   useEffect(() => {
     if (!meta) return;
     const renderer = rendererRef.current;
-    const time = timelineLayerSampleTime(layer, currentTime, sequenceId ?? "legacy", openingMode ?? "direct", introLength, animationDuration);
-     renderer?.sampleEditorAnimation(animation, layer.faceAnimation ?? "", time, effectiveLoop, /^talk/i.test(animation));
+    const time = followMainClock
+      ? mainAnimationTime!
+      : timelineLayerSampleTime(layer, currentTime, sequenceId ?? "legacy", openingMode ?? "direct", introLength, animationDuration);
+    renderer?.sampleEditorAnimation(animation, layer.faceAnimation ?? "", time, effectiveLoop, /^talk/i.test(animation));
     if (referenceCamera) onMarkers(renderer?.getEditorAnimationInfo(animation).markers ?? []);
-  }, [animation, currentTime, effectiveLoop, layer, meta, openingCharacter, openingMode, introLength, useIntro]);
+  }, [animation, currentTime, effectiveLoop, followMainClock, layer, mainAnimationLoop, mainAnimationTime, meta, openingCharacter, openingMode, introLength, useIntro]);
 
   useEffect(() => {
     if (!referenceCamera && sharedCameraPose) rendererRef.current?.setCameraPose(sharedCameraPose);
@@ -389,6 +402,16 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     : 0;
   const openingIdleDuration = Math.max(0, timeline?.openingIdleDuration ?? 3);
   const openingNaturalDuration = Math.max(MIN_TIMELINE_DURATION, openingIntroStart + (openingMode === "skip" ? 0 : introDuration) + openingIdleDuration);
+  const mainCharacterAnimation = characterLayer ? layerAnimation(characterLayer) : "";
+  const mainCharacterDuration = characterLayer && mainCharacterAnimation ? animationDurations[`${characterLayer.id}:${mainCharacterAnimation}`] ?? 0 : 0;
+  const mainUsesIntro = Boolean(timeline?.sequenceId === "opening" && openingMode !== "skip" && characterLayer && introAnimation && currentTime >= characterLayer.start && currentTime - characterLayer.start < introDuration);
+  const mainAnimation = mainUsesIntro ? introAnimation : mainCharacterAnimation;
+  const mainAnimationTime = characterLayer && timeline
+    ? timelineLayerSampleTime(characterLayer, currentTime, timeline.sequenceId ?? "legacy", openingMode, introDuration, mainCharacterDuration)
+    : undefined;
+  const mainAnimationLoop = characterLayer
+    ? timeline?.sequenceId?.startsWith("talk-") && characterLayer.endMode !== "manual" ? false : characterLayer.loop
+    : undefined;
   const authoredEnd = timeline ? authoredTimelineEnd(timeline) : 0;
   const openingManualLayerEnd = timeline?.sequenceId === "opening"
     ? Math.max(0, ...timeline.layers.filter((layer) => layer.endMode === "manual").map((layer) => layer.end))
@@ -1094,7 +1117,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
              onWheel={zoomStageAtCursor}
            >
              <div className="timeline-stage-content" style={{ transform: `translate3d(${stageView.x}px, ${stageView.y}px, 0) scale(${stageView.scale})` }}>
-               {displayLayers.map((layer) => <TimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
+                {displayLayers.map((layer) => <TimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} mainAnimation={mainAnimation} mainAnimationTime={mainAnimationTime} mainAnimationLoop={mainAnimationLoop} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
              {timeline.audio.map((clip) => <audio key={clip.id} ref={(element) => { audioElementsRef.current[clip.id] = element; }} src={audioUrls[clip.id]} preload="auto" onLoadedMetadata={(event) => applyDecodedAudioDuration(clip.id, event.currentTarget.duration)} />)}
               {activeSubtitleTexts.length > 0 && <div className="timeline-subtitle-preview" aria-live="polite">
                 {activeSubtitleTexts.map((text, index) => <div key={`${index}-${text}`}>{text}</div>)}
@@ -1142,7 +1165,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
                      </>}
                      <button type="button" className="timeline-clip-start-handle" aria-label={`Move ${layer.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); setSelectedLayer(layer.id); beginDrag(event, "layer-start", layer.id, layer.start, layerEnd(layer)); }} />
                      <button type="button" className="timeline-clip-end-handle" aria-label={`Move ${layer.name} end`} title="Drag to change end time" onPointerDown={(event) => { event.stopPropagation(); setSelectedLayer(layer.id); beginDrag(event, "layer-end", layer.id, layer.start, layerEnd(layer)); }} />
-                     <span className="timeline-layer-name">{layer.animation || metas[layer.id]?.idleAnimation || "Animation"}</span>
+                      <span className="timeline-layer-name">{layer.followMainAnimation ? "Follow main" : layer.animation || metas[layer.id]?.idleAnimation || "Animation"}</span>
                    </div>
                  <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
                </div>
@@ -1217,7 +1240,8 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
           <div className="editor-section-title"><strong>Layer</strong><span><i className={`timeline-role-dot ${selectedLayer.role}`} /> {roleLabel(selectedLayer.role)} <button className="danger" onClick={removeLayer} disabled={selectedLayer.role === "character"}>Remove</button></span></div>
           <label>Name<input value={selectedLayer.name} onChange={(event) => updateLayer(selectedLayer.id, { name: event.target.value })} /></label>
           <div className="editor-two-fields"><label>Role<select value={selectedLayer.role} onChange={(event) => updateLayer(selectedLayer.id, { role: event.target.value as TimelineLayerRole })}><option value="background">Background</option><option value="scene">Scene</option><option value="character">Character</option><option value="overlay">Overlay</option></select></label><label>Order<input type="number" min="0" step="1" value={selectedLayer.order} onChange={(event) => updateLayer(selectedLayer.id, { order: Math.max(0, Number(event.target.value) || 0) })} /></label></div>
-          <label>Animation<select value={selectedLayer.animation || metas[selectedLayer.id]?.idleAnimation || ""} onChange={(event) => updateLayer(selectedLayer.id, { animation: event.target.value })}><option value="">Auto idle</option>{(metas[selectedLayer.id]?.animations ?? []).map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
+          <label>{selectedLayer.followMainAnimation ? "Fallback animation" : "Animation"}<select value={selectedLayer.animation || metas[selectedLayer.id]?.idleAnimation || ""} onChange={(event) => updateLayer(selectedLayer.id, { animation: event.target.value })}><option value="">Auto idle</option>{(metas[selectedLayer.id]?.animations ?? []).map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
+          {selectedLayer.role !== "character" && <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.followMainAnimation === true} onChange={(event) => updateLayer(selectedLayer.id, { followMainAnimation: event.target.checked })} /> Follow main character animation</span><small className="editor-field-hint">Uses a matching animation and clock when available.</small></label>}
           <label>Face / secondary animation<select value={selectedLayer.faceAnimation ?? ""} onChange={(event) => updateLayer(selectedLayer.id, { faceAnimation: event.target.value })}><option value="">None</option>{(metas[selectedLayer.id]?.animations ?? []).map((name) => <option key={name}>{name}</option>)}</select></label>
           <div className="editor-two-fields"><label>Start (s)<input type="number" min="0" step="0.001" value={Number(selectedLayer.start.toFixed(3))} onChange={(event) => updateLayer(selectedLayer.id, { start: Math.max(0, Number(event.target.value) || 0) })} /></label><label>End (s)<input type="number" min="0.01" step="0.001" value={Number(selectedLayer.end.toFixed(3))} onChange={(event) => updateLayer(selectedLayer.id, { endMode: "manual", end: Math.max(selectedLayer.start + 0.01, Number(event.target.value) || selectedLayer.start + 0.01) })} /></label></div>
           <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.endMode !== "manual"} onChange={(event) => updateLayer(selectedLayer.id, { endMode: event.target.checked ? "auto" : "manual" })} /> Use Spine animation end</span></label>

@@ -39,6 +39,29 @@ function bone(path: string, name = path.split("/").pop()!, x = 0, y = 0): SpineE
   };
 }
 
+test("background timeline layers follow the main animation by default and keep explicit overrides", () => {
+  const project = normalizeProject({
+    schemaVersion: 2,
+    assetDirectory: "Akari_home",
+    interactions: [],
+    timeline: {
+      layers: [
+        { id: "character", directory: "Akari_home", role: "character" },
+        { id: "background", directory: "akari_bg", role: "background", followMainAnimation: false },
+      ],
+    },
+  }, "Akari_home");
+  expect(project?.timeline.layers.find((layer) => layer.role === "background")?.followMainAnimation).toBe(false);
+
+  const legacy = normalizeProject({
+    schemaVersion: 2,
+    assetDirectory: "Akari_home",
+    interactions: [],
+    timeline: { layers: [{ id: "background", directory: "akari_bg", role: "background" }] },
+  }, "Akari_home");
+  expect(legacy?.timeline.layers.find((layer) => layer.role === "background")?.followMainAnimation).toBe(true);
+});
+
 describe("Spine editor project model", () => {
   test("an intentionally empty project survives save/load", () => {
     const empty = normalizeProject({ schemaVersion: 1, interactions: [] }, "test");
