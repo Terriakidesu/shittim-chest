@@ -81,6 +81,7 @@ export interface SpineViewportHandle {
   setCameraMode: (mode: SpineCameraMode) => void;
   setInteractionMode: (mode: SpineInteractionMode) => void;
   setTalkAudioPending: (pending: boolean) => void;
+  isTalkActive: () => boolean;
   triggerTalk: (animation?: string) => void;
   startIntroAudio: () => void;
   replayIntro: () => void;
@@ -202,6 +203,7 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
     setCameraMode: (value) => rendererRef.current?.setCameraMode(value),
     setInteractionMode: (value) => rendererRef.current?.setInteractionMode(value),
     setTalkAudioPending: (value) => rendererRef.current?.setTalkAudioPending(value),
+    isTalkActive: () => rendererRef.current?.isTalkActive() ?? false,
     triggerTalk: (value) => rendererRef.current?.triggerTalk(value),
     startIntroAudio: () => rendererRef.current?.startIntroAudio(),
     replayIntro: () => rendererRef.current?.replayIntro(),
@@ -496,16 +498,29 @@ export function Spine() {
       autoPlayTimerRef.current = null;
       if (run !== voiceRunRef.current || !talkAutoplayRef.current) return;
       const line = voiceLines[lineIndex];
-      if (!line || !interactionReady || attempt >= 20) {
+      if (!line || !interactionReady) {
         talkAutoplayRef.current = false;
         setTalkAutoplay(false);
         return;
       }
+      const talkStillActive = compositionActive
+        ? compositionRef.current?.isTalkActive() === true
+        : viewportRef.current?.isTalkActive() === true;
+      if (talkStillActive) {
+        queueNextAutoTalk(lineIndex, run, attempt + 1);
+        return;
+      }
       if (compositionActive) compositionRef.current?.triggerTalk(voiceAnimationForLine(line));
       else viewportRef.current?.triggerTalk(voiceAnimationForLine(line));
-      // A talk animation may still be finishing its authored fade when the
-      // last audio clip ends. Retry briefly rather than dropping the sequence.
-      if (voiceSessionRef.current?.lineIndex !== lineIndex) queueNextAutoTalk(lineIndex, run, attempt + 1);
+      // If the renderer rejected the request while its interaction state was
+      // changing, keep the same line queued until it can be accepted.
+      if (voiceSessionRef.current?.lineIndex !== lineIndex) {
+        if (attempt < 20) queueNextAutoTalk(lineIndex, run, attempt + 1);
+        else {
+          talkAutoplayRef.current = false;
+          setTalkAutoplay(false);
+        }
+      }
     }, attempt === 0 ? 180 : 80);
   };
 
@@ -520,7 +535,8 @@ export function Spine() {
     setVoicePlaying(false);
     setVoiceLineIndex(null);
     setVoiceClipIndex(0);
-    if (session?.kind === "talk" && talkAutoplayRef.current) {
+    const authoredTimelineAutoplay = compositionActive && authoredTalkAutoplayAvailable;
+    if (session?.kind === "talk" && talkAutoplayRef.current && !authoredTimelineAutoplay) {
       const nextIndex = session.lineIndex + 1;
       if (nextIndex < voiceLines.length) queueNextAutoTalk(nextIndex, run);
       else {
@@ -529,6 +545,11 @@ export function Spine() {
         talkAutoplayRef.current = false;
         setTalkAutoplay(false);
       }
+    } else if (session?.kind === "talk" && authoredTimelineAutoplay) {
+      // Editor-authored autoplay is advanced by the saved talk timeline's
+      // onFinished callback. Audio ending is only the voice gate; it must not
+      // interrupt the authored animation or select the next talk early.
+      clearAutoPlayTimer();
     }
   };
 

@@ -13,6 +13,7 @@ export interface SpineCompositionViewportHandle {
   seek: (time: number) => void;
   triggerTalk: (animation?: string) => void;
   setTalkAudioPending: (pending: boolean) => void;
+  isTalkActive: () => boolean;
   startIntroAudio: () => void;
 }
 
@@ -317,6 +318,7 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
     },
     triggerTalk: (animation) => talkRendererRef.current?.triggerTalk(animation),
     setTalkAudioPending: (pending) => talkRendererRef.current?.setTalkAudioPending(pending),
+    isTalkActive: () => talkRendererRef.current?.isTalkActive() ?? false,
     startIntroAudio: () => talkRendererRef.current?.startIntroAudio(),
   }), [idleMode, interactionMode, layers, openingIdleStart, playbackDuration, progressAnimation, referenceLayerId, timeline]);
 

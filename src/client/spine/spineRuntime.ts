@@ -819,6 +819,10 @@ export class SpineRenderer {
     this.finishInteractionState();
   }
 
+  isTalkActive(): boolean {
+    return this.interactionState === "talk";
+  }
+
   /** Attach the intro voice listener after the local voice catalog has loaded. */
   startIntroAudio() {
     this.attachIntroAudio();

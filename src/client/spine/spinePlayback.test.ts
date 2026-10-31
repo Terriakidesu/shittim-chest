@@ -104,6 +104,13 @@ describe("Spine restart playback", () => {
     expect(renderer.talkAudioPending).toBe(false);
   });
 
+  test("reports a talk as active until its animation state finishes", () => {
+    const renderer = Object.assign(Object.create(SpineRenderer.prototype), { interactionState: "talk" }) as any;
+    expect(renderer.isTalkActive()).toBe(true);
+    renderer.interactionState = "idle";
+    expect(renderer.isTalkActive()).toBe(false);
+  });
+
   test("does not queue the talk fade while audio is active", () => {
     const data = new SkeletonData();
     data.bones.push(new BoneData(0, "root", null));
