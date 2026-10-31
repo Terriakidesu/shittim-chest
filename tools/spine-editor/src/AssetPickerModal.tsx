@@ -9,19 +9,20 @@ export interface AssetPickerModalProps {
   selected?: string;
   emptyLabel?: string;
   renderLabel?: (directory: string) => ReactNode;
+  getSearchText?: (directory: string) => string;
   onClose: () => void;
   onSelect: (directory: string) => void;
 }
 
-function matches(directory: string, query: string): boolean {
+function matches(directory: string, query: string, searchText?: string): boolean {
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  return !normalizedQuery || directory.toLocaleLowerCase().includes(normalizedQuery);
+  return !normalizedQuery || `${directory} ${searchText ?? ""}`.toLocaleLowerCase().includes(normalizedQuery);
 }
 
-export function AssetPickerModal({ open, title, eyebrow = "CHOOSE ASSET SET", description, directories, selected, emptyLabel = "No matching asset sets.", renderLabel, onClose, onSelect }: AssetPickerModalProps) {
+export function AssetPickerModal({ open, title, eyebrow = "CHOOSE ASSET SET", description, directories, selected, emptyLabel = "No matching asset sets.", renderLabel, getSearchText, onClose, onSelect }: AssetPickerModalProps) {
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
-  const filtered = useMemo(() => directories.filter((directory) => matches(directory, query)), [directories, query]);
+  const filtered = useMemo(() => directories.filter((directory) => matches(directory, query, getSearchText?.(directory))), [directories, getSearchText, query]);
 
   useEffect(() => {
     if (!open) return;
