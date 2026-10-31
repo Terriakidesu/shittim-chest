@@ -13,7 +13,7 @@ import {
 } from "./editorModel";
 import type { DesktopAssetSource } from "./desktopSource";
 import { audioPlaybackDecision, decodedAudioTiming } from "./audioModel";
-import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, moveAudioClip, openingPhaseTimings, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
+import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, openingPhaseTimings, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
 import { timelineLayerSampleTime } from "../../../src/client/spine/spineTimeline";
 import { serializeSubtitleDocument } from "./subtitleDocument";
 import type { RecentFile } from "./recentFiles";
@@ -211,7 +211,25 @@ function snapTime(value: number, snap: number, duration: number): number {
   return Math.max(0, Math.min(duration, Number(next.toFixed(3))));
 }
 
-type TimelineDragKind = "layer" | "layer-start" | "layer-end" | "cue" | "cue-start" | "cue-end" | "audio" | "audio-start" | "audio-end";
+type TimelineClipKind = "layer" | "cue" | "audio";
+type TimelineSelection = { kind: TimelineClipKind; id: string };
+type TimelineDragKind = TimelineClipKind | "layer-start" | "layer-end" | "cue-start" | "cue-end" | "audio-start" | "audio-end";
+interface TimelineDragItem extends TimelineSelection { start: number; end: number; linked?: boolean }
+interface TimelineDragState {
+  kind: TimelineDragKind;
+  id: string;
+  x: number;
+  start: number;
+  end: number;
+  items: TimelineDragItem[];
+}
+interface SelectedClipDetail extends TimelineSelection {
+  label: string;
+  start: number;
+  end: number;
+  enabled: boolean;
+  removable: boolean;
+}
 
 function cueText(cue: EditorSubtitleCue, language: TimelineLanguage): string {
   return cue.text[language] || cue.text.en || cue.text.ja || cue.text.ko || "Untitled subtitle";
@@ -347,12 +365,13 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   const [stageView, setStageView] = useState<StageView>(() => resetStageView());
   const [stagePanning, setStagePanning] = useState(false);
   const [markers, setMarkers] = useState<number[]>([]);
-  const [inspector, setInspector] = useState<"sequence" | "layer" | "cue" | "audio">("sequence");
+  const [inspector, setInspector] = useState<"sequence" | "layer" | "cue" | "audio" | "multi">("sequence");
   const scrollRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const stagePanRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const addMenuRef = useRef<HTMLDetailsElement>(null);
   const scrubRef = useRef<number | null>(null);
+  const [selectedClips, setSelectedClips] = useState<TimelineSelection[]>([]);
   const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
   const [layerPickerOpen, setLayerPickerOpen] = useState(false);
   const audioElementsRef = useRef<Record<string, HTMLAudioElement | null>>({});
@@ -361,7 +380,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   const audioPreviousTimeRef = useRef<Record<string, number | undefined>>({});
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
   const [missingAudio, setMissingAudio] = useState<string[]>([]);
-  const dragRef = useRef<{ kind: TimelineDragKind; id: string; x: number; start: number; end: number } | null>(null);
+  const dragRef = useRef<TimelineDragState | null>(null);
   const subtitleDocumentsRef = useRef<Record<string, Record<string, unknown>>>({});
   const projectRef = useRef<EditorProject | null>(project);
   const sourceRef = useRef<DesktopAssetSource | null>(source);
@@ -463,7 +482,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
 
   function chooseSequence(id: string) {
     onMutate((current) => switchSequence(current, id, animations, directories));
-    setCurrentTime(0); setPlaying(false); setPreviewUntil(null); setSelectedAudioId(null); setInspector("sequence");
+    setCurrentTime(0); setPlaying(false); setPreviewUntil(null); setSelectedClips([]); setSelectedAudioId(null); setInspector("sequence");
   }
 
   function previewOpeningPhase(phase: OpeningPhaseTiming) {
@@ -743,7 +762,15 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
       return { id, name: path.split(/[\\/]/).pop() ?? path, path, autoEnd: true, start, end: start + 2, enabled: true, volume: 1 };
     });
     updateTimeline((value) => extendTimelineDuration({ ...value, audio: [...value.audio, ...clips] }));
-    setSelectedAudio(clips[0]?.id ?? null);
+    if (clips.length === 1) {
+      setSelectedAudio(clips[0]!.id);
+    } else if (clips.length > 1) {
+      setPreviewUntil(null);
+      setSelectedClips(clips.map((clip) => ({ kind: "audio" as const, id: clip.id })));
+      setSelectedAudioId(clips[0]!.id);
+      setInspector("multi");
+      updateTimeline((value) => ({ ...value, selectedLayerId: null, selectedCueId: null }), false);
+    }
     onStatus(`Added ${clips.length} local audio clip${clips.length === 1 ? "" : "s"}.`);
   }
 
@@ -762,17 +789,63 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     }).catch((value) => onError(value instanceof Error ? value.message : String(value)));
   }, [directory, initialAudioPaths, onAudioOpened, onError, project, source, timeline]);
 
-  function setSelectedLayer(id: string) {
-    setPreviewUntil(null); setInspector("layer"); updateTimeline((value) => ({ ...value, selectedLayerId: id }), false);
+  function isClipSelected(kind: TimelineClipKind, id: string): boolean {
+    return selectedClips.some((item) => item.kind === kind && item.id === id);
   }
 
-  function setSelectedCue(id: string | null) {
-    setPreviewUntil(null); setInspector(id ? "cue" : "sequence"); updateTimeline((value) => ({ ...value, selectedCueId: id }), false);
+  function focusTimelineClip(selection: TimelineSelection) {
+    setPreviewUntil(null);
+    if (selection.kind === "layer") {
+      setSelectedAudioId(null);
+      setInspector("layer");
+      updateTimeline((value) => ({ ...value, selectedLayerId: selection.id, selectedCueId: null }), false);
+    } else if (selection.kind === "cue") {
+      setSelectedAudioId(null);
+      setInspector("cue");
+      updateTimeline((value) => ({ ...value, selectedLayerId: null, selectedCueId: selection.id }), false);
+    } else {
+      setSelectedAudioId(selection.id);
+      setInspector("audio");
+      updateTimeline((value) => ({ ...value, selectedLayerId: null, selectedCueId: null }), false);
+    }
+  }
+
+  function clearTimelineSelection() {
+    setSelectedClips([]);
+    setSelectedAudioId(null);
+    setInspector("sequence");
+    updateTimeline((value) => ({ ...value, selectedLayerId: null, selectedCueId: null }), false);
+  }
+
+  function selectTimelineClip(selection: TimelineSelection, event: ReactPointerEvent<HTMLElement>): TimelineSelection[] | null {
+    event.stopPropagation();
+    const additive = event.shiftKey || event.ctrlKey || event.metaKey;
+    if (additive) {
+      const exists = isClipSelected(selection.kind, selection.id);
+      const next = exists
+        ? selectedClips.filter((item) => item.kind !== selection.kind || item.id !== selection.id)
+        : [...selectedClips, selection];
+      setSelectedClips(next);
+      if (next.length === 0) clearTimelineSelection();
+      else {
+        focusTimelineClip(next.at(-1)!);
+        if (next.length > 1) setInspector("multi");
+      }
+      return null;
+    }
+
+    const next = isClipSelected(selection.kind, selection.id) ? selectedClips : [selection];
+    setSelectedClips(next);
+    focusTimelineClip(selection);
+    if (next.length > 1) setInspector("multi");
+    return next;
   }
 
   function setSelectedAudio(id: string | null) {
-    setPreviewUntil(null); setSelectedAudioId(id);
-    setInspector(id ? "audio" : "sequence");
+    if (!id) { clearTimelineSelection(); return; }
+    const selection = { kind: "audio" as const, id };
+    setSelectedClips([selection]);
+    focusTimelineClip(selection);
   }
 
   function closeAddMenu() {
@@ -791,6 +864,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
       enabled: true,
       text: { en: "", ja: "", ko: "" },
     };
+    setSelectedClips([{ kind: "cue", id: cue.id }]);
     updateTimeline((value) => extendTimelineDuration({ ...value, subtitles: [...value.subtitles, cue], selectedCueId: cue.id }));
     onStatus(`Subtitle cue added at ${seconds(start)}.`);
   }
@@ -877,6 +951,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
       const subtitles = value.subtitles.filter((cue) => cue.id !== selectedCue.id);
       return { ...value, subtitles, selectedCueId: null };
     });
+    setSelectedClips([]);
     setInspector("sequence");
   }
 
@@ -886,8 +961,47 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
       const audio = value.audio.filter((clip) => clip.id !== selectedAudio.id);
       return { ...value, audio };
     });
+    setSelectedClips([]);
     setSelectedAudioId(null);
     setInspector("sequence");
+  }
+
+  function deleteSelectedClips() {
+    if (!selectedClips.length || !timeline) return;
+    const layers = new Set(selectedClips.filter((item) => item.kind === "layer").map((item) => item.id));
+    const cues = new Set(selectedClips.filter((item) => item.kind === "cue").map((item) => item.id));
+    const audio = new Set(selectedClips.filter((item) => item.kind === "audio").map((item) => item.id));
+    const removableLayers = new Set(timeline.layers.filter((layer) => layers.has(layer.id) && layer.role !== "character").map((layer) => layer.id));
+    updateTimeline((value) => ({
+      ...value,
+      layers: value.layers.filter((layer) => !removableLayers.has(layer.id)),
+      subtitles: value.subtitles.filter((cue) => !cues.has(cue.id)),
+      audio: value.audio.filter((clip) => !audio.has(clip.id)),
+      selectedLayerId: removableLayers.has(value.selectedLayerId ?? "") ? null : value.selectedLayerId,
+      selectedCueId: cues.has(value.selectedCueId ?? "") ? null : value.selectedCueId,
+    }));
+    for (const id of audio) {
+      const url = audioUrlsRef.current[id];
+      if (url) URL.revokeObjectURL(url);
+      delete audioUrlsRef.current[id];
+      delete audioElementsRef.current[id];
+    }
+    setSelectedClips([]);
+    setSelectedAudioId(null);
+    setInspector("sequence");
+  }
+
+  function setSelectedClipsEnabled(enabled: boolean) {
+    if (!selectedClips.length) return;
+    const layers = new Set(selectedClips.filter((item) => item.kind === "layer").map((item) => item.id));
+    const cues = new Set(selectedClips.filter((item) => item.kind === "cue").map((item) => item.id));
+    const audio = new Set(selectedClips.filter((item) => item.kind === "audio").map((item) => item.id));
+    updateTimeline((value) => ({
+      ...value,
+      layers: value.layers.map((layer) => layers.has(layer.id) ? { ...layer, enabled } : layer),
+      subtitles: value.subtitles.map((cue) => cues.has(cue.id) ? { ...cue, enabled } : cue),
+      audio: value.audio.map((clip) => audio.has(clip.id) ? { ...clip, enabled } : clip),
+    }));
   }
 
   function addLayer(directoryToAdd: string) {
@@ -896,22 +1010,66 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     const role = found?.role ?? (/_scene$/i.test(directoryToAdd) ? "scene" : /_bg$/i.test(directoryToAdd) ? "background" : "overlay");
     const layer = createTimelineLayer(directoryToAdd, role, timeline.layers.length, duration);
     updateTimeline((value) => ({ ...value, layers: [...value.layers, layer], selectedLayerId: layer.id }));
+    setSelectedClips([{ kind: "layer", id: layer.id }]);
     setInspector("layer");
     onStatus(`Added ${directoryToAdd} as a ${role} layer.`);
   }
 
   function removeLayer() {
     if (!selectedLayer || selectedLayer.role === "character") return;
+    const nextLayer = timeline?.layers.filter((layer) => layer.id !== selectedLayer.id).at(-1) ?? null;
     updateTimeline((value) => {
       const layers = value.layers.filter((layer) => layer.id !== selectedLayer.id);
       return { ...value, layers, selectedLayerId: layers.at(-1)?.id ?? null };
     });
+    setSelectedClips(nextLayer ? [{ kind: "layer", id: nextLayer.id }] : []);
+    setInspector(nextLayer ? "layer" : "sequence");
   }
 
-  function beginDrag(event: ReactPointerEvent<HTMLElement>, kind: TimelineDragKind, id: string, start: number, end: number) {
+  function dragClipKind(kind: TimelineDragKind): TimelineClipKind {
+    return kind.endsWith("-start") || kind.endsWith("-end") ? kind.slice(0, kind.lastIndexOf("-")) as TimelineClipKind : kind as TimelineClipKind;
+  }
+
+  function dragItem(selection: TimelineSelection): TimelineDragItem | null {
+    if (!timeline) return null;
+    if (selection.kind === "layer") {
+      const layer = timeline.layers.find((item) => item.id === selection.id);
+      return layer ? { ...selection, start: layer.start, end: layerEnd(layer) } : null;
+    }
+    if (selection.kind === "cue") {
+      const cue = timeline.subtitles.find((item) => item.id === selection.id);
+      return cue ? { ...selection, start: cue.start, end: cue.end } : null;
+    }
+    const audio = timeline.audio.find((item) => item.id === selection.id);
+    return audio ? { ...selection, start: audio.start, end: audio.end } : null;
+  }
+
+  function linkedSubtitleItems(items: TimelineDragItem[]): TimelineDragItem[] {
+    if (!timeline) return [];
+    const existing = new Set(items.filter((item) => item.kind === "cue").map((item) => item.id));
+    return items.flatMap((item) => {
+      if (item.kind !== "audio" || !item.linked) return [];
+      const clip = timeline.audio.find((candidate) => candidate.id === item.id);
+      if (!clip?.lineId) return [];
+      const cue = timeline.subtitles
+        .filter((candidate) => candidate.lineId === clip.lineId && !existing.has(candidate.id))
+        .sort((a, b) => Math.abs(a.start - clip.start) - Math.abs(b.start - clip.start))[0];
+      if (!cue) return [];
+      existing.add(cue.id);
+      return [{ kind: "cue" as const, id: cue.id, start: cue.start, end: cue.end, linked: true }];
+    });
+  }
+
+  function beginDrag(event: ReactPointerEvent<HTMLElement>, kind: TimelineDragKind, id: string, start: number, end: number, selection: TimelineSelection[] = selectedClips) {
     event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = { kind, id, x: event.clientX, start, end };
+    const captureTarget = event.currentTarget.closest(".timeline-track-rows") as HTMLElement | null;
+    (captureTarget ?? event.currentTarget).setPointerCapture(event.pointerId);
+    const clipKind = dragClipKind(kind);
+    const selected = selection.some((item) => item.kind === clipKind && item.id === id) ? selection : [{ kind: clipKind, id }];
+    const items = selected.map((item) => dragItem(item)).filter((item): item is TimelineDragItem => item !== null);
+    if (!items.some((item) => item.kind === clipKind && item.id === id)) items.push({ kind: clipKind, id, start, end });
+    if (kind === "audio") items.push(...linkedSubtitleItems(items.map((item) => item.kind === "audio" ? { ...item, linked: true } : item)));
+    dragRef.current = { kind, id, x: event.clientX, start, end, items };
     onBeginEdit();
   }
 
@@ -919,30 +1077,48 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     const drag = dragRef.current;
     if (!drag || !timeline) return;
     const delta = (event.clientX - drag.x) / (TIMELINE_SCALE * zoom);
-    const targets = [...markers, ...timeline.subtitles.filter((cue) => cue.id !== drag.id).flatMap((cue) => [cue.start, cue.end])];
+    const resize = drag.kind !== dragClipKind(drag.kind);
+    const resizeKind = dragClipKind(drag.kind);
+    const selectedCueIds = new Set(drag.items.filter((item) => item.kind === "cue" && !item.linked).map((item) => item.id));
+    const targets = [...markers, ...timeline.subtitles.filter((cue) => !selectedCueIds.has(cue.id)).flatMap((cue) => [cue.start, cue.end])];
     const snap = (value: number) => Math.max(0, snapToTargets(value, event.altKey ? 0 : timeline.snap, event.altKey ? [] : targets));
-    if (drag.kind === "layer-start") {
-      updateLayer(drag.id, { start: Math.min(snap(drag.start + delta), drag.end - 0.01) }, false);
-    } else if (drag.kind === "layer-end") {
-      updateLayer(drag.id, { endMode: "manual", end: Math.max(drag.start + 0.01, snap(drag.end + delta)) }, false);
-    } else if (drag.kind === "layer") {
-      const length = drag.end - drag.start;
-      const start = Math.max(0, snap(drag.start + delta));
-      updateLayer(drag.id, { start: Math.max(0, start), end: Math.max(start + 0.01, start + length) }, false);
-    } else if (drag.kind === "audio-start") {
-      updateAudio(drag.id, { start: Math.min(snap(drag.start + delta), drag.end - 0.01) }, false);
-    } else if (drag.kind === "audio-end") {
-      updateAudio(drag.id, { autoEnd: false, end: Math.max(drag.start + 0.01, snap(drag.end + delta)) }, false);
-    } else if (drag.kind === "audio") {
-      const start = Math.max(0, snap(drag.start + delta));
-      updateTimeline((value) => moveAudioClip(value, drag.id, start), false);
-    } else {
-      const start = drag.kind === "cue" ? Math.max(0, snap(drag.start + delta)) : drag.start;
-      const end = drag.kind === "cue" ? start + drag.end - drag.start : drag.end;
-      if (drag.kind === "cue-start") updateCue(drag.id, { start: Math.min(snap(drag.start + delta), drag.end - 0.01) }, false);
-      else if (drag.kind === "cue-end") updateCue(drag.id, { end: Math.max(snap(drag.end + delta), drag.start + 0.01) }, false);
-      else updateCue(drag.id, { start, end: Math.max(start + 0.01, end) }, false);
-    }
+    const resizeAnchor = drag.kind.endsWith("-end") ? drag.end : drag.start;
+    const snappedDelta = snap(resizeAnchor + delta) - resizeAnchor;
+    const moveItems = drag.items.filter((item) => !item.linked || !resize);
+    const moveDelta = resize ? snappedDelta : Math.max(-Math.min(...moveItems.map((item) => item.start)), snappedDelta);
+
+    updateTimeline((value) => {
+      let layers = value.layers;
+      let subtitles = value.subtitles;
+      let audio = value.audio;
+      let sceneDuration = value.sceneDuration;
+      for (const item of drag.items) {
+        if (resize && (item.kind !== resizeKind || item.linked)) continue;
+        if (!resize) {
+          const start = Math.max(0, item.start + moveDelta);
+          const end = Math.max(start + 0.01, item.end + moveDelta);
+          if (item.kind === "layer") {
+            layers = layers.map((layer) => layer.id === item.id ? { ...layer, start, end } : layer);
+            if (value.sequenceId === "opening" && value.openingMode === "scene-first" && layers.find((layer) => layer.id === item.id)?.role === "character") sceneDuration = start;
+          }
+          else if (item.kind === "cue") subtitles = subtitles.map((cue) => cue.id === item.id ? { ...cue, start, end } : cue);
+          else audio = audio.map((clip) => clip.id === item.id ? { ...clip, start, end } : clip);
+        } else if (drag.kind.endsWith("-start")) {
+          const start = Math.min(Math.max(0, item.start + moveDelta), item.end - 0.01);
+          if (item.kind === "layer") {
+            layers = layers.map((layer) => layer.id === item.id ? { ...layer, start } : layer);
+            if (value.sequenceId === "opening" && value.openingMode === "scene-first" && layers.find((layer) => layer.id === item.id)?.role === "character") sceneDuration = start;
+          } else if (item.kind === "cue") subtitles = subtitles.map((cue) => cue.id === item.id ? { ...cue, start } : cue);
+          else audio = audio.map((clip) => clip.id === item.id ? { ...clip, start } : clip);
+        } else {
+          const end = Math.max(item.start + 0.01, item.end + moveDelta);
+          if (item.kind === "layer") layers = layers.map((layer) => layer.id === item.id ? { ...layer, endMode: "manual", end } : layer);
+          else if (item.kind === "cue") subtitles = subtitles.map((cue) => cue.id === item.id ? { ...cue, end } : cue);
+          else audio = audio.map((clip) => clip.id === item.id ? { ...clip, autoEnd: false, end } : clip);
+        }
+      }
+      return extendTimelineDuration({ ...value, layers, subtitles, audio, sceneDuration, duration: Math.max(value.duration, ...layers.map((layer) => layer.end)) });
+    }, false);
   }
 
   function endDrag(event: ReactPointerEvent<HTMLDivElement>) {
@@ -956,6 +1132,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     event.preventDefault();
     setInspector("sequence");
     setPreviewUntil(null);
+    setSelectedClips([]);
     setSelectedAudioId(null);
     updateTimeline((value) => ({ ...value, selectedLayerId: null, selectedCueId: null }), false);
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -1044,6 +1221,8 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     const start = selectedCue.end;
     const cue = { ...selectedCue, id: crypto.randomUUID(), start, end: start + length, text: { ...selectedCue.text } };
     updateTimeline((value) => extendTimelineDuration({ ...value, subtitles: [...value.subtitles, cue], selectedCueId: cue.id }));
+    setSelectedClips([{ kind: "cue", id: cue.id }]);
+    setInspector("cue");
   }
 
   function fitTimeline() { setZoom(Math.max(0.1, ((scrollRef.current?.clientWidth ?? 900) - 124) / (duration * TIMELINE_SCALE))); }
@@ -1057,6 +1236,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     stagePanRef.current = null;
     setStagePanning(false);
     setStageView(resetStageView());
+    setSelectedClips([]);
   }, [directory, timeline?.sequenceId]);
 
   useEffect(() => {
@@ -1068,11 +1248,11 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
       else if (key === " ") { event.preventDefault(); setPlaying((value) => !value); }
       else if (key === "arrowleft" || key === "arrowright") { event.preventDefault(); setPlaying(false); setCurrentTime((value) => Math.max(0, Math.min(duration, value + (key === "arrowright" ? 1 : -1) * (event.shiftKey ? 10 : 1) / 60))); }
       else if (key === "home" || key === "end") { event.preventDefault(); setPlaying(false); setCurrentTime(key === "home" ? 0 : duration); }
-      else if (key === "delete" || key === "backspace") { event.preventDefault(); if (inspector === "cue") deleteCue(); else if (inspector === "audio") deleteAudio(); }
+      else if (key === "delete" || key === "backspace") { event.preventDefault(); if (selectedClips.length > 0) deleteSelectedClips(); else if (inspector === "cue") deleteCue(); else if (inspector === "audio") deleteAudio(); }
       else if ((event.ctrlKey || event.metaKey) && key === "d") { event.preventDefault(); duplicateCue(); }
       else if (key === "s" && selectedCue) updateTimeline((value) => splitCue(value, selectedCue.id, currentTime));
       else if (key === "f") fitTimeline();
-       else if (key === "escape") setPlaying(false);
+      else if (key === "escape") { setPlaying(false); clearTimelineSelection(); }
     };
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
@@ -1085,6 +1265,25 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     .filter((cue) => cue.enabled && currentTime >= cue.start && currentTime <= cue.end)
     .map((cue) => previewCueText(cue, timeline.language))
     .filter((text) => text.trim().length > 0);
+  const selectedClipDetails: SelectedClipDetail[] = [];
+  for (const selection of selectedClips) {
+    if (selection.kind === "layer") {
+      const layer = timeline.layers.find((item) => item.id === selection.id);
+      if (layer) selectedClipDetails.push({ ...selection, label: layer.name, start: layer.start, end: layerEnd(layer), enabled: layer.enabled, removable: layer.role !== "character" });
+    } else if (selection.kind === "cue") {
+      const cue = timeline.subtitles.find((item) => item.id === selection.id);
+      if (cue) selectedClipDetails.push({ ...selection, label: cueText(cue, timeline.language) || "Subtitle cue", start: cue.start, end: cue.end, enabled: cue.enabled, removable: true });
+    } else {
+      const clip = timeline.audio.find((item) => item.id === selection.id);
+      if (clip) selectedClipDetails.push({ ...selection, label: clip.name, start: clip.start, end: clip.end, enabled: clip.enabled, removable: true });
+    }
+  }
+  const selectedTypeSummary = ([
+    ["layer", selectedClipDetails.filter((item) => item.kind === "layer").length, "layer"],
+    ["cue", selectedClipDetails.filter((item) => item.kind === "cue").length, "subtitle"],
+    ["audio", selectedClipDetails.filter((item) => item.kind === "audio").length, "audio"],
+  ] as const).filter(([, count]) => count > 0).map(([, count, label]) => `${count} ${label}${count === 1 ? "" : "s"}`).join(" · ");
+  const deletableSelectionCount = selectedClipDetails.filter((item) => item.removable).length;
 
   return <>
     <div className="timeline-workspace">
@@ -1158,13 +1357,13 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
                 {displayLayers.map((layer) => <div className="timeline-row" key={layer.id}>
                <div className="timeline-track-label" title={layer.directory}><b>{roleLabel(layer.role)}</b><span>{layer.name}</span></div>
                 <div className={`timeline-track timeline-layer-track${layer.id === timeline.selectedLayerId ? " is-selected" : ""}`} onPointerDown={seekFromEvent}>
-                   <div className="timeline-layer-clip" title="Drag to move the layer; drag an edge to change its timing" style={{ left: layer.start * TIMELINE_SCALE * zoom, width: Math.max(8, (layerEnd(layer) - layer.start) * TIMELINE_SCALE * zoom), zIndex: layer.order }} onPointerDown={(event) => { setSelectedLayer(layer.id); beginDrag(event, "layer", layer.id, layer.start, layerEnd(layer)); }}>
+                    <div className={`timeline-layer-clip${isClipSelected("layer", layer.id) || layer.id === timeline.selectedLayerId ? " is-selected" : ""}`} title="Drag to move the layer; drag an edge to change its timing. Shift/Ctrl-click to select multiple." style={{ left: layer.start * TIMELINE_SCALE * zoom, width: Math.max(8, (layerEnd(layer) - layer.start) * TIMELINE_SCALE * zoom), zIndex: layer.order }} onPointerDown={(event) => { const selection = selectTimelineClip({ kind: "layer", id: layer.id }, event); if (selection) beginDrag(event, "layer", layer.id, layer.start, layerEnd(layer), selection); }}>
                      {timeline.sequenceId === "opening" && layer.role === "character" && introDuration > 0 && <>
                        <i className="timeline-layer-phase intro" style={{ width: Math.min(layerEnd(layer) - layer.start, introDuration) * TIMELINE_SCALE * zoom }} title={`Intro · ${seconds(introDuration)} actual Spine duration`}>INTRO</i>
                        <i className="timeline-layer-phase idle" style={{ left: introDuration * TIMELINE_SCALE * zoom, width: Math.max(0, layerEnd(layer) - layer.start - introDuration) * TIMELINE_SCALE * zoom }} title="Idle hold">IDLE</i>
                      </>}
-                     <button type="button" className="timeline-clip-start-handle" aria-label={`Move ${layer.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); setSelectedLayer(layer.id); beginDrag(event, "layer-start", layer.id, layer.start, layerEnd(layer)); }} />
-                     <button type="button" className="timeline-clip-end-handle" aria-label={`Move ${layer.name} end`} title="Drag to change end time" onPointerDown={(event) => { event.stopPropagation(); setSelectedLayer(layer.id); beginDrag(event, "layer-end", layer.id, layer.start, layerEnd(layer)); }} />
+                      <button type="button" className="timeline-clip-start-handle" aria-label={`Move ${layer.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "layer", id: layer.id }, event); if (selection) beginDrag(event, "layer-start", layer.id, layer.start, layerEnd(layer), selection); }} />
+                      <button type="button" className="timeline-clip-end-handle" aria-label={`Move ${layer.name} end`} title="Drag to change end time" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "layer", id: layer.id }, event); if (selection) beginDrag(event, "layer-end", layer.id, layer.start, layerEnd(layer), selection); }} />
                       <span className="timeline-layer-name">{layer.followMainAnimation ? "Follow main" : layer.animation || metas[layer.id]?.idleAnimation || "Animation"}</span>
                    </div>
                  <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
@@ -1173,10 +1372,10 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
             <div className="timeline-row subtitle-row">
               <div className="timeline-track-label"><b>SUBS</b><span>{timeline.language.toUpperCase()}</span></div>
               <div className="timeline-track timeline-subtitle-track" onPointerDown={seekFromEvent}>
-                {timeline.subtitles.map((cue) => <div key={cue.id} className={`timeline-cue${cue.id === timeline.selectedCueId ? " is-selected" : ""}${cue.enabled ? "" : " is-disabled"}`} style={{ left: cue.start * TIMELINE_SCALE * zoom, width: Math.max(12, (cue.end - cue.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { setSelectedCue(cue.id); beginDrag(event, "cue", cue.id, cue.start, cue.end); }}>
-                  <button className="timeline-cue-handle left" aria-label="Move subtitle start" onPointerDown={(event) => { event.stopPropagation(); setSelectedCue(cue.id); beginDrag(event, "cue-start", cue.id, cue.start, cue.end); }} />
-                  <span>{cueText(cue, timeline.language)}</span>
-                  <button className="timeline-cue-handle right" aria-label="Move subtitle end" onPointerDown={(event) => { event.stopPropagation(); setSelectedCue(cue.id); beginDrag(event, "cue-end", cue.id, cue.start, cue.end); }} />
+                 {timeline.subtitles.map((cue) => <div key={cue.id} className={`timeline-cue${isClipSelected("cue", cue.id) || cue.id === timeline.selectedCueId ? " is-selected" : ""}${cue.enabled ? "" : " is-disabled"}`} style={{ left: cue.start * TIMELINE_SCALE * zoom, width: Math.max(12, (cue.end - cue.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { const selection = selectTimelineClip({ kind: "cue", id: cue.id }, event); if (selection) beginDrag(event, "cue", cue.id, cue.start, cue.end, selection); }}>
+                   <button className="timeline-cue-handle left" aria-label="Move subtitle start" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "cue", id: cue.id }, event); if (selection) beginDrag(event, "cue-start", cue.id, cue.start, cue.end, selection); }} />
+                   <span>{cueText(cue, timeline.language)}</span>
+                   <button className="timeline-cue-handle right" aria-label="Move subtitle end" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "cue", id: cue.id }, event); if (selection) beginDrag(event, "cue-end", cue.id, cue.start, cue.end, selection); }} />
                 </div>)}
                 <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
               </div>
@@ -1184,7 +1383,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
             <div className="timeline-row audio-row">
               <div className="timeline-track-label"><b>AUDIO</b><span>{timeline.audio.length} clip{timeline.audio.length === 1 ? "" : "s"}</span></div>
               <div className="timeline-track timeline-audio-track" onPointerDown={seekFromEvent}>
-                 {timeline.audio.map((clip) => <div key={clip.id} className={`timeline-audio-clip${clip.id === selectedAudio?.id ? " is-selected" : ""}${clip.enabled ? "" : " is-disabled"}`} title="Drag to move the audio; drag an edge to change its timing" style={{ left: clip.start * TIMELINE_SCALE * zoom, width: Math.max(12, (clip.end - clip.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { setSelectedAudio(clip.id); beginDrag(event, "audio", clip.id, clip.start, clip.end); }}><button type="button" className="timeline-clip-start-handle" aria-label={`Move ${clip.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); setSelectedAudio(clip.id); beginDrag(event, "audio-start", clip.id, clip.start, clip.end); }} /><button type="button" className="timeline-clip-end-handle" aria-label={`Move ${clip.name} end`} title="Drag to change end time" onPointerDown={(event) => { event.stopPropagation(); setSelectedAudio(clip.id); beginDrag(event, "audio-end", clip.id, clip.start, clip.end); }} /><AudioWaveform url={audioUrls[clip.id]} onDuration={(value) => applyDecodedAudioDuration(clip.id, value)} /><span>♫ {clip.name}</span></div>)}
+                  {timeline.audio.map((clip) => <div key={clip.id} className={`timeline-audio-clip${isClipSelected("audio", clip.id) || clip.id === selectedAudio?.id ? " is-selected" : ""}${clip.enabled ? "" : " is-disabled"}`} title="Drag to move the audio; drag an edge to change its timing. Shift/Ctrl-click to select multiple." style={{ left: clip.start * TIMELINE_SCALE * zoom, width: Math.max(12, (clip.end - clip.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { const selection = selectTimelineClip({ kind: "audio", id: clip.id }, event); if (selection) beginDrag(event, "audio", clip.id, clip.start, clip.end, selection); }}><button type="button" className="timeline-clip-start-handle" aria-label={`Move ${clip.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "audio", id: clip.id }, event); if (selection) beginDrag(event, "audio-start", clip.id, clip.start, clip.end, selection); }} /><button type="button" className="timeline-clip-end-handle" aria-label={`Move ${clip.name} end`} title="Drag to change end time" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "audio", id: clip.id }, event); if (selection) beginDrag(event, "audio-end", clip.id, clip.start, clip.end, selection); }} /><AudioWaveform url={audioUrls[clip.id]} onDuration={(value) => applyDecodedAudioDuration(clip.id, value)} /><span>♫ {clip.name}</span></div>)}
                 <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
               </div>
             </div>
@@ -1207,7 +1406,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
       </section>
 
       <aside className="editor-panel timeline-inspector">
-        {inspector === "sequence" && <section className="editor-section editor-inspector">
+         {inspector === "sequence" && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Sequence settings</strong><span>{seconds(duration)}</span></div>
             <label>{timeline.sequenceId === "opening" ? "Total duration (s)" : "Length (s)"}<input type="number" min="1" step="0.1" value={Number(duration.toFixed(3))} disabled={timeline.sequenceId === "opening" && timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: value.sequenceId === "opening" ? "manual" : value.durationMode, duration: Math.max(1, Number(event.target.value) || 1) }))} /></label>
            <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop sequence</span></label>
@@ -1233,10 +1432,26 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
            </div>}
           <div className="timeline-context-summary"><span>Layers <b>{displayLayers.length}</b></span><span>Subtitles <b>{timeline.subtitles.length}</b></span><span>Audio <b>{timeline.audio.length}</b></span></div>
           <p className="editor-muted">Select a clip in the timeline to edit its properties. Add content from the <b>＋ Add</b> menu.</p>
-          {timeline.subtitles.some((cue, index, all) => all.some((other, j) => index !== j && cue.start < other.end && cue.end > other.start)) && <p className="editor-error">Overlapping subtitle cues: review timing before export.</p>}
-        </section>}
+           {timeline.subtitles.some((cue, index, all) => all.some((other, j) => index !== j && cue.start < other.end && cue.end > other.start)) && <p className="editor-error">Overlapping subtitle cues: review timing before export.</p>}
+         </section>}
 
-        {inspector === "layer" && selectedLayer && <section className="editor-section editor-inspector">
+         {inspector === "multi" && <section className="editor-section editor-inspector">
+           <div className="editor-section-title"><strong>{selectedClipDetails.length} clips selected</strong><span>{selectedTypeSummary}</span></div>
+           <p className="editor-muted">Drag any selected clip to move the group. Drag an edge to resize selected clips of the same type. Linked audio and subtitle timing moves together.</p>
+           <div className="timeline-batch-actions">
+             <button className="editor-button" onClick={() => setSelectedClipsEnabled(true)}>Enable all</button>
+             <button className="editor-button" onClick={() => setSelectedClipsEnabled(false)}>Disable all</button>
+           </div>
+           <div className="timeline-batch-actions">
+             <button className="editor-button" onClick={clearTimelineSelection}>Clear selection</button>
+             <button className="editor-preview-button danger" disabled={!deletableSelectionCount} onClick={deleteSelectedClips}>Delete selected</button>
+           </div>
+           <div className="timeline-selection-list" aria-label="Selected clips">
+             {selectedClipDetails.map((item) => <div key={`${item.kind}-${item.id}`}><span className={`timeline-selection-kind ${item.kind}`}>{item.kind === "cue" ? "SUB" : item.kind === "audio" ? "AUD" : "SPN"}</span><span title={item.label}>{item.label}</span><small>{seconds(item.start)}–{seconds(item.end)}{!item.removable ? " · main character" : ""}</small></div>)}
+           </div>
+         </section>}
+
+         {inspector === "layer" && selectedLayer && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Layer</strong><span><i className={`timeline-role-dot ${selectedLayer.role}`} /> {roleLabel(selectedLayer.role)} <button className="danger" onClick={removeLayer} disabled={selectedLayer.role === "character"}>Remove</button></span></div>
           <label>Name<input value={selectedLayer.name} onChange={(event) => updateLayer(selectedLayer.id, { name: event.target.value })} /></label>
           <div className="editor-two-fields"><label>Role<select value={selectedLayer.role} onChange={(event) => updateLayer(selectedLayer.id, { role: event.target.value as TimelineLayerRole })}><option value="background">Background</option><option value="scene">Scene</option><option value="character">Character</option><option value="overlay">Overlay</option></select></label><label>Order<input type="number" min="0" step="1" value={selectedLayer.order} onChange={(event) => updateLayer(selectedLayer.id, { order: Math.max(0, Number(event.target.value) || 0) })} /></label></div>
