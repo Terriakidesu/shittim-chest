@@ -110,6 +110,17 @@ interface SelectedClipDetail extends TimelineSelection {
   removable: boolean;
 }
 
+interface AudioUrlRecord {
+  path: string;
+  source: DesktopAssetSource;
+  url: string;
+}
+
+interface PendingAudioLoad {
+  path: string;
+  source: DesktopAssetSource;
+}
+
 function cueText(cue: EditorSubtitleCue, language: TimelineLanguage): string {
   return cue.text[language] || cue.text.en || cue.text.ja || cue.text.ko || "Untitled subtitle";
 }
@@ -243,6 +254,8 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const [layerPickerOpen, setLayerPickerOpen] = useState(false);
   const audioElementsRef = useRef<Record<string, HTMLAudioElement | null>>({});
   const audioUrlsRef = useRef<Record<string, string>>({});
+  const audioUrlRecordsRef = useRef<Record<string, AudioUrlRecord>>({});
+  const pendingAudioLoadsRef = useRef<Record<string, PendingAudioLoad>>({});
   const audioStartedRef = useRef<Record<string, boolean>>({});
   const audioPreviousTimeRef = useRef<Record<string, number | undefined>>({});
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
@@ -252,11 +265,59 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const subtitleDocumentsRef = useRef<Record<string, Record<string, unknown>>>({});
   const projectRef = useRef<EditorProject | null>(project);
   const sourceRef = useRef<DesktopAssetSource | null>(source);
+  const directoryRef = useRef(directory);
   const subtitleSaveQueueRef = useRef(Promise.resolve());
+  const saveSubtitleDocumentsRef = useRef<(getProject: () => EditorProject | null) => Promise<string[]>>(async () => []);
+  const onRegisterSaveRef = useRef(onRegisterSave);
+  const timelineKeydownRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
   const openedSubtitleRef = useRef("");
   const openedAudioRef = useRef("");
   projectRef.current = project;
   sourceRef.current = source;
+  directoryRef.current = directory;
+  onRegisterSaveRef.current = onRegisterSave;
+
+  function pauseAudioElement(id: string) {
+    const audio = audioElementsRef.current[id];
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+  }
+
+  function clearAudioUrl(id: string) {
+    const record = audioUrlRecordsRef.current[id];
+    if (record) {
+      URL.revokeObjectURL(record.url);
+      delete audioUrlRecordsRef.current[id];
+    } else {
+      const url = audioUrlsRef.current[id];
+      if (url) URL.revokeObjectURL(url);
+    }
+    delete audioUrlsRef.current[id];
+    delete audioStartedRef.current[id];
+    delete audioPreviousTimeRef.current[id];
+    delete pendingAudioLoadsRef.current[id];
+    pauseAudioElement(id);
+    setAudioUrls((value) => {
+      if (!(id in value)) return value;
+      const next = { ...value };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function storeAudioUrl(id: string, path: string, url: string, nextSource: DesktopAssetSource) {
+    const previous = audioUrlRecordsRef.current[id];
+    if (previous && previous.url !== url) {
+      URL.revokeObjectURL(previous.url);
+      pauseAudioElement(id);
+    }
+    audioUrlRecordsRef.current[id] = { path, source: nextSource, url };
+    audioUrlsRef.current[id] = url;
+    audioStartedRef.current[id] = false;
+    audioPreviousTimeRef.current[id] = undefined;
+    setAudioUrls((value) => value[id] === url ? value : { ...value, [id]: url });
+  }
 
   const timeline = project?.timeline ?? null;
   const discovered = useMemo(() => directory ? compositionDirectories(directory, directories) : [], [directory, directories]);
@@ -392,39 +453,51 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   useEffect(() => {
     const clips = timeline?.audio ?? [];
     const wanted = new Set(clips.map((clip) => clip.id));
-    const removed: string[] = [];
-    for (const [id, url] of Object.entries(audioUrlsRef.current)) {
+    for (const id of Object.keys(audioUrlRecordsRef.current)) {
       if (wanted.has(id)) continue;
-      URL.revokeObjectURL(url);
-      delete audioUrlsRef.current[id];
-      delete audioStartedRef.current[id];
-      delete audioPreviousTimeRef.current[id];
-      removed.push(id);
+      clearAudioUrl(id);
     }
-    if (removed.length > 0) setAudioUrls((value) => {
-      const next = { ...value };
-      removed.forEach((id) => delete next[id]);
-      return next;
+    for (const id of Object.keys(pendingAudioLoadsRef.current)) {
+      if (!wanted.has(id)) delete pendingAudioLoadsRef.current[id];
+    }
+    setMissingAudio((value) => {
+      const next = value.filter((path) => clips.some((clip) => clip.path === path));
+      return next.length === value.length ? value : next;
     });
     let cancelled = false;
     for (const clip of clips) {
-      if (audioUrlsRef.current[clip.id] || !source) continue;
+      const record = audioUrlRecordsRef.current[clip.id];
+      if (record && record.path === clip.path && record.source === source) continue;
+      if (record) clearAudioUrl(clip.id);
+      if (!source) {
+        delete pendingAudioLoadsRef.current[clip.id];
+        continue;
+      }
+      const pending = pendingAudioLoadsRef.current[clip.id];
+      if (pending?.path === clip.path && pending.source === source) continue;
+      const request: PendingAudioLoad = { path: clip.path, source };
+      pendingAudioLoadsRef.current[clip.id] = request;
       void findAudioFile(source, clip.path).then((file) => {
-        if (cancelled) return;
+        if (pendingAudioLoadsRef.current[clip.id] !== request) return;
+        delete pendingAudioLoadsRef.current[clip.id];
+        const currentClip = projectRef.current?.timeline.audio.find((item) => item.id === clip.id);
+        if (cancelled || sourceRef.current !== source || currentClip?.path !== clip.path) return;
         if (!file) { setMissingAudio((value) => value.includes(clip.path) ? value : [...value, clip.path]); return; }
         setMissingAudio((value) => value.filter((path) => path !== clip.path));
-        const url = URL.createObjectURL(file);
-        audioUrlsRef.current[clip.id] = url;
-        setAudioUrls((value) => ({ ...value, [clip.id]: url }));
-      }).catch(() => undefined);
+        storeAudioUrl(clip.id, clip.path, URL.createObjectURL(file), source);
+      }).catch(() => {
+        if (pendingAudioLoadsRef.current[clip.id] === request) delete pendingAudioLoadsRef.current[clip.id];
+      });
     }
     return () => { cancelled = true; };
   }, [source, timeline?.audio]);
 
   useEffect(() => () => {
-    for (const url of Object.values(audioUrlsRef.current)) URL.revokeObjectURL(url);
-    audioUrlsRef.current = {};
+    for (const record of Object.values(audioUrlRecordsRef.current)) URL.revokeObjectURL(record.url);
     for (const audio of Object.values(audioElementsRef.current)) audio?.pause();
+    audioUrlsRef.current = {};
+    audioUrlRecordsRef.current = {};
+    pendingAudioLoadsRef.current = {};
   }, []);
 
   useEffect(() => {
@@ -553,7 +626,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
         }
         const serialized = serializeSubtitleDocument(document, current.assetDirectory, timelines);
         await currentSource.saveText(path, serialized);
-        const record = await currentSource.getManifest?.(directory);
+        const record = await currentSource.getManifest?.(directoryRef.current);
         const legacyPath = record?.manifest.legacySubtitles
           ? manifestReferenceCandidates(record, record.manifest.legacySubtitles)[0]
           : undefined;
@@ -567,10 +640,12 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     return queued;
   }
 
+  saveSubtitleDocumentsRef.current = saveSubtitleDocuments;
+
   useEffect(() => {
-    onRegisterSave((getProject) => saveSubtitleDocuments(getProject));
-    return () => onRegisterSave(null);
-  });
+    onRegisterSaveRef.current((getProject) => saveSubtitleDocumentsRef.current(getProject));
+    return () => onRegisterSaveRef.current(null);
+  }, []);
 
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => {
@@ -622,13 +697,11 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   }
 
   function addAudioFiles(selected: Array<{ path: string; file: File }>) {
-    if (!selected.length || !timeline) return;
+    if (!selected.length || !timeline || !source) return;
     const clips = selected.map(({ path, file }, index): EditorAudioClip => {
       const id = `audio-file-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
       const start = snapTime(currentTime + index * 0.01, timeline.snap, Number.POSITIVE_INFINITY);
-      const url = URL.createObjectURL(file);
-      audioUrlsRef.current[id] = url;
-      setAudioUrls((value) => ({ ...value, [id]: url }));
+      storeAudioUrl(id, path, URL.createObjectURL(file), source);
       return { id, name: path.split(/[\\/]/).pop() ?? path, path, autoEnd: true, start, end: start + 2, enabled: true, volume: 1 };
     });
     updateTimeline((value) => extendTimelineDuration({ ...value, audio: [...value.audio, ...clips] }));
@@ -798,7 +871,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
 
   async function relinkAudio() {
     const selected = await selectAudioFiles();
-    if (!selected.length || !timeline) return;
+    if (!selected.length || !timeline || !source) return;
     const missing = timeline.audio.filter((clip) => missingAudio.includes(clip.path) && !audioUrlsRef.current[clip.id]);
     const used = new Set<string>();
     let linked = 0;
@@ -807,8 +880,8 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       const clip = missing.find((candidate) => !used.has(candidate.id) && (candidate.path.split(/[\\/]/).pop() ?? candidate.path).toLocaleLowerCase() === fileName);
       if (!clip) continue;
       used.add(clip.id);
-      audioUrlsRef.current[clip.id] = URL.createObjectURL(file);
-      setAudioUrls((value) => ({ ...value, [clip.id]: audioUrlsRef.current[clip.id]! }));
+      delete pendingAudioLoadsRef.current[clip.id];
+      storeAudioUrl(clip.id, clip.path, URL.createObjectURL(file), source);
       setMissingAudio((value) => value.filter((path) => path !== clip.path));
       linked += 1;
     }
@@ -851,10 +924,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       selectedCueId: cues.has(value.selectedCueId ?? "") ? null : value.selectedCueId,
     }));
     for (const id of audio) {
-      const url = audioUrlsRef.current[id];
-      if (url) URL.revokeObjectURL(url);
-      delete audioUrlsRef.current[id];
-      delete audioElementsRef.current[id];
+      clearAudioUrl(id);
     }
     setSelectedClips([]);
     setSelectedAudioId(null);
@@ -1117,24 +1187,26 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     setSelectedClips([]);
   }, [directory, timeline?.sequenceId]);
 
+  timelineKeydownRef.current = (event: KeyboardEvent) => {
+    if (isTextEditingTarget(event.target)) return;
+    const key = event.key.toLowerCase();
+    if ((event.ctrlKey || event.metaKey) && ["z", "y"].includes(key)) return;
+    if ((event.ctrlKey || event.metaKey) && key === "s") { event.preventDefault(); void onSave(); }
+    else if (key === " ") { event.preventDefault(); setPlaying((value) => !value); }
+    else if (key === "arrowleft" || key === "arrowright") { event.preventDefault(); setPlaying(false); setCurrentTime((value) => Math.max(0, Math.min(duration, value + (key === "arrowright" ? 1 : -1) * (event.shiftKey ? 10 : 1) / 60))); }
+    else if (key === "home" || key === "end") { event.preventDefault(); setPlaying(false); setCurrentTime(key === "home" ? 0 : duration); }
+    else if (key === "delete" || key === "backspace") { event.preventDefault(); if (selectedClips.length > 0) deleteSelectedClips(); else if (inspector === "cue") deleteCue(); else if (inspector === "audio") deleteAudio(); }
+    else if ((event.ctrlKey || event.metaKey) && key === "d") { event.preventDefault(); duplicateCue(); }
+    else if (key === "s" && selectedCue) updateTimeline((value) => splitCue(value, selectedCue.id, currentTime));
+    else if (key === "f") fitTimeline();
+    else if (key === "escape") { setPlaying(false); clearTimelineSelection(); }
+  };
+
   useEffect(() => {
-    const keydown = (event: KeyboardEvent) => {
-      if (isTextEditingTarget(event.target)) return;
-      const key = event.key.toLowerCase();
-      if ((event.ctrlKey || event.metaKey) && ["z", "y"].includes(key)) return;
-      if ((event.ctrlKey || event.metaKey) && key === "s") { event.preventDefault(); void onSave(); }
-      else if (key === " ") { event.preventDefault(); setPlaying((value) => !value); }
-      else if (key === "arrowleft" || key === "arrowright") { event.preventDefault(); setPlaying(false); setCurrentTime((value) => Math.max(0, Math.min(duration, value + (key === "arrowright" ? 1 : -1) * (event.shiftKey ? 10 : 1) / 60))); }
-      else if (key === "home" || key === "end") { event.preventDefault(); setPlaying(false); setCurrentTime(key === "home" ? 0 : duration); }
-      else if (key === "delete" || key === "backspace") { event.preventDefault(); if (selectedClips.length > 0) deleteSelectedClips(); else if (inspector === "cue") deleteCue(); else if (inspector === "audio") deleteAudio(); }
-      else if ((event.ctrlKey || event.metaKey) && key === "d") { event.preventDefault(); duplicateCue(); }
-      else if (key === "s" && selectedCue) updateTimeline((value) => splitCue(value, selectedCue.id, currentTime));
-      else if (key === "f") fitTimeline();
-      else if (key === "escape") { setPlaying(false); clearTimelineSelection(); }
-    };
+    const keydown = (event: KeyboardEvent) => timelineKeydownRef.current(event);
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  });
+  }, []);
 
   if (!project || !timeline) return <div className="timeline-empty"><strong>Open a Spine asset folder first</strong><span>The timeline uses the selected character set plus matching <code>_bg</code> and <code>_scene</code> directories.</span></div>;
 

@@ -143,7 +143,14 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
     setAudioUrls({});
     void Promise.all(timeline.audio.map(async (clip) => {
       for (const candidate of spineAudioPathCandidates(clip.path)) {
-        const file = await source.getFile(candidate);
+        let file: File | null = null;
+        try {
+          file = await source.getFile(candidate);
+        } catch {
+          // A missing candidate should not prevent the remaining path
+          // spellings or other timeline clips from loading.
+          continue;
+        }
         if (file) {
           urls[clip.id] = URL.createObjectURL(file);
           break;
@@ -155,9 +162,13 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
     });
     return () => {
       live = false;
+      Object.values(audioElementsRef.current).forEach((audio) => {
+        audio?.pause();
+        audio?.removeAttribute("src");
+      });
       Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [audioKey, source, timeline.audio]);
+  }, [audioKey, source]);
 
   useEffect(() => {
     const previous = phaseRef.current;

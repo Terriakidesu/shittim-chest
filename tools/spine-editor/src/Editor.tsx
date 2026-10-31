@@ -325,6 +325,7 @@ export function Editor() {
   const headRegionRef = useRef<HeadRegion | null>(null);
   const headDetectionDone = useRef(false);
   const drawRef = useRef<{ x: number; y: number } | null>(null);
+  const editorKeydownRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
   const [drawBox, setDrawBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const panelDragRef = useRef<{ side: "left" | "right"; x: number; width: number } | null>(null);
   const [leftWidth, setLeftWidth] = useState(220);
@@ -539,31 +540,32 @@ export function Editor() {
     return () => window.removeEventListener("beforeunload", beforeUnload);
   }, [saveState]);
 
-  // Rebound each render so keyboard actions always use current selections/history.
+  editorKeydownRef.current = (event: KeyboardEvent) => {
+    if (isTextEditingTarget(event.target)) return;
+    const key = event.key.toLowerCase();
+    const modifier = event.ctrlKey || event.metaKey;
+    if (workspace === "timeline" && key !== "?" && key !== "escape" && !(modifier && ["z", "y"].includes(key))) return;
+    if (modifier && key === "z") { event.preventDefault(); event.shiftKey ? redoProject() : undoProject(); }
+    else if (modifier && key === "y") { event.preventDefault(); redoProject(); }
+    else if (modifier && key === "s") { event.preventDefault(); void saveProject(); }
+    else if (modifier && key === "d") { event.preventDefault(); duplicateRegion(); }
+    else if (key === "escape") { resetPreview(); setTesting(false); setTool("select"); setHelp(false); }
+    else if (key === "t") toggleTest();
+    else if (key === "v") { setTesting(false); setTool("select"); }
+    else if (key === "h") { setTesting(false); setTool("pan"); }
+    else if (key === "r") { setTesting(false); setTool("draw"); }
+    else if (key === "f") rendererRef.current?.resetCamera();
+    else if (key === "b") updateViewSetting("showBones", !(viewSettingsRef.current ?? DEFAULT_EDITOR_VIEW_SETTINGS).showBones);
+    else if (key === " ") { event.preventDefault(); if (!testing) setPlaying((value) => !value); }
+    else if (key === "?") setHelp((value) => !value);
+    else if ((key === "delete" || key === "backspace") && !testing && projectRef.current?.selectedRegionId) { event.preventDefault(); deleteRegion(); }
+  };
+
   useEffect(() => {
-    const keydown = (event: KeyboardEvent) => {
-      if (isTextEditingTarget(event.target)) return;
-      const key = event.key.toLowerCase();
-      const modifier = event.ctrlKey || event.metaKey;
-      if (workspace === "timeline" && key !== "?" && key !== "escape" && !(modifier && ["z", "y"].includes(key))) return;
-      if (modifier && key === "z") { event.preventDefault(); event.shiftKey ? redoProject() : undoProject(); }
-      else if (modifier && key === "y") { event.preventDefault(); redoProject(); }
-      else if (modifier && key === "s") { event.preventDefault(); void saveProject(); }
-      else if (modifier && key === "d") { event.preventDefault(); duplicateRegion(); }
-      else if (key === "escape") { resetPreview(); setTesting(false); setTool("select"); setHelp(false); }
-      else if (key === "t") toggleTest();
-      else if (key === "v") { setTesting(false); setTool("select"); }
-      else if (key === "h") { setTesting(false); setTool("pan"); }
-      else if (key === "r") { setTesting(false); setTool("draw"); }
-      else if (key === "f") rendererRef.current?.resetCamera();
-      else if (key === "b") updateViewSetting("showBones", !(viewSettingsRef.current ?? DEFAULT_EDITOR_VIEW_SETTINGS).showBones);
-      else if (key === " ") { event.preventDefault(); if (!testing) setPlaying((value) => !value); }
-      else if (key === "?") setHelp((value) => !value);
-      else if ((key === "delete" || key === "backspace") && !testing && projectRef.current?.selectedRegionId) { event.preventDefault(); deleteRegion(); }
-    };
+    const keydown = (event: KeyboardEvent) => editorKeydownRef.current(event);
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
-  });
+  }, []);
 
   useEffect(() => {
     const release = () => { previewRef.current.release(); testPointerRef.current = null; drawRef.current = null; setDrawBox(null); };
