@@ -13,7 +13,7 @@ import {
 } from "./editorModel";
 import type { DesktopAssetSource } from "./desktopSource";
 import { audioPlaybackDecision, decodedAudioTiming } from "./audioModel";
-import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, moveAudioClip, openingPhaseTimings, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
+import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, moveAudioClip, openingPhaseTimings, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
 import { timelineLayerSampleTime } from "../../../src/client/spine/spineTimeline";
 import { serializeSubtitleDocument } from "./subtitleDocument";
 import type { RecentFile } from "./recentFiles";
@@ -780,8 +780,9 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
       const sourceFile = Array.isArray(raw.characters) ? raw.characters.find((item) => (item as Record<string, unknown>).directory === directory) as Record<string, unknown> : raw;
       if (!sourceFile || !Array.isArray(sourceFile.lines)) throw new Error("No matching character subtitle lines found.");
       let count = 0;
+      subtitleDocumentsRef.current = { [subtitlePath]: structuredClone(raw) };
       onMutate((current) => {
-        let next = current;
+        let next = replaceSubtitleImport(current, subtitlePath);
         const original = current.timeline.sequenceId ?? "opening";
         for (const candidate of sourceFile.lines as Record<string, unknown>[]) {
           const number = String(candidate.id ?? "").match(/(\d+)$/)?.[1];
@@ -789,13 +790,13 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
           const id = Number(number) === 0 ? "opening" : `talk-${Number(number)}`;
           next = switchSequence(next, id, animations, directories);
           const imported = importedSubtitleCues({ ...sourceFile, lines: [candidate] });
-           next = { ...next, timeline: extendTimelineDuration({ ...next.timeline, subtitlePath: subtitlePath ?? next.timeline.subtitlePath, duration: Math.max(next.timeline.duration, imported.duration), subtitles: imported.cues.map((cue) => ({ ...cue, lineId: String(candidate.id) })), audio: imported.audio.map((clip) => ({ ...clip, lineId: String(candidate.id) })), selectedCueId: imported.cues[0]?.id ?? null }) };
+        next = { ...next, timeline: extendTimelineDuration({ ...next.timeline, subtitlePath, duration: Math.max(next.timeline.duration, imported.duration), subtitles: imported.cues.map((cue) => ({ ...cue, lineId: String(candidate.id) })), audio: imported.audio.map((clip) => ({ ...clip, lineId: String(candidate.id) })), selectedCueId: imported.cues[0]?.id ?? null }) };
           count += imported.cues.length;
         }
         return switchSequence(next, original, animations, directories);
       });
       if (source) onRecentFile({ kind: "subtitle", path: subtitlePath, rootPath: source.rootPath, label: subtitlePath.split(/[\\/]/).pop() ?? subtitlePath, directory });
-      onStatus(`Imported ${count} cues into separate talk timelines.${subtitlePath ? " Source JSON is now linked for direct saves." : " Original files unchanged."}`);
+      onStatus(`Replaced the previous subtitle/audio import with ${count} cue${count === 1 ? "" : "s"}.${subtitlePath ? " Source JSON is now linked for direct saves." : " Original files unchanged."}`);
     } catch (value) {
       onError(value instanceof Error ? value.message : String(value));
     }

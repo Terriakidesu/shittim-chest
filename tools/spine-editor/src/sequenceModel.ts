@@ -124,6 +124,24 @@ export function switchSequence(project: EditorProject, id: string, animations: s
   return { ...project, sequences, timeline: ensureTimelineLayers(next, project.assetDirectory, directories) };
 }
 
+/** Replace the imported subtitle/audio payload while preserving authored sequence and layer settings. */
+export function replaceSubtitleImport(project: EditorProject, subtitlePath: string): EditorProject {
+  const replace = (timeline: EditorTimeline): EditorTimeline => ({
+    ...structuredClone(timeline),
+    subtitlePath,
+    subtitles: [],
+    audio: [],
+    selectedCueId: null,
+  });
+  return {
+    ...project,
+    timeline: replace(project.timeline),
+    sequences: project.sequences
+      ? Object.fromEntries(Object.entries(project.sequences).map(([id, timeline]) => [id, replace(timeline)]))
+      : project.sequences,
+  };
+}
+
 export function splitCue(timeline: EditorTimeline, id: string, time: number): EditorTimeline {
   const cue = timeline.subtitles.find((item) => item.id === id);
   if (!cue || time <= cue.start || time >= cue.end) return timeline;

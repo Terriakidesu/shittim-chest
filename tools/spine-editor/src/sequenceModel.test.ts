@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createProject, normalizeProject } from "./editorModel";
-import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, moveAudioClip, openingPhaseTimings, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
+import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, moveAudioClip, openingPhaseTimings, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
 
 test("talk sequences pair body and face and isolate subtitle clocks", () => {
   const animations = ["Idle_01", "Talk_01_M", "Talk_01_A", "Talk_02_M", "Talk_02_A"];
@@ -26,6 +26,27 @@ test("reselecting a talk sequence keeps its current imported edits", () => {
   expect(project.timeline.subtitles[0]?.text.en).toBe("Latest");
   expect(project.timeline.audio[0]?.end).toBe(20);
   expect(project.timeline.layers[0]?.loop).toBe(false);
+});
+
+test("reopening a subtitle file replaces imported content in every sequence", () => {
+  let project = createProject("Airi_home", ["Talk_01_M"], []);
+  project = switchSequence(project, "opening", ["Talk_01_M"], []);
+  project.timeline.subtitlePath = "old-subtitles.json";
+  project.timeline.subtitles = [{ id: "old-opening", start: 0, end: 2, enabled: true, text: { en: "Old opening", ja: "", ko: "" } }];
+  project.timeline.audio = [{ id: "old-opening-audio", name: "old.ogg", path: "old.ogg", start: 0, end: 2, enabled: true, volume: 1 }];
+  project = switchSequence(project, "talk-1", ["Talk_01_M"], []);
+  project.timeline.subtitlePath = "old-subtitles.json";
+  project.timeline.subtitles = [{ id: "old-talk", start: 1, end: 3, enabled: true, text: { en: "Old talk", ja: "", ko: "" } }];
+
+  const replaced = replaceSubtitleImport(project, "new-subtitles.json");
+  expect(replaced.timeline.subtitlePath).toBe("new-subtitles.json");
+  expect(replaced.timeline.subtitles).toEqual([]);
+  expect(replaced.timeline.audio).toEqual([]);
+  expect(replaced.sequences?.opening?.subtitlePath).toBe("new-subtitles.json");
+  expect(replaced.sequences?.opening?.subtitles).toEqual([]);
+  expect(replaced.timeline.sequenceId).toBe("talk-1");
+  expect(replaced.timeline.subtitlePath).toBe("new-subtitles.json");
+  expect(replaced.timeline.subtitles).toEqual([]);
 });
 
 test("each sequence preserves intentional layer deletions while new sequences initialize discovered layers", () => {
