@@ -1,6 +1,34 @@
 import { describe, expect, test } from "bun:test";
-import { Animation, AnimationState, AnimationStateData, BoneData, Event, EventData, EventTimeline, Skeleton, SkeletonData } from "@esotericsoftware/spine-core";
+import { Animation, AnimationState, AnimationStateData, BoneData, Event, EventData, EventTimeline, Skeleton, SkeletonData, TranslateTimeline } from "@esotericsoftware/spine-core";
 import { findIdleAnimation, findIntroAnimation, INTRO_ANIMATION, SpineRenderer, talkEventTimes } from "./spineRuntime";
+
+test("authored talks sample both moving body and face while preserving interaction tracks", () => {
+  const data = new SkeletonData();
+  data.bones.push(new BoneData(0, "root", null), new BoneData(1, "face", null));
+  const body = new TranslateTimeline(2, 0, 0);
+  body.setFrame(0, 0, 0, 0);
+  body.setFrame(1, 2, 20, 0);
+  const face = new TranslateTimeline(2, 0, 1);
+  face.setFrame(0, 0, 0, 0);
+  face.setFrame(1, 2, 0, 40);
+  data.animations.push(new Animation("Idle_01", [], 3), new Animation("Talk_01_M", [body], 2), new Animation("Talk_01_A", [face], 2));
+  const skeleton = new Skeleton(data);
+  const state = new AnimationState(new AnimationStateData(data));
+  const renderer = Object.assign(Object.create(SpineRenderer.prototype), {
+    bundle: { skeleton, state, meta: { idleAnimation: "Idle_01", introAnimation: null } },
+    restoreInteractionPose: () => {},
+    motionState: () => ({ target: null }),
+  }) as SpineRenderer;
+  renderer.sampleEditorAnimation("Talk_01_M", "Talk_01_A", 0.5, false, true, true);
+  expect(skeleton.bones[0]!.x).toBeCloseTo(5);
+  expect(skeleton.bones[1]!.y).toBeCloseTo(10);
+  renderer.sampleEditorAnimation("Talk_01_M", "Talk_01_A", 1.5, false, true, true);
+  expect(skeleton.bones[0]!.x).toBeCloseTo(15);
+  expect(skeleton.bones[1]!.y).toBeCloseTo(30);
+  renderer.sampleEditorAnimation("Idle_01", "", 0, true, false, true);
+  expect(state.getCurrent(7)).toBeNull();
+  expect(state.getCurrent(8)).toBeNull();
+});
 
 function playback(selection: string) {
   const data = new SkeletonData();

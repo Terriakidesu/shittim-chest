@@ -1166,7 +1166,11 @@ export class SpineRenderer {
     const introListener = animation === bundle.meta.introAnimation && sameAnimation ? previousBase?.listener ?? null : null;
     if (previousAnimation === bundle.meta.introAnimation && !sameAnimation) this.introAudioEntry = null;
     bundle.skeleton.setToSetupPose();
-    if (preserveInteractions) bundle.state.clearTrack(0);
+    if (preserveInteractions) {
+      bundle.state.clearTrack(0);
+      bundle.state.clearTrack(7);
+      bundle.state.clearTrack(8);
+    }
     else bundle.state.clearTracks();
     const apply = (name: string, track: number): TrackEntry | null => {
       const data = bundle.skeleton.data.findAnimation(name);
@@ -1185,10 +1189,16 @@ export class SpineRenderer {
     };
     let baseEntry: TrackEntry | null = null;
     if (preserveInteractions) {
-      // Interaction overlays own tracks 1–6 (look, gestures and talk). Keep
-      // those tracks intact and replace only the timeline's base animation.
-      baseEntry = apply(animation, 0);
+      // Keep gesture tracks 1–6, but do not drop the authored idle underlay
+      // or face. Timeline body/face use reserved tracks above the gestures.
+      const underlay = idleUnderlay && bundle.meta.idleAnimation ? apply(bundle.meta.idleAnimation, 0) : null;
+      if (underlay) underlay.timeScale = 0;
+      baseEntry = apply(animation, underlay ? 7 : 0);
       if (baseEntry) baseEntry.timeScale = 0;
+      if (face) {
+        const faceEntry = apply(face, 8);
+        if (faceEntry) faceEntry.timeScale = 0;
+      }
     } else {
       if (idleUnderlay && bundle.meta.idleAnimation) apply(bundle.meta.idleAnimation, 0);
       baseEntry = apply(animation, idleUnderlay ? 1 : 0);

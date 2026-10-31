@@ -14,7 +14,7 @@ import {
 import type { DesktopAssetSource } from "./desktopSource";
 import { manifestReferenceCandidates } from "../../../src/client/spine/spineManifest";
 import { audioPlaybackDecision, clampAudioEnd, clampAudioStart, decodedAudioTiming } from "./audioModel";
-import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, openingPhaseTimings, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
+import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
 import { timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineLayerAnimation, timelineLayerSampleTime, timelineMainAnimation } from "../../../src/client/spine/spineTimeline";
 import { serializeSubtitleDocument } from "./subtitleDocument";
 import type { RecentFile } from "./recentFiles";
@@ -410,7 +410,6 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     ? Math.max(0, characterLayer?.start ?? timeline?.sceneDuration ?? 0)
     : 0;
   const openingIdleDuration = Math.max(0, timeline?.openingIdleDuration ?? 3);
-  const openingNaturalDuration = Math.max(MIN_TIMELINE_DURATION, openingIntroStart + (openingMode === "skip" ? 0 : introDuration) + openingIdleDuration);
   const mainCharacterAnimation = characterLayer ? layerAnimation(characterLayer) : "";
   const mainCharacterDuration = characterLayer && mainCharacterAnimation ? animationDurations[`${characterLayer.id}:${mainCharacterAnimation}`] ?? 0 : 0;
   const mainAnimationState = characterLayer && characterMeta && timeline
@@ -420,14 +419,13 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const mainAnimationTime = mainAnimationState?.time;
   const mainAnimationLoop = mainAnimationState?.loop;
   const authoredEnd = timeline ? authoredTimelineEnd(timeline) : 0;
-  const openingManualLayerEnd = timeline?.sequenceId === "opening"
-    ? Math.max(0, ...timeline.layers.filter((layer) => layer.endMode === "manual").map((layer) => layer.end))
+  const openingAutoDuration = timeline?.sequenceId === "opening"
+    ? openingTimelineDuration(timeline, introDuration, layerEnd)
     : 0;
-  const openingAutoDuration = Math.max(openingNaturalDuration, authoredEnd, openingManualLayerEnd);
   const talkLayers = timeline?.sequenceId?.startsWith("talk-") ? displayLayers.filter((layer) => layer.role === "character") : [];
   const talkNaturalDuration = talkLayers.length > 0 ? talkSequenceDuration(talkLayers, animationDurations, layerAnimation) : 0;
   const duration = timeline?.sequenceId === "opening"
-    ? Math.max(MIN_TIMELINE_DURATION, timeline.duration ?? 12, authoredEnd, openingManualLayerEnd)
+    ? Math.max(MIN_TIMELINE_DURATION, timeline.duration ?? 12, authoredEnd, ...displayLayers.map(layerEnd))
     : talkLayers.length > 0
       ? Math.max(MIN_TIMELINE_DURATION, timeline?.duration ?? 1, talkNaturalDuration, authoredEnd)
       : Math.max(MIN_TIMELINE_DURATION, timeline?.duration ?? 12, authoredEnd, ...displayLayers.map(layerEnd));

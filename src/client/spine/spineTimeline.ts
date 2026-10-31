@@ -90,6 +90,16 @@ export interface SpineTimelineProject {
   sequences?: Record<string, SpineTimeline>;
 }
 
+/** Idle is a runtime animation, not an alias for the opening timeline. */
+export function timelineIdleAnimation(meta: Pick<SpineMeta, "idleAnimation" | "animations">): string {
+  return meta.idleAnimation || meta.animations.find((name) => /^idle(?:_|$)/i.test(name)) || "";
+}
+
+/** A talk's idle tail stays visible until the sequence, not its clip, ends. */
+export function timelineTalkIdleStart(layer: SpineTimelineLayer, animationDuration: number): number {
+  return Math.max(layer.end, layer.start + Math.max(0, animationDuration - layer.animationOffset));
+}
+
 /** Resolve a localized cue using the same fallback order in the editor and viewer. */
 export function timelineSubtitleText(cue: Pick<SpineTimelineSubtitle, "text">, language: SpineTimelineLanguage): string {
   return cue.text[language] || cue.text.en || cue.text.ja || cue.text.ko || "";
@@ -110,16 +120,30 @@ export function timelineSequenceIds(project: SpineTimelineProject): string[] {
   return ids;
 }
 
+/** Return authored numbered talk sequences in playback order. */
+export function timelineTalkSequenceIds(project: SpineTimelineProject): string[] {
+  return timelineSequenceIds(project)
+    .filter((id) => /^talk-\d+$/i.test(id))
+    .sort((a, b) => Number(a.match(/\d+$/)?.[0] ?? 0) - Number(b.match(/\d+$/)?.[0] ?? 0));
+}
+
 export function timelineForSequence(project: SpineTimelineProject, sequenceId: string): SpineTimeline | null {
   if (project.timeline?.sequenceId === sequenceId) return project.timeline;
   return project.sequences?.[sequenceId] ?? null;
 }
 
-export function timelinePlaybackDuration(timeline: SpineTimeline): number {
-  const layerEnd = timeline.sequenceId === "opening"
+export function timelinePlaybackDuration(timeline: SpineTimeline, openingMinimumDuration = 0): number {
+  const allLayerEnd = Math.max(0, ...timeline.layers.map((layer) => layer.end));
+  const layerEnd = timeline.sequenceId === "opening" && timeline.durationMode !== "auto"
     ? Math.max(0, ...timeline.layers.filter((layer) => layer.endMode === "manual").map((layer) => layer.end))
-    : Math.max(0, ...timeline.layers.map((layer) => layer.end));
+    : allLayerEnd;
   const contentEnd = Math.max(0, ...timeline.subtitles.map((cue) => cue.end), ...timeline.audio.map((clip) => clip.end));
+  if (timeline.sequenceId === "opening" && timeline.durationMode === "auto" && timeline.layers.length > 0) {
+    // Automatic openings end at their last visible/authored endpoint. This
+    // removes stale blank tail time left by an older import while the caller
+    // can still protect an intro that has not yet reached its idle state.
+    return Math.max(1, openingMinimumDuration, layerEnd, contentEnd);
+  }
   return Math.max(1, timeline.duration, layerEnd, contentEnd);
 }
 

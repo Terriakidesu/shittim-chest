@@ -44,7 +44,7 @@ import {
   type SpineVoiceLine,
 } from "./spine/spineVoicelines";
 import { SpineCompositionViewport, type SpineCompositionViewportHandle } from "./spine/SpineCompositionViewport";
-import { timelineForSequence, timelinePlaybackDuration, timelineSequenceIds } from "./spine/spineTimeline";
+import { timelineForSequence, timelinePlaybackDuration, timelineSequenceIds, timelineTalkSequenceIds } from "./spine/spineTimeline";
 
 const characterIndex = characterIndexJson as CharacterIndex;
 const characterNames = Object.keys(characterIndex.characters).sort((a, b) => a.localeCompare(b));
@@ -302,6 +302,7 @@ export function Spine() {
   const [showDialogue, setShowDialogue] = useState(true);
   const [voicePlaying, setVoicePlaying] = useState(false);
   const [talkAutoplay, setTalkAutoplay] = useState(false);
+  const [idleMode, setIdleMode] = useState<"none" | "persistent" | "bridge">("none");
   const inputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<SpineViewportHandle>(null);
   const compositionRef = useRef<SpineCompositionViewportHandle>(null);
@@ -311,6 +312,7 @@ export function Spine() {
   const voiceSessionRef = useRef<VoiceSession | null>(null);
   const autoPlayTimerRef = useRef<number | null>(null);
   const talkAutoplayRef = useRef(false);
+  const authoredTalkIndexRef = useRef(0);
   const stagePointer = useRef<{ x: number; y: number } | null>(null);
   const freeCameraMode = useRef<SpineCameraMode>("fill");
   const freePlaying = useRef(true);
@@ -385,6 +387,12 @@ export function Spine() {
     : "";
   const compositionTimeline = selectedInteractionProject ? timelineForSequence(selectedInteractionProject, compositionSequenceId) : null;
   const compositionActive = Boolean(compositionTimeline);
+  const authoredTalkSequenceIds = selectedInteractionProject ? timelineTalkSequenceIds(selectedInteractionProject) : [];
+  const authoredTalkAutoplayAvailable = Boolean(
+    selectedInteractionProject
+      && authoredTalkSequenceIds.length > 0
+      && timelineForSequence(selectedInteractionProject, "opening"),
+  );
   const activeViewport = () => compositionActive ? compositionRef.current : viewportRef.current;
 
   useEffect(() => {
@@ -401,6 +409,7 @@ export function Spine() {
     const entrySequence = selectedInteractionProject?.entrySequence;
     const sequenceIds = selectedInteractionProject ? timelineSequenceIds(selectedInteractionProject) : [];
     const initialSequence = entrySequence && sequenceIds.includes(entrySequence) ? entrySequence : "";
+    setIdleMode("none");
     setSelectedSequenceId(initialSequence);
     const initialTimeline = selectedInteractionProject && initialSequence ? timelineForSequence(selectedInteractionProject, initialSequence) : null;
     setProgress({
@@ -516,7 +525,10 @@ export function Spine() {
     voiceRunRef.current += 1;
     voiceSessionRef.current = null;
     clearAutoPlayTimer();
-    if (cancelAutoPlay) talkAutoplayRef.current = false;
+    if (cancelAutoPlay) {
+      talkAutoplayRef.current = false;
+      authoredTalkIndexRef.current = 0;
+    }
     clearVoiceAudio();
     if (compositionActive) compositionRef.current?.setTalkAudioPending(false);
     else viewportRef.current?.setTalkAudioPending(false);
@@ -526,6 +538,18 @@ export function Spine() {
       setVoiceClipIndex(0);
       if (cancelAutoPlay) setTalkAutoplay(false);
     }
+  };
+
+  const resetAssetPlayback = () => {
+    stopVoice();
+    setPlaying(true);
+    setSelectedSequenceId("");
+    setIdleMode("none");
+    setAnimation("");
+    setSetFiles(null);
+    setProgress({ time: 0, duration: 0, animation: null });
+    setMeta(null);
+    setError(null);
   };
 
   const playVoiceClip = async (session: VoiceSession, clipIndex: number): Promise<void> => {
@@ -598,6 +622,9 @@ export function Spine() {
   };
 
   const beginIntroVoiceSession = (_animation: string, eventCount: number): boolean => {
+    // Authored compositions already contain their intro audio as timeline
+    // clips. The runtime voice catalog must not attach a second copy.
+    if (compositionActive) return false;
     if (!voiceEnabled || !source || !introVoiceLine || introVoiceLine.audio.length === 0) return false;
     stopVoice(true, false);
     const run = voiceRunRef.current;
@@ -658,10 +685,7 @@ export function Spine() {
   }, [meta?.introAnimation, progress.animation]);
 
   useEffect(() => {
-    if (progress.animation === meta?.introAnimation && introVoiceLine) {
-      if (compositionActive) compositionRef.current?.startIntroAudio();
-      else viewportRef.current?.startIntroAudio();
-    }
+    if (!compositionActive && progress.animation === meta?.introAnimation && introVoiceLine) viewportRef.current?.startIntroAudio();
   }, [compositionActive, introVoiceLine, meta?.introAnimation, progress.animation, voiceEnabled]);
 
   useEffect(() => {
@@ -714,10 +738,9 @@ export function Spine() {
     const selectedIsLoaded = indexedAssets(characterIndex.characters[selectedCharacter]).some((variant) => availableDirectories.has(variant.directory));
     if (selectedIsLoaded) return;
     const nextVariant = nextCharacter ? indexedAssets(characterIndex.characters[nextCharacter]).find((variant) => availableDirectories.has(variant.directory)) : undefined;
+    resetAssetPlayback();
     setSelectedCharacter(nextCharacter ?? "");
     setSelectedDirectory(nextVariant?.directory ?? "");
-    setMeta(null);
-    setError(null);
   }, [availableDirectories, selectedCharacter, source]);
 
   useEffect(() => {
@@ -747,11 +770,10 @@ export function Spine() {
     }
     try {
       const handle = await picker.call(window);
+      resetAssetPlayback();
       setSource(sourceFromDirectory(handle));
       setAvailableDirectories(null);
       setSetFiles(null);
-      setMeta(null);
-      setError(null);
     } catch (reason) {
       // A cancelled picker is a normal interaction, not an error state.
       if (reason instanceof DOMException && reason.name === "AbortError") return;
@@ -761,20 +783,17 @@ export function Spine() {
 
   const onInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (!event.currentTarget.files?.length) return;
+    resetAssetPlayback();
     setSource(sourceFromInput(event.currentTarget.files));
     setAvailableDirectories(null);
     setSetFiles(null);
-    setMeta(null);
-    setError(null);
   };
 
   const selectCharacter = (name: string) => {
     const first = indexedAssets(characterIndex.characters[name]).find((variant) => !availableDirectories || availableDirectories.has(variant.directory));
-    stopVoice();
+    resetAssetPlayback();
     setSelectedCharacter(name);
     setSelectedDirectory(first?.directory ?? "");
-    setMeta(null);
-    setError(null);
   };
 
   const selectAnimation = (value: string) => {
@@ -825,6 +844,21 @@ export function Spine() {
   const playTalk = (line?: SpineVoiceLine, preserveAutoplay = false) => {
     if (!interactionReady) return;
     stopVoice(true, !preserveAutoplay);
+    if (compositionActive && selectedInteractionProject && authoredTalkSequenceIds.length > 0) {
+      const requestedNumber = line ? Number((line.animation || line.id).match(/(?:Talk_|talk-|_)(\d+)/i)?.[1]) : null;
+      const currentIndex = authoredTalkSequenceIds.indexOf(compositionSequenceId);
+      const nextId = requestedNumber !== null && Number.isFinite(requestedNumber)
+        ? authoredTalkSequenceIds.find((id) => Number(id.match(/\d+$/)?.[0]) === requestedNumber)
+        : authoredTalkSequenceIds[(currentIndex + 1) % authoredTalkSequenceIds.length];
+      const next = nextId ? timelineForSequence(selectedInteractionProject, nextId) : null;
+      if (next && nextId) {
+        setIdleMode("none");
+        setSelectedSequenceId(nextId);
+        setProgress({ time: 0, duration: timelinePlaybackDuration(next), animation: null });
+        setPlaying(true);
+      }
+      return;
+    }
     if (compositionActive) compositionRef.current?.triggerTalk(line ? voiceAnimationForLine(line) : undefined);
     else viewportRef.current?.triggerTalk(line ? voiceAnimationForLine(line) : undefined);
   };
@@ -840,9 +874,32 @@ export function Spine() {
   const toggleTalkAutoplay = () => {
     if (talkAutoplay) {
       stopVoice();
+      if (compositionActive && idleMode === "bridge") {
+        setIdleMode("persistent");
+        setPlaying(true);
+      }
       return;
     }
-    if (!interactionReady || voiceLines.length === 0) return;
+    if (!interactionReady || (voiceLines.length === 0 && !authoredTalkSequenceIds.length)) return;
+    if (authoredTalkAutoplayAvailable && selectedInteractionProject) {
+      stopVoice(true, false);
+      authoredTalkIndexRef.current = 0;
+      talkAutoplayRef.current = true;
+      setTalkAutoplay(true);
+      setSelectedVoiceLineIndex(null);
+      const firstTalkId = authoredTalkSequenceIds[authoredTalkIndexRef.current++];
+      const firstTalk = firstTalkId ? timelineForSequence(selectedInteractionProject, firstTalkId) : null;
+      if (!firstTalk) {
+        talkAutoplayRef.current = false;
+        setTalkAutoplay(false);
+        return;
+      }
+      setIdleMode("none");
+      setSelectedSequenceId(firstTalkId);
+      setProgress({ time: 0, duration: timelinePlaybackDuration(firstTalk), animation: null });
+      setPlaying(true);
+      return;
+    }
     const startIndex = selectedVoiceLineIndex !== null && selectedVoiceLineIndex < voiceLines.length ? selectedVoiceLineIndex : 0;
     stopVoice(true, false);
     talkAutoplayRef.current = true;
@@ -851,11 +908,66 @@ export function Spine() {
     queueNextAutoTalk(startIndex, voiceRunRef.current);
   };
 
+  const handleCompositionFinished = () => {
+    const opening = selectedInteractionProject ? timelineForSequence(selectedInteractionProject, "opening") : null;
+    const authoredAutoplay = talkAutoplayRef.current && authoredTalkSequenceIds.length > 0 && Boolean(opening);
+
+    if (idleMode === "bridge") {
+      const nextId = authoredAutoplay ? authoredTalkSequenceIds[authoredTalkIndexRef.current++] : undefined;
+      const next = nextId && selectedInteractionProject ? timelineForSequence(selectedInteractionProject, nextId) : null;
+      if (next && nextId) {
+        setIdleMode("none");
+        setSelectedSequenceId(nextId);
+        setProgress({ time: 0, duration: timelinePlaybackDuration(next), animation: null });
+      } else {
+        talkAutoplayRef.current = false;
+        setTalkAutoplay(false);
+        setIdleMode("persistent");
+      }
+      setPlaying(true);
+      return;
+    }
+
+    if (compositionSequenceId.startsWith("talk-")) {
+      // Wait for the entire authored talk, including its return to idle.
+      // Keep this composition and its loaded skeletons. Idle is an explicit
+      // animation override, never a selection of the opening sequence.
+      setProgress({ time: 0, duration: Math.max(0.01, compositionTimeline?.openingIdleDuration ?? 3), animation: null });
+      setIdleMode(authoredAutoplay ? "bridge" : "persistent");
+      setPlaying(true);
+      return;
+    }
+
+    if (compositionSequenceId === "opening") {
+      if (idleMode === "none") {
+        // The first opening is one-shot. Keep the same renderers and continue
+        // their clocks in persistent idle instead of stopping on the last
+        // opening frame.
+        setIdleMode("persistent");
+        setPlaying(true);
+        return;
+      }
+    }
+
+    // Keep the final idle pose visible after the one-shot tour completes.
+    talkAutoplayRef.current = false;
+    authoredTalkIndexRef.current = 0;
+    setIdleMode("persistent");
+    setTalkAutoplay(false);
+    setPlaying(true);
+  };
+
   const togglePlayback = () => setPlaying((value) => !value);
 
   const restartPlayback = () => {
     stopVoice();
     setPlaying(true);
+    if (compositionActive && selectedInteractionProject && timelineForSequence(selectedInteractionProject, "opening")) {
+      setIdleMode("none");
+      setSelectedSequenceId("opening");
+      setProgress({ time: 0, duration: timelinePlaybackDuration(timelineForSequence(selectedInteractionProject, "opening")!), animation: null });
+      return;
+    }
     setProgress((current) => ({ ...current, time: 0 }));
     activeViewport()?.restartPlayback();
   };
@@ -978,7 +1090,7 @@ export function Spine() {
           <div className="spine-variant-picker">
             <label className="spine-field">
               <span>{t("spine.variant")}</span>
-                <select value={selectedDirectoryName} onChange={(event) => { stopVoice(); setSelectedDirectory(event.target.value); setMeta(null); }} aria-label={t("spine.variantAria")}>
+               <select value={selectedDirectoryName} onChange={(event) => { resetAssetPlayback(); setSelectedDirectory(event.target.value); }} aria-label={t("spine.variantAria")}>
                  {variants.some((variant) => !variant.extraType) && <optgroup label={t("spine.variant")}>
                    {variants.filter((variant) => !variant.extraType).map((variant) => <option key={variant.directory} value={variant.directory}>{variant.variant}</option>)}
                  </optgroup>}
@@ -1015,29 +1127,32 @@ export function Spine() {
           }
         }} onPointerCancel={() => { stagePointer.current = null; }}>
           {compositionActive && compositionTimeline && source
-            ? <SpineCompositionViewport
-               ref={compositionRef}
+             ? <SpineCompositionViewport
+                key={selectedDirectoryName}
+                ref={compositionRef}
                source={source}
                timeline={compositionTimeline}
                interactionMode={interactionMode}
                interactionProject={selectedInteractionProject}
                showInteractionPoints={showInteractionPoints}
                currentTime={progress.time}
-              playing={playing}
-              speed={speed}
-              effectsStrength={effectsStrength}
-              onMeta={handleViewportMeta}
+                playing={playing}
+                speed={speed}
+                effectsStrength={effectsStrength}
+                idleMode={idleMode}
+               onMeta={handleViewportMeta}
               onProgress={setProgress}
               onLoading={setRendererLoading}
                onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
-               onFinished={() => setPlaying(false)}
+                onFinished={handleCompositionFinished}
                onTalk={(index, talkAnimation, eventCount) => beginVoiceSession(index, talkAnimation, eventCount)}
                onTalkClip={playVoiceEvent}
                onIntro={(intro, eventCount) => beginIntroVoiceSession(intro, eventCount)}
                onIntroClip={playIntroVoiceEvent}
              />
-            : <SpineViewport
-              ref={viewportRef}
+             : <SpineViewport
+               key={selectedDirectoryName}
+               ref={viewportRef}
               files={setFiles}
               directory={selectedDirectoryName}
               interactionProject={selectedInteractionProject}
@@ -1076,7 +1191,7 @@ export function Spine() {
             </div>
             <div className="spine-toolbar-actions">
               {interactionReady && meta?.interaction.talkCount ? <button className="spine-tool-button" type="button" onClick={() => playTalk()} aria-label={t("spine.talkAria")} title={t("spine.talkAria")}><IconMessage /><span>{t("spine.talk")}</span><small>{meta.interaction.talkCount}</small></button> : null}
-              {interactionReady && voiceLines.length > 0 ? <button className={`spine-tool-button${talkAutoplay ? " is-active" : ""}`} type="button" onClick={toggleTalkAutoplay} aria-pressed={talkAutoplay} aria-label={t(talkAutoplay ? "spine.autoplayStop" : "spine.autoplayStart")} title={t(talkAutoplay ? "spine.autoplayStop" : "spine.autoplayStart")}><span>{talkAutoplay ? <IconPause /> : <IconPlay />}</span><span>{t("spine.autoplay")}</span></button> : null}
+               {interactionReady && (voiceLines.length > 0 || authoredTalkAutoplayAvailable) ? <button className={`spine-tool-button${talkAutoplay ? " is-active" : ""}`} type="button" onClick={toggleTalkAutoplay} aria-pressed={talkAutoplay} aria-label={t(talkAutoplay ? "spine.autoplayStop" : "spine.autoplayStart")} title={t(talkAutoplay ? "spine.autoplayStop" : "spine.autoplayStart")}><span>{talkAutoplay ? <IconPause /> : <IconPlay />}</span><span>{t("spine.autoplay")}</span></button> : null}
               <button className={`spine-tool-button${showInteractionPoints ? " is-active" : ""}`} type="button" disabled={!meta} aria-pressed={showInteractionPoints} onClick={() => setShowInteractionPoints((shown) => !shown)} aria-label={t("spine.showInteractionPoints")} title={t("spine.showInteractionPoints")}><IconTarget /><span>{t("spine.points")}</span></button>
               <button className={`spine-tool-button${showOptions ? " is-active" : ""}`} type="button" aria-expanded={showOptions} aria-controls="spine-options" onClick={() => setShowOptions((shown) => !shown)}><IconSliders /><span>{t("spine.options")}</span></button>
               <button className="spine-tool-button spine-sidebar-toggle" type="button" aria-expanded={showSidebar} aria-controls="spine-sidebar" onClick={() => setShowSidebar((shown) => !shown)} title={t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}><IconUsers /><span>{t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}</span></button>
@@ -1132,7 +1247,7 @@ export function Spine() {
                 </select></label>
                 {!compositionActive && <label className="spine-check"><input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>}
                  </>}
-                  {selectedInteractionProject && compositionSequenceIds.length > 0 && <label className="spine-setting-field"><span>{t("spine.sequence")}</span><select value={compositionSequenceId || "__runtime-intro__"} onChange={(event) => { const next = event.target.value === "__runtime-intro__" ? "" : event.target.value; const nextTimeline = next ? timelineForSequence(selectedInteractionProject, next) : null; setProgress({ time: 0, duration: nextTimeline ? timelinePlaybackDuration(nextTimeline) : 0, animation: null }); setSelectedSequenceId(next); }} aria-label={t("spine.sequenceAria")}>
+                  {selectedInteractionProject && compositionSequenceIds.length > 0 && <label className="spine-setting-field"><span>{t("spine.sequence")}</span><select value={compositionSequenceId || "__runtime-intro__"} onChange={(event) => { const next = event.target.value === "__runtime-intro__" ? "" : event.target.value; const nextTimeline = next ? timelineForSequence(selectedInteractionProject, next) : null; stopVoice(); setIdleMode("none"); setProgress({ time: 0, duration: nextTimeline ? timelinePlaybackDuration(nextTimeline) : 0, animation: null }); setSelectedSequenceId(next); }} aria-label={t("spine.sequenceAria")}>
                     {!compositionSequenceId && <option value="__runtime-intro__">Runtime intro</option>}
                     {compositionSequenceIds.map((id) => <option key={id} value={id}>{id === "opening" ? t("spine.sequenceOpening") : id.match(/^talk-(\d+)$/)?.[1] ? t("spine.sequenceTalk", { n: id.match(/^talk-(\d+)$/)![1]! }) : id}</option>)}
                   </select></label>}

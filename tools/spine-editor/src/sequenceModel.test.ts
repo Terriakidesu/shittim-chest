@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createProject, normalizeProject } from "./editorModel";
-import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, moveAudioClip, openingPhaseTimings, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
+import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, moveAudioClip, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
 
 test("talk sequences pair body and face and isolate subtitle clocks", () => {
   const animations = ["Idle_01", "Talk_01_M", "Talk_01_A", "Talk_02_M", "Talk_02_A"];
@@ -116,6 +116,20 @@ test("authored timeline content can extend the saved duration", () => {
   timeline.audio = [{ id: "audio", name: "voice.ogg", path: "voice.ogg", start: 8, end: 12, enabled: true, volume: 1 }];
   expect(authoredTimelineEnd(timeline)).toBe(12);
   expect(extendTimelineDuration({ ...timeline, duration: 4 }).duration).toBe(12);
+});
+
+test("automatic opening duration trims a blank tail but keeps intro and authored content", () => {
+  const timeline = createProject("Aru_home", [], []).timeline;
+  timeline.sequenceId = "opening";
+  timeline.openingMode = "scene-first";
+  timeline.sceneDuration = 4.6;
+  timeline.duration = 19.266;
+  timeline.layers = [
+    { ...timeline.layers[0]!, role: "character", start: 4.6, end: 17.8, endMode: "manual" },
+    { ...timeline.layers[0]!, id: "scene", role: "scene", start: 0, end: 4.7, endMode: "manual" },
+  ];
+  timeline.subtitles = [{ id: "cue", start: 9, end: 12.9, enabled: true, text: { en: "Hello", ja: "", ko: "" } }];
+  expect(openingTimelineDuration(timeline, 11.667)).toBe(17.8);
 });
 
 test("moving linked audio moves its nearest subtitle cue but not unlinked cues", () => {

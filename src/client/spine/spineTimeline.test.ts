@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { normalizeSpineTimeline, timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineAudioPlaybackDecision, timelineForSequence, timelineLayerAnimation, timelineLayerPlaybackEnd, timelineLayerSampleTime, timelineMainAnimation, timelinePlaybackDuration, timelineSequenceIds, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
+import { timelineIdleAnimation, timelineTalkIdleStart } from "./spineTimeline";
+
+test("idle playback selects Idle_XX, never the opening or talk animation", () => {
+  expect(timelineIdleAnimation({ idleAnimation: "Idle_01", animations: ["Start_Idle_01", "Idle_01", "Talk_01_M"] })).toBe("Idle_01");
+  expect(timelineIdleAnimation({ idleAnimation: null, animations: ["Start_Idle_01", "Idle_02"] })).toBe("Idle_02");
+  expect(timelineIdleAnimation({ idleAnimation: null, animations: ["Start_Idle_01"] })).toBe("");
+});
+import { normalizeSpineTimeline, timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineAudioPlaybackDecision, timelineForSequence, timelineLayerAnimation, timelineLayerPlaybackEnd, timelineLayerSampleTime, timelineMainAnimation, timelinePlaybackDuration, timelineSequenceIds, timelineTalkSequenceIds, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
 
 const character = { start: 1, animationOffset: 0.25, loop: false, role: "character" as const };
 
@@ -8,6 +15,11 @@ const meta = {
   introAnimation: "Intro",
   idleAnimation: "Idle",
 };
+
+test("Aru's shortened talk layer does not truncate its body animation before the idle tail", () => {
+  expect(timelineTalkIdleStart(layer({ start: 0, end: 15.1 }), 15.333)).toBe(15.333);
+  expect(timelineTalkIdleStart(layer({ start: 0, end: 16 }), 15.333)).toBe(16);
+});
 
 function layer(overrides: Partial<SpineTimelineLayer> = {}): SpineTimelineLayer {
   return {
@@ -49,6 +61,14 @@ test("sequence helpers preserve the active timeline and stored sequence copies",
   expect(timelineForSequence(project, "opening")).toBe(opening);
 });
 
+test("authored talk sequences are ordered numerically for autoplay", () => {
+  const project = {
+    timeline: { sequenceId: "talk-10" } as SpineTimeline,
+    sequences: { "talk-2": {} as SpineTimeline, "talk-1": {} as SpineTimeline, legacy: {} as SpineTimeline },
+  };
+  expect(timelineTalkSequenceIds(project)).toEqual(["talk-1", "talk-2", "talk-10"]);
+});
+
 test("talk playback includes a saved layer that extends the nominal duration", () => {
   const timeline: SpineTimeline = { sequenceId: "talk-1", openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3, durationMode: "manual", duration: 4, loop: false, layers: [{ id: "layer", name: "Airi", role: "character", directory: "Airi_home", enabled: true, animation: "Talk_01_M", start: 0, end: 6, animationOffset: 0, loop: false, x: 0, y: 0, scale: 1, opacity: 1, order: 1 }], subtitles: [], audio: [], language: "en" };
   expect(timelinePlaybackDuration(timeline)).toBe(6);
@@ -57,6 +77,26 @@ test("talk playback includes a saved layer that extends the nominal duration", (
 test("saved subtitle and audio endpoints keep a composition alive", () => {
   const timeline: SpineTimeline = { sequenceId: "opening", openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3, durationMode: "manual", duration: 4, loop: false, layers: [], subtitles: [{ id: "cue", start: 9, end: 11, enabled: true, text: { en: "Late", ja: "", ko: "" } }], audio: [{ id: "audio", name: "voice.ogg", path: "voice.ogg", start: 9, end: 12, enabled: true, volume: 1 }], language: "en" };
   expect(timelinePlaybackDuration(timeline)).toBe(12);
+});
+
+test("automatic openings trim stale blank time after their last layer", () => {
+  const timeline: SpineTimeline = {
+    sequenceId: "opening",
+    openingMode: "scene-first",
+    sceneDuration: 4.6,
+    openingIdleDuration: 3,
+    durationMode: "auto",
+    duration: 19.266,
+    loop: false,
+    layers: [
+      { ...layer({ role: "character", start: 4.6, end: 17.8, endMode: "manual" }) },
+      { ...layer({ role: "scene", start: 0, end: 4.7, endMode: "manual" }) },
+    ],
+    subtitles: [{ id: "cue", start: 9, end: 12.9, enabled: true, text: { en: "Hello", ja: "", ko: "" } }],
+    audio: [],
+    language: "en",
+  };
+  expect(timelinePlaybackDuration(timeline, 16.267)).toBe(17.8);
 });
 
 test("background layers follow the main animation by name and clock", () => {
