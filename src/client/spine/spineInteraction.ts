@@ -1,3 +1,5 @@
+import { normalizeSpineTimeline, type SpineTimeline } from "./spineTimeline";
+
 export interface SpineAnimationPair {
   main: string;
   face: string | null;
@@ -57,6 +59,8 @@ export interface SpineInteractionProject {
   name?: string;
   assetDirectory: string;
   interactions: SpineAuthoredInteraction[];
+  timeline?: SpineTimeline;
+  sequences?: Record<string, SpineTimeline>;
 }
 
 export interface SpineInteractionBundle {
@@ -138,6 +142,12 @@ export function normalizeSpineInteractionProject(value: unknown, directory?: str
   const project = value as Partial<SpineInteractionProject>;
   const assetDirectory = directory ?? stringValue(project.assetDirectory);
   if (!assetDirectory || !Array.isArray(project.interactions)) return null;
+  const timeline = "timeline" in project ? normalizeSpineTimeline(project.timeline) : null;
+  const sequences = project.sequences && typeof project.sequences === "object"
+    ? Object.fromEntries(Object.entries(project.sequences)
+      .map(([id, value]) => [id, normalizeSpineTimeline(value)] as const)
+      .filter((entry): entry is [string, SpineTimeline] => entry[1] !== null))
+    : {};
   return {
     schemaVersion: Math.max(1, Math.trunc(finiteNumber(project.schemaVersion, 1))),
     ...(typeof project.name === "string" ? { name: project.name } : {}),
@@ -145,6 +155,8 @@ export function normalizeSpineInteractionProject(value: unknown, directory?: str
     interactions: project.interactions
       .map((interaction, index) => normalizeAuthoredInteraction(interaction, index))
       .filter((interaction): interaction is SpineAuthoredInteraction => interaction !== null),
+    ...(timeline ? { timeline } : {}),
+    ...(Object.keys(sequences).length > 0 ? { sequences } : {}),
   };
 }
 

@@ -71,3 +71,28 @@ test("viewer local project loading prefers .editor and falls back to the legacy 
   const legacy = await readLocalInteractionProject(sourceFromFiles({ [legacyEditorProjectPath("Airi_home")]: content }), "Airi_home");
   expect(legacy?.name).toBe("Local project");
 });
+
+test("normalizes per-sequence layers, timing, subtitles, and audio", () => {
+  const raw = {
+    ...editorProject(),
+    timeline: {
+      sequenceId: "talk-1",
+      duration: 8,
+      loop: false,
+      layersInitialized: true,
+      layers: [{ id: "character", name: "Airi", role: "character", directory: "Airi_home", enabled: true, animation: "Talk_01_M", start: 1, end: 4, animationOffset: 0.5, loop: false, x: 2, y: 3, scale: 1.1, opacity: 0.8, order: 1 }],
+      subtitles: [{ id: "line", start: 1, end: 2.5, enabled: true, text: { en: "Hello", ja: "こんにちは", ko: "안녕" } }],
+      audio: [{ id: "voice", name: "voice.ogg", path: "audios/voicelines/voice.ogg", start: 1, end: 2.5, enabled: true, volume: 0.75 }],
+    },
+    sequences: {
+      opening: { sequenceId: "opening", duration: 12, loop: false, layers: [], subtitles: [], audio: [] },
+    },
+  };
+  const normalized = normalizeSpineInteractionProject(raw, "Airi_home");
+
+  expect(normalized?.timeline).toMatchObject({ sequenceId: "talk-1", duration: 8, loop: false });
+  expect(normalized?.timeline?.layers[0]).toMatchObject({ directory: "Airi_home", start: 1, end: 4, scale: 1.1 });
+  expect(normalized?.timeline?.subtitles[0]?.text.ja).toBe("こんにちは");
+  expect(normalized?.timeline?.audio[0]).toMatchObject({ path: "audios/voicelines/voice.ogg", volume: 0.75 });
+  expect(normalized?.sequences?.opening?.sequenceId).toBe("opening");
+});

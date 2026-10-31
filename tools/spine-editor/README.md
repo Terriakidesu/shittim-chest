@@ -125,7 +125,8 @@ Shortcuts are ignored while typing in a field.
 | ? | Show/hide quick help |
 
 Existing version-1 projects remain compatible. Project companions are kept
-under the selected asset root; the published viewer does **not** consume custom
-projects. Use `.editorignore` when a root contains asset-like folders that
-should not be imported.
+under the selected asset root; the local Spine viewer consumes the same
+interaction and timeline playback fields when that root is selected, while
+published assets still use the committed fallback bundle. Use `.editorignore`
+when a root contains asset-like folders that should not be imported.
 Neither this editor nor its assets are included in the root Pages build.

@@ -43,6 +43,8 @@ import {
   type SpineVoiceManifest,
   type SpineVoiceLine,
 } from "./spine/spineVoicelines";
+import { SpineCompositionViewport, type SpineCompositionViewportHandle } from "./spine/SpineCompositionViewport";
+import { timelineForSequence, timelineSequenceIds } from "./spine/spineTimeline";
 
 const characterIndex = characterIndexJson as CharacterIndex;
 const characterNames = Object.keys(characterIndex.characters).sort((a, b) => a.localeCompare(b));
@@ -264,6 +266,7 @@ export function Spine() {
   const firstCharacter = characterNames[0] ?? "";
   const [selectedCharacter, setSelectedCharacter] = useState(firstCharacter);
   const [selectedDirectory, setSelectedDirectory] = useState(characterIndex.characters[firstCharacter]?.variants[0]?.directory ?? "");
+  const [selectedSequenceId, setSelectedSequenceId] = useState("");
   const [characterSearch, setCharacterSearch] = useState("");
   const [source, setSource] = useState<AssetSource | null>(null);
   const [availableDirectories, setAvailableDirectories] = useState<Set<string> | null>(null);
@@ -300,6 +303,7 @@ export function Spine() {
   const [talkAutoplay, setTalkAutoplay] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<SpineViewportHandle>(null);
+  const compositionRef = useRef<SpineCompositionViewportHandle>(null);
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
   const voiceUrlRef = useRef<string | null>(null);
   const voiceRunRef = useRef(0);
@@ -374,6 +378,13 @@ export function Spine() {
   const selectedVariant = variants.find((variant) => variant.directory === selectedDirectory) ?? variants[0];
   const selectedDirectoryName = selectedVariant?.directory ?? "";
   const selectedInteractionProject = localInteractionProject ?? interactionProjects.get(selectedDirectoryName) ?? null;
+  const compositionSequenceIds = selectedInteractionProject ? timelineSequenceIds(selectedInteractionProject) : [];
+  const compositionSequenceId = compositionSequenceIds.includes(selectedSequenceId)
+    ? selectedSequenceId
+    : compositionSequenceIds[0] ?? "";
+  const compositionTimeline = selectedInteractionProject ? timelineForSequence(selectedInteractionProject, compositionSequenceId) : null;
+  const compositionActive = interactionMode === "free" && Boolean(compositionTimeline);
+  const activeViewport = () => compositionActive ? compositionRef.current : viewportRef.current;
 
   useEffect(() => {
     let live = true;
@@ -384,6 +395,10 @@ export function Spine() {
     });
     return () => { live = false; };
   }, [selectedDirectoryName, source]);
+
+  useEffect(() => {
+    setSelectedSequenceId(selectedInteractionProject?.timeline?.sequenceId ?? "");
+  }, [selectedInteractionProject]);
 
   const legacyVoiceCharacter = voiceCharacterForDirectory(voiceManifest, selectedDirectoryName);
   const selectedVoiceCharacter = voiceCharacter ?? legacyVoiceCharacter;
@@ -823,7 +838,14 @@ export function Spine() {
     stopVoice();
     setPlaying(true);
     setProgress((current) => ({ ...current, time: 0 }));
-    viewportRef.current?.restartPlayback();
+    activeViewport()?.restartPlayback();
+  };
+
+  const handleViewportMeta = (next: SpineMeta | null) => {
+    setMeta(next);
+    setAnimation(skipIntro && next?.idleAnimation ? next.idleAnimation : next?.defaultAnimation ?? "");
+    setCameraMode(interactionMode === "interaction" ? "game" : next?.hasGameCamera ? "game" : "fill");
+    if (!next) setProgress({ time: 0, duration: 0, animation: null });
   };
 
   useEffect(() => {
@@ -847,7 +869,7 @@ export function Spine() {
         playTalk();
       } else if (key === "f") {
         event.preventDefault();
-        void viewportRef.current?.toggleFullscreen();
+        void activeViewport()?.toggleFullscreen();
       } else if (key === "i") {
         event.preventDefault();
         selectInteractionMode("interaction");
@@ -973,35 +995,45 @@ export function Spine() {
             setShowFullscreenControls((shown) => !shown);
           }
         }} onPointerCancel={() => { stagePointer.current = null; }}>
-          <SpineViewport
-            ref={viewportRef}
-            files={setFiles}
-            directory={selectedDirectoryName}
-            interactionProject={selectedInteractionProject}
-            animation={animation}
-            playing={playing}
-            speed={speed}
-            loop={loop}
-            cameraMode={cameraMode}
-            interactionMode={interactionMode}
-            skipIntro={skipIntro}
-            showInteractionPoints={showInteractionPoints}
-            effectsStrength={effectsStrength}
-            onMeta={(next) => {
-              setMeta(next);
-              setAnimation(skipIntro && next?.idleAnimation ? next.idleAnimation : next?.defaultAnimation ?? "");
-              setCameraMode(interactionMode === "interaction" ? "game" : next?.hasGameCamera ? "game" : "fill");
-              if (!next) setProgress({ time: 0, duration: 0, animation: null });
-            }}
-            onProgress={setProgress}
-            onLoading={setRendererLoading}
-             onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
-             onCameraMode={(mode) => setCameraMode(interactionMode === "interaction" ? "game" : mode)}
-             onTalk={(index, animation, eventCount) => beginVoiceSession(index, animation, eventCount)}
-             onTalkClip={playVoiceEvent}
-             onIntro={(intro, eventCount) => beginIntroVoiceSession(intro, eventCount)}
-             onIntroClip={playIntroVoiceEvent}
-           />
+          {compositionActive && compositionTimeline && source
+            ? <SpineCompositionViewport
+              ref={compositionRef}
+              source={source}
+              timeline={compositionTimeline}
+              currentTime={progress.time}
+              playing={playing}
+              speed={speed}
+              effectsStrength={effectsStrength}
+              onMeta={handleViewportMeta}
+              onProgress={setProgress}
+              onLoading={setRendererLoading}
+              onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
+              onFinished={() => setPlaying(false)}
+            />
+            : <SpineViewport
+              ref={viewportRef}
+              files={setFiles}
+              directory={selectedDirectoryName}
+              interactionProject={selectedInteractionProject}
+              animation={animation}
+              playing={playing}
+              speed={speed}
+              loop={loop}
+              cameraMode={cameraMode}
+              interactionMode={interactionMode}
+              skipIntro={skipIntro}
+              showInteractionPoints={showInteractionPoints}
+              effectsStrength={effectsStrength}
+              onMeta={handleViewportMeta}
+              onProgress={setProgress}
+              onLoading={setRendererLoading}
+              onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
+              onCameraMode={(mode) => setCameraMode(interactionMode === "interaction" ? "game" : mode)}
+              onTalk={(index, animation, eventCount) => beginVoiceSession(index, animation, eventCount)}
+              onTalkClip={playVoiceEvent}
+              onIntro={(intro, eventCount) => beginIntroVoiceSession(intro, eventCount)}
+              onIntroClip={playIntroVoiceEvent}
+            />}
           {showDialogue && activeVoiceLine && activeDialogue && <div className="spine-dialogue" aria-live="polite">{activeDialogue}</div>}
           {!source && <div className="spine-stage-empty"><strong>{t("spine.empty.heading")}</strong><span>{t("spine.empty.body")}</span></div>}
           {source && !setFiles && !error && <div className="spine-stage-empty"><strong>{isLoading ? t("spine.loading") : t("spine.empty.set")}</strong><span>{isLoading ? t("spine.loadingDetail") : selectedDirectoryName}</span></div>}
@@ -1023,7 +1055,7 @@ export function Spine() {
               <button className={`spine-tool-button${showOptions ? " is-active" : ""}`} type="button" aria-expanded={showOptions} aria-controls="spine-options" onClick={() => setShowOptions((shown) => !shown)}><IconSliders /><span>{t("spine.options")}</span></button>
               <button className="spine-tool-button spine-sidebar-toggle" type="button" aria-expanded={showSidebar} aria-controls="spine-sidebar" onClick={() => setShowSidebar((shown) => !shown)} title={t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}><IconUsers /><span>{t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}</span></button>
               {fullscreen && <button className="spine-tool-button spine-fullscreen-controls-toggle" type="button" aria-expanded={showFullscreenControls} onClick={() => setShowFullscreenControls((shown) => !shown)} title={t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}><IconSliders /><span>{t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}</span></button>}
-              <button className="spine-tool-button" type="button" onClick={() => void viewportRef.current?.toggleFullscreen()} aria-label={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")} title={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")}><span>{fullscreen ? <IconCompress /> : <IconExpand />}</span><span className="spine-button-label">{t("spine.fullscreen")}</span></button>
+               <button className="spine-tool-button" type="button" onClick={() => void activeViewport()?.toggleFullscreen()} aria-label={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")} title={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")}><span>{fullscreen ? <IconCompress /> : <IconExpand />}</span><span className="spine-button-label">{t("spine.fullscreen")}</span></button>
             </div>
            </div>
 
@@ -1051,7 +1083,7 @@ export function Spine() {
               step="0.01"
               value={Math.min(progress.time, progress.duration || 0.01)}
               disabled={!meta}
-              onChange={(event) => viewportRef.current?.seek(Number(event.target.value))}
+             onChange={(event) => activeViewport()?.seek(Number(event.target.value))}
               aria-label={t("spine.scrubber")}
             />
             <span className="spine-time" aria-live="off">{formatSeconds(progress.time)} / {formatSeconds(progress.duration)}s</span>
@@ -1061,25 +1093,30 @@ export function Spine() {
             <div className="spine-settings-heading"><strong>{t("spine.options")}</strong><button type="button" onClick={() => setShowOptions(false)} aria-label={t("spine.options.close")} title={t("spine.options.close")}><IconClose /></button></div>
             <div className="spine-settings-grid">
               {interactionMode === "free" && <>
-                <label className="spine-setting-field spine-animation-field"><span>{t("spine.animation")}</span><select value={animation} onChange={(event) => selectAnimation(event.target.value)} disabled={!meta} aria-label={t("spine.animationAria")}>
-                  {animationOptions.map((name) => <option key={name} value={name}>{name === INTRO_ANIMATION ? t("spine.introIdle") : name}</option>)}
-                </select></label>
-                <label className="spine-setting-field"><span>{t("spine.camera")}</span><select value={cameraMode} onChange={(event) => setCameraMode(event.target.value as SpineCameraMode)} disabled={!meta} aria-label={t("spine.cameraAria")}>
-                  <option value="fill">{t("spine.camera.fill")}</option><option value="fit">{t("spine.camera.fit")}</option>{meta?.hasGameCamera && <option value="game">{t("spine.camera.game")}</option>}
-                </select></label>
+                {!compositionActive && <>
+                  <label className="spine-setting-field spine-animation-field"><span>{t("spine.animation")}</span><select value={animation} onChange={(event) => selectAnimation(event.target.value)} disabled={!meta} aria-label={t("spine.animationAria")}>
+                    {animationOptions.map((name) => <option key={name} value={name}>{name === INTRO_ANIMATION ? t("spine.introIdle") : name}</option>)}
+                  </select></label>
+                  <label className="spine-setting-field"><span>{t("spine.camera")}</span><select value={cameraMode} onChange={(event) => setCameraMode(event.target.value as SpineCameraMode)} disabled={!meta} aria-label={t("spine.cameraAria")}>
+                    <option value="fill">{t("spine.camera.fill")}</option><option value="fit">{t("spine.camera.fit")}</option>{meta?.hasGameCamera && <option value="game">{t("spine.camera.game")}</option>}
+                  </select></label>
+                </>}
                 <label className="spine-setting-field"><span>{t("spine.speed")}</span><select value={speed} onChange={(event) => setSpeed(Number(event.target.value))} aria-label={t("spine.speedAria")}>
                   {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}
                 </select></label>
-                <label className="spine-check"><input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>
+                {!compositionActive && <label className="spine-check"><input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>}
+                {compositionActive && compositionSequenceIds.length > 0 && <label className="spine-setting-field"><span>{t("spine.sequence")}</span><select value={compositionSequenceId} onChange={(event) => { setProgress({ time: 0, duration: compositionTimeline?.duration ?? 0, animation: null }); setSelectedSequenceId(event.target.value); }} aria-label={t("spine.sequenceAria")}>
+                  {compositionSequenceIds.map((id) => <option key={id} value={id}>{id === "opening" ? t("spine.sequenceOpening") : id.match(/^talk-(\d+)$/)?.[1] ? t("spine.sequenceTalk", { n: id.match(/^talk-(\d+)$/)![1]! }) : id}</option>)}
+                </select></label>}
                 </>}
-                <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={skipIntro} onChange={(event) => toggleSkipIntro(event.target.checked)} />{t("spine.skipIntro")}</label>
+                {!compositionActive && <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={skipIntro} onChange={(event) => toggleSkipIntro(event.target.checked)} />{t("spine.skipIntro")}</label>}
                 {voiceLines.length > 0 && <>
                   <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={voiceEnabled} onChange={(event) => setVoiceEnabled(event.target.checked)} />{t("spine.voice")}{voicePlaying && <small>●</small>}</label>
                   <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={showDialogue} onChange={(event) => setShowDialogue(event.target.checked)} />{t("spine.dialogue")}</label>
                 </>}
                 <label className="spine-setting-field spine-effects-field"><span>{t("spine.effects")}</span><input type="range" min="0" max="1" step="0.05" value={effectsStrength} onChange={(event) => setEffectsStrength(Number(event.target.value))} aria-label={t("spine.effects")} title={t("spine.effects.hint")} /><output>{Math.round(effectsStrength * 100)}%</output></label>
-              <button className="spine-settings-action" type="button" disabled={!meta} onClick={() => viewportRef.current?.resetCamera()}><IconRotate /><span>{t("spine.resetView")}</span></button>
-              {interactionMode === "free" && meta?.introAnimation && meta.idleAnimation && <button className="spine-settings-action" type="button" onClick={() => { setAnimation(INTRO_ANIMATION); setProgress((current) => ({ ...current, time: 0 })); viewportRef.current?.replayIntro(); }}><IconRotate /><span>{t("spine.replayIntro")}</span></button>}
+               <button className="spine-settings-action" type="button" disabled={!meta} onClick={() => activeViewport()?.resetCamera()}><IconRotate /><span>{t("spine.resetView")}</span></button>
+               {interactionMode === "free" && !compositionActive && meta?.introAnimation && meta.idleAnimation && <button className="spine-settings-action" type="button" onClick={() => { setAnimation(INTRO_ANIMATION); setProgress((current) => ({ ...current, time: 0 })); viewportRef.current?.replayIntro(); }}><IconRotate /><span>{t("spine.replayIntro")}</span></button>}
             </div>
           </div>}
         </div>
