@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from "react";
 import { SpineRenderer, type SpineCameraPose, type SpineFiles, type SpineMeta, type SpineProgress } from "./spineRuntime";
 import type { AssetSource } from "./spineAssets";
-import type { SpineTimeline, SpineTimelineLayer } from "./spineTimeline";
+import { timelineLayerSampleTime, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
 
 export interface SpineCompositionViewportHandle {
   resetCamera: () => void;
@@ -37,14 +37,6 @@ interface CompositionLayerProps {
   onMeta: (layerId: string, meta: SpineMeta | null) => void;
   onCameraPose: (pose: SpineCameraPose) => void;
   onError: (value: string | null) => void;
-}
-
-function localTime(layer: SpineTimelineLayer, currentTime: number, duration: number, useIntro: boolean): number {
-  const elapsed = Math.max(0, currentTime - layer.start);
-  if (useIntro) return elapsed;
-  const value = elapsed + layer.animationOffset;
-  if (!duration) return value;
-  return layer.loop ? value % duration : Math.min(value, duration);
 }
 
 function CompositionLayer({ layer, files, currentTime, sequenceId, openingMode, sharedCameraPose, referenceCamera, resetCameraSignal, effectsStrength, onMeta, onCameraPose, onError }: CompositionLayerProps) {
@@ -111,7 +103,7 @@ function CompositionLayer({ layer, files, currentTime, sequenceId, openingMode, 
   const animationDuration = rendererRef.current?.getEditorAnimationInfo(animation).duration ?? 0;
   const talkCharacter = sequenceId.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
   const effectiveLoop = talkCharacter ? false : layer.loop;
-  const time = localTime(layer, currentTime, animationDuration, useIntro);
+  const time = timelineLayerSampleTime(layer, currentTime, sequenceId, openingMode, introDuration, animationDuration);
   useEffect(() => {
     if (!meta || !animation) return;
     rendererRef.current?.sampleEditorAnimation(animation, layer.faceAnimation ?? "", time, effectiveLoop, talkCharacter);

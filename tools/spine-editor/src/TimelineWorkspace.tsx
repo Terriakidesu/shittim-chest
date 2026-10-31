@@ -14,6 +14,7 @@ import {
 import type { DesktopAssetSource } from "./desktopSource";
 import { audioPlaybackDecision, decodedAudioTiming } from "./audioModel";
 import { animationEndForLayer, openingPhaseTimings, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
+import { timelineLayerSampleTime } from "../../../src/client/spine/spineTimeline";
 import { serializeSubtitleDocument } from "./subtitleDocument";
 import type { RecentFile } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
@@ -86,14 +87,6 @@ interface TimelineLayerCanvasProps {
   onCameraPose: (pose: SpineCameraPose) => void;
   onAnimationDuration: (layerId: string, animation: string, duration: number) => void;
   onError: (value: string | null) => void;
-}
-
-function localTime(layer: EditorTimelineLayer, currentTime: number, meta: SpineMeta | null): number {
-  const duration = meta?.duration ?? 0;
-  if (currentTime < layer.start || currentTime > layer.end) return 0;
-  const elapsed = Math.max(0, currentTime - layer.start + layer.animationOffset);
-  if (!duration) return elapsed;
-  return layer.loop ? elapsed % duration : Math.min(elapsed, duration);
 }
 
 function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, referenceCamera, onMeta, onCameraPose, onAnimationDuration, onError, openingMode, sequenceId, onMarkers }: TimelineLayerCanvasProps) {
@@ -175,10 +168,7 @@ function TimelineLayerCanvas({ layer, files, currentTime, sharedCameraPose, refe
   useEffect(() => {
     if (!meta) return;
     const renderer = rendererRef.current;
-   const elapsed = Math.max(0, currentTime - layer.start);
-   const time = openingCharacter && openingMode !== "skip"
-     ? useIntro ? elapsed : Math.max(0, elapsed - introLength + layer.animationOffset)
-     : elapsed + layer.animationOffset;
+    const time = timelineLayerSampleTime(layer, currentTime, sequenceId ?? "legacy", openingMode ?? "direct", introLength, animationDuration);
      renderer?.sampleEditorAnimation(animation, layer.faceAnimation ?? "", time, effectiveLoop, /^talk/i.test(animation));
     if (referenceCamera) onMarkers(renderer?.getEditorAnimationInfo(animation).markers ?? []);
   }, [animation, currentTime, effectiveLoop, layer, meta, openingCharacter, openingMode, introLength, useIntro]);

@@ -71,6 +71,17 @@ export function timelineForSequence(project: SpineTimelineProject, sequenceId: s
   return project.sequences?.[sequenceId] ?? null;
 }
 
+/** Compute the deterministic sample clock shared by the editor and viewer. */
+export function timelineLayerSampleTime(layer: Pick<SpineTimelineLayer, "start" | "animationOffset" | "loop" | "role">, currentTime: number, sequenceId: string, openingMode: SpineTimeline["openingMode"], introDuration: number, animationDuration: number): number {
+  const openingCharacter = sequenceId === "opening" && layer.role === "character";
+  const useIntro = openingCharacter && openingMode !== "skip" && currentTime >= layer.start && currentTime - layer.start < introDuration;
+  const elapsed = Math.max(0, currentTime - layer.start);
+  if (useIntro) return elapsed;
+  const value = (openingCharacter ? Math.max(0, elapsed - introDuration) : elapsed) + layer.animationOffset;
+  if (!animationDuration) return value;
+  return layer.loop ? value % animationDuration : Math.min(value, animationDuration);
+}
+
 function stringValue(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
