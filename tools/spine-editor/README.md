@@ -40,19 +40,21 @@ project, including its subtitle cues and audio clips.
    and the round handle rotates. Change the shape to a rectangle in Regions.
 3. Select a bone on the canvas or in the hierarchy, then **Anchor to selected
    bone** to attach the region without moving its center. Movement has a
-   searchable target-bone picker, a visual limit overlay, and a separate
-   **Use selected bone as movement target** button.
+   searchable target-bone picker, local X/Y locks, local rotation limits, a
+   visual bone gizmo, and a separate **Use selected bone as movement target**
+   button.
 4. In **Animations**, configure **On press / While held / On release** and the
    optional face tracks. The phase cards preview body and face tracks together;
    **Auto-detect phases** restores known Pat/Touch/Pinch phases from the chosen
    press animation without changing regions.
 5. Switch to **Test** and press an enabled region. Hold/drag, then release. The
    live debugger shows the interaction, region, phase, body/face animation,
-   target bone, and applied movement offset. Body/face animations run over idle
-   and movement uses the configured sensitivity, limits and easing. Press
-   triggers play once; Hold triggers start immediately; Drag triggers wait for
-   movement. Project changes apply on the next press. Reset idle or Escape
-   cancels the test; losing window focus releases a held interaction.
+   target bone, applied movement offset, and rotation. Body/face animations run
+   over idle and movement uses the configured local axes, limits, rotation range,
+   sensitivity, and easing. Press triggers play once; Hold triggers start
+   immediately; Drag triggers wait for movement. Project changes apply on the
+   next press. Reset idle or Escape cancels the test; losing window focus
+   releases a held interaction.
 
 ## Timeline composition
 

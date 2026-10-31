@@ -39,6 +39,12 @@ export interface EditorInteraction {
   limitX: number;
   limitY: number;
   smoothing: number;
+  allowX: boolean;
+  allowY: boolean;
+  rotationEnabled: boolean;
+  rotationAxis: "x" | "y";
+  rotationMin: number;
+  rotationMax: number;
   regions: EditorRegion[];
 }
 
@@ -275,6 +281,12 @@ function interaction(
     limitX: 90,
     limitY: 65,
     smoothing: 8,
+    allowX: true,
+    allowY: true,
+    rotationEnabled: false,
+    rotationAxis: "x",
+    rotationMin: -15,
+    rotationMax: 15,
     regions,
   };
 }
@@ -672,6 +684,12 @@ function normalizeInteraction(value: Partial<EditorInteraction>, index: number):
     limitX: finiteNumber(value.limitX, 90, 0),
     limitY: finiteNumber(value.limitY, 65, 0),
     smoothing: finiteNumber(value.smoothing, 8, 0.1),
+    allowX: value.allowX !== false,
+    allowY: value.allowY !== false,
+    rotationEnabled: value.rotationEnabled === true,
+    rotationAxis: value.rotationAxis === "y" ? "y" : "x",
+    rotationMin: Math.min(0, Math.max(-180, finiteNumber(value.rotationMin, -15))),
+    rotationMax: Math.max(0, Math.min(180, finiteNumber(value.rotationMax, 15))),
     regions,
   };
 }

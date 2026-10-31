@@ -145,10 +145,21 @@ input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid
 .editor-bone.is-selected line { stroke: var(--editor-yellow); stroke-width: 4; }
 .editor-bone.is-selected circle { fill: var(--editor-yellow); stroke: #fff; }
 .editor-bone text { fill: #d9f6ff; font-size: 12px; paint-order: stroke; stroke: #08121b; stroke-width: 4px; pointer-events: none; }
-.editor-motion-limit { pointer-events: none; }
-.editor-motion-limit ellipse { fill: #ffd45c1a; stroke: var(--editor-yellow); stroke-width: 2; stroke-dasharray: 8 5; }
-.editor-motion-limit line { stroke: #ffd45c99; stroke-width: 1; stroke-dasharray: 3 3; }
-.editor-motion-limit circle { fill: var(--editor-yellow); stroke: #08121b; stroke-width: 2; }
+.editor-motion-gizmo { pointer-events: none; }
+.editor-motion-translation ellipse { fill: #ffd45c1a; stroke: #ffd45caa; stroke-width: 2; stroke-dasharray: 8 5; }
+.editor-motion-translation line { stroke-width: 2; stroke-dasharray: 5 4; }
+.editor-motion-translation line.is-enabled { stroke: var(--editor-yellow); }
+.editor-motion-translation line.is-locked { stroke: #71818b99; }
+.editor-motion-translation circle { stroke: #08121b; stroke-width: 2; }
+.editor-motion-translation circle.is-enabled { fill: var(--editor-yellow); }
+.editor-motion-translation circle.is-locked { fill: #71818b; }
+.editor-motion-bone { stroke: #fff; stroke-width: 4; stroke-linecap: round; opacity: .9; }
+.editor-motion-rotation { fill: none; stroke: var(--editor-pink); stroke-width: 3; stroke-linecap: round; marker-end: url(#editor-motion-arrow); }
+.editor-motion-rotation-handle { stroke: #08121b; stroke-width: 2; }
+.editor-motion-rotation-handle.is-enabled { fill: var(--editor-pink); }
+.editor-motion-rotation-handle.is-locked { fill: #71818b; }
+.editor-motion-label { fill: #f8fbff; font: 11px ui-monospace, monospace; font-weight: 800; paint-order: stroke; stroke: #08121b; stroke-width: 4px; }
+.editor-motion-label.rotation { fill: var(--editor-pink); }
 .editor-constraint { stroke: var(--editor-yellow); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .7; pointer-events: none; }
 .editor-region ellipse, .editor-region rect { fill: currentColor; fill-opacity: .12; stroke: currentColor; stroke-width: 2; stroke-dasharray: 7 4; pointer-events: auto; cursor: grab; }
 .editor-region.is-selected ellipse, .editor-region.is-selected rect { fill-opacity: .26; stroke-width: 3; stroke-dasharray: none; }
@@ -197,6 +208,9 @@ input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid
 .editor-tabs button[aria-pressed="true"] { color: var(--editor-cyan); border-color: var(--editor-cyan); background: #173347; }
 .editor-animation-fields, .editor-movement-fields, .editor-region-fields { display: grid; gap: 8px; }
 .editor-inspector label { display: grid; gap: 4px; color: var(--editor-muted); font-size: 11px; }
+.editor-axis-checks { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 6px 7px; border: 1px solid var(--editor-line); border-radius: 3px; background: #0d202e; color: var(--editor-muted); font-size: 10px; }
+.editor-axis-checks > span { width: 100%; color: var(--editor-cyan); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.editor-axis-checks label { display: flex; align-items: center; gap: 4px; color: var(--editor-text); font-size: 10px; }
 .editor-phase-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
 .editor-phase-card { display: grid; align-content: start; gap: 4px; min-width: 0; padding: 7px; border: 1px solid var(--editor-line); border-radius: 4px; background: #0d202e; }
 .editor-phase-card > div { display: flex; align-items: center; justify-content: space-between; gap: 4px; }

@@ -23,6 +23,7 @@ export interface InteractionPreviewDebug {
   targetBonePath: string | null;
   offsetX: number;
   offsetY: number;
+  rotation: number;
 }
 
 /** Runs the authored project, independently of the viewer's detected presets. */
@@ -61,6 +62,7 @@ export class InteractionPreview {
       targetBonePath: this.motion.resolvedTargetBonePath ?? item?.followTargetBone ?? null,
       offsetX: this.motion.offset.x,
       offsetY: this.motion.offset.y,
+      rotation: this.motion.rotation,
     };
   }
 

@@ -40,6 +40,14 @@ export interface SpineAuthoredInteraction {
   limitX: number;
   limitY: number;
   smoothing: number;
+  /** Local parent-space translation axes. Missing legacy fields mean both. */
+  allowX?: boolean;
+  allowY?: boolean;
+  /** Rotate the target around its animated local pose while following. */
+  rotationEnabled?: boolean;
+  rotationAxis?: "x" | "y";
+  rotationMin?: number;
+  rotationMax?: number;
   regions: SpineInteractionRegion[];
 }
 

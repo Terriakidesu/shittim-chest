@@ -27,7 +27,7 @@ import {
 import "./editor.css";
 import { InteractionPreview, type InteractionPreviewDebug } from "./preview";
 import { hitRegion, inversePoint, regionMatrix, screenToWorld } from "./geometry";
-import { findInteractionProfile, interactionKind } from "../../../src/client/spine/spineInteraction";
+import { findInteractionProfile } from "../../../src/client/spine/spineInteraction";
 import { detectHeadRegion, repairPatRegions, type HeadRegion } from "./headRegion";
 import { TimelineWorkspace } from "./TimelineWorkspace";
 import { LEGACY_PROJECT_STORAGE_PREFIX } from "./editorModel";
@@ -99,7 +99,11 @@ interface MotionLimitOverlay {
   targetBonePath: string | null;
   limitX: number;
   limitY: number;
-  worldSpace: boolean;
+  allowX: boolean;
+  allowY: boolean;
+  rotationEnabled: boolean;
+  rotationMin: number;
+  rotationMax: number;
 }
 
 interface RegionGeometry {
@@ -148,7 +152,7 @@ function regionGeometry(frame: SpineEditorFrame, region: EditorRegion): RegionGe
 function motionLimitGeometry(frame: SpineEditorFrame, overlay: MotionLimitOverlay) {
   const target = frame.bones.find((bone) => bone.path === overlay.targetBonePath);
   if (!target) return null;
-  const parent = overlay.worldSpace ? null : frame.bones.find((bone) => bone.path === target.parentPath);
+  const parent = frame.bones.find((bone) => bone.path === target.parentPath);
   const xAxis = parent
     ? { x: parent.screenLocalXEndX - parent.screenX, y: parent.screenLocalXEndY - parent.screenY }
     : { x: frame.screenUnitXEndX - frame.screenOriginX, y: frame.screenUnitXEndY - frame.screenOriginY };
@@ -161,7 +165,23 @@ function motionLimitGeometry(frame: SpineEditorFrame, overlay: MotionLimitOverla
     radiusX: Math.max(8, Math.hypot(xAxis.x, xAxis.y) * Math.max(1, overlay.limitX)),
     radiusY: Math.max(8, Math.hypot(yAxis.x, yAxis.y) * Math.max(1, overlay.limitY)),
     rotation: Math.atan2(xAxis.y, xAxis.x) * 180 / Math.PI,
+    boneEndX: target.screenEndX,
+    boneEndY: target.screenEndY,
+    boneRotation: Math.atan2(target.screenEndY - target.screenY, target.screenEndX - target.screenX) * 180 / Math.PI,
+    rotationRadius: Math.max(18, Math.min(48, Math.max(Math.hypot(xAxis.x, xAxis.y) * Math.max(1, overlay.limitX), Math.hypot(yAxis.x, yAxis.y) * Math.max(1, overlay.limitY)) * 0.35)),
   };
+}
+
+function arcPath(cx: number, cy: number, radius: number, startDegrees: number, endDegrees: number): string {
+  const point = (degrees: number) => {
+    const radians = degrees * Math.PI / 180;
+    return { x: cx + Math.cos(radians) * radius, y: cy + Math.sin(radians) * radius };
+  };
+  const start = point(startDegrees);
+  const end = point(endDegrees);
+  const largeArc = Math.abs(endDegrees - startDegrees) > 180 ? 1 : 0;
+  const sweep = endDegrees >= startDegrees ? 1 : 0;
+  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${end.x} ${end.y}`;
 }
 
 function BoneOverlay({ frame, project, viewSettings, motionLimits, tool, onSelectBone, onSelectRegion, onBeginRegionDrag, onDragRegion, onChangeRegion }: BoneOverlayProps) {
@@ -215,11 +235,25 @@ function BoneOverlay({ frame, project, viewSettings, motionLimits, tool, onSelec
       onPointerCancel={() => { drag.current = null; handleDrag.current = null; }}
       aria-label="Spine editing overlay"
     >
-      {motion && <g className="editor-motion-limit" aria-label="Movement limits" transform={`rotate(${motion.rotation} ${motion.centerX} ${motion.centerY})`}>
-        <ellipse cx={motion.centerX} cy={motion.centerY} rx={motion.radiusX} ry={motion.radiusY} />
-        <line x1={motion.centerX - motion.radiusX} y1={motion.centerY} x2={motion.centerX + motion.radiusX} y2={motion.centerY} />
-        <line x1={motion.centerX} y1={motion.centerY - motion.radiusY} x2={motion.centerX} y2={motion.centerY + motion.radiusY} />
-        <circle cx={motion.centerX} cy={motion.centerY} r={4} />
+      <defs>
+        <marker id="editor-motion-arrow" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto" markerUnits="strokeWidth">
+          <path d="M 0 0 L 7 3.5 L 0 7 z" fill="var(--editor-pink)" />
+        </marker>
+      </defs>
+      {motion && <g className="editor-motion-gizmo" aria-label="Local movement and rotation limits">
+        <g className="editor-motion-translation" transform={`rotate(${motion.rotation} ${motion.centerX} ${motion.centerY})`}>
+          <ellipse cx={motion.centerX} cy={motion.centerY} rx={motion.radiusX} ry={motion.radiusY} />
+          <line className={motionLimits?.allowX ? "is-enabled" : "is-locked"} x1={motion.centerX - motion.radiusX} y1={motion.centerY} x2={motion.centerX + motion.radiusX} y2={motion.centerY} />
+          <line className={motionLimits?.allowY ? "is-enabled" : "is-locked"} x1={motion.centerX} y1={motion.centerY - motion.radiusY} x2={motion.centerX} y2={motion.centerY + motion.radiusY} />
+          <circle className={motionLimits?.allowX ? "is-enabled" : "is-locked"} cx={motion.centerX + motion.radiusX} cy={motion.centerY} r={4} />
+          <circle className={motionLimits?.allowY ? "is-enabled" : "is-locked"} cx={motion.centerX} cy={motion.centerY - motion.radiusY} r={4} />
+          <text className="editor-motion-label x" x={motion.centerX + motion.radiusX + 7} y={motion.centerY + 4}>X</text>
+          <text className="editor-motion-label y" x={motion.centerX + 5} y={motion.centerY - motion.radiusY - 6}>Y</text>
+        </g>
+        <line className="editor-motion-bone" x1={motion.centerX} y1={motion.centerY} x2={motion.boneEndX} y2={motion.boneEndY} />
+        {motionLimits?.rotationEnabled && <path className="editor-motion-rotation" d={arcPath(motion.centerX, motion.centerY, motion.rotationRadius, motion.boneRotation - motionLimits.rotationMax, motion.boneRotation - motionLimits.rotationMin)} />}
+        <circle className={motionLimits?.rotationEnabled ? "editor-motion-rotation-handle is-enabled" : "editor-motion-rotation-handle is-locked"} cx={motion.centerX} cy={motion.centerY} r={6} />
+        <text className="editor-motion-label rotation" x={motion.centerX + motion.rotationRadius + 5} y={motion.centerY - 5}>R</text>
       </g>}
       {viewSettings.showBones && bones.map((bone) => (
         <g key={bone.path} className={`editor-bone${bone.path === selectedBone ? " is-selected" : ""}`}>
@@ -841,7 +875,10 @@ export function Editor() {
     if (!selectedInteraction) return;
     if (typeof value === "number") {
       if (!Number.isFinite(value)) return;
-      value = Math.max(field === "smoothing" ? 0.1 : 0, value);
+      if (field === "smoothing") value = Math.max(0.1, value);
+      else if (field === "rotationMin") value = Math.min(0, Math.max(-180, value));
+      else if (field === "rotationMax") value = Math.max(0, Math.min(180, value));
+      else value = Math.max(0, value);
     }
     mutate((current) => ({
       ...current,
@@ -1168,7 +1205,7 @@ export function Editor() {
                frame={frame}
                project={testing && project ? { ...project, selectedRegionId: null } : project}
                viewSettings={renderedViewSettings}
-               motionLimits={!testing && inspectorTab === "movement" && selectedInteraction?.followTargetBone ? { targetBonePath: selectedInteraction.followTargetBone, limitX: selectedInteraction.limitX, limitY: selectedInteraction.limitY, worldSpace: interactionKind(selectedInteraction) === "pinch" } : null}
+               motionLimits={!testing && inspectorTab === "movement" && selectedInteraction?.followTargetBone ? { targetBonePath: selectedInteraction.followTargetBone, limitX: selectedInteraction.limitX, limitY: selectedInteraction.limitY, allowX: selectedInteraction.allowX, allowY: selectedInteraction.allowY, rotationEnabled: selectedInteraction.rotationEnabled, rotationMin: selectedInteraction.rotationMin, rotationMax: selectedInteraction.rotationMax } : null}
                tool={testing ? "pan" : tool}
               onSelectBone={(path) => live((current) => ({ ...current, selectedBonePath: path }))}
               onSelectRegion={(interactionId, regionId) => live((current) => ({ ...current, selectedInteractionId: interactionId, selectedRegionId: regionId }))}
@@ -1198,6 +1235,7 @@ export function Editor() {
                <span>Face <b>{previewDebug.faceAnimation || "—"}</b></span>
                <span>Target <b title={previewDebug.targetBonePath ?? ""}>{previewDebug.targetBonePath?.split("/").pop() ?? "—"}</b></span>
                <span>Offset <b>{previewDebug.offsetX.toFixed(1)}, {previewDebug.offsetY.toFixed(1)}</b></span>
+               <span>Rotation <b>{previewDebug.rotation.toFixed(1)}°</b></span>
              </div>
              <label><input type="checkbox" checked={showTestRegions} onChange={(event) => setShowTestRegions(event.target.checked)} /> Hit regions</label>
            </div>}
@@ -1275,8 +1313,20 @@ export function Editor() {
                  {!targetBoneSearch.trim() && <p className="editor-field-hint">{selectedInteraction.followTargetBone ? `Type to search the ${frame?.bones.length ?? 0}-bone rig.` : "Type to choose a target bone."}</p>}
                </div>
              </div>
-             <div className="editor-three-fields"><label>Sensitivity<input type="number" min="0" max="2" step="0.05" value={selectedInteraction.sensitivity} onChange={(event) => updateInteraction("sensitivity", Number(event.target.value))} /></label><label>Limit X<input type="number" min="0" step="1" value={selectedInteraction.limitX} onChange={(event) => updateInteraction("limitX", Number(event.target.value))} /></label><label>Limit Y<input type="number" min="0" step="1" value={selectedInteraction.limitY} onChange={(event) => updateInteraction("limitY", Number(event.target.value))} /></label></div>
-             <label>Smoothing · {selectedInteraction.smoothing.toFixed(1)} (higher = faster response)<input type="range" min="1" max="24" step="0.5" value={selectedInteraction.smoothing} onChange={(event) => updateInteraction("smoothing", Number(event.target.value))} /></label>
+               <div className="editor-three-fields"><label>Sensitivity<input type="number" min="0" max="2" step="0.05" value={selectedInteraction.sensitivity} onChange={(event) => updateInteraction("sensitivity", Number(event.target.value))} /></label><label>Limit X<input type="number" min="0" step="1" value={selectedInteraction.limitX} onChange={(event) => updateInteraction("limitX", Number(event.target.value))} /></label><label>Limit Y<input type="number" min="0" step="1" value={selectedInteraction.limitY} onChange={(event) => updateInteraction("limitY", Number(event.target.value))} /></label></div>
+              <div className="editor-subheading">Local bone constraints</div>
+              <p className="editor-muted">Translation uses the target parent’s local axes. Rotation is relative to the animated bone pose.</p>
+              <div className="editor-axis-checks" aria-label="Translation axes">
+                <span>Translation axes</span>
+                <label><input type="checkbox" checked={selectedInteraction.allowX} onChange={(event) => updateInteraction("allowX", event.target.checked)} /> Local X</label>
+                <label><input type="checkbox" checked={selectedInteraction.allowY} onChange={(event) => updateInteraction("allowY", event.target.checked)} /> Local Y</label>
+              </div>
+              <div className="editor-two-fields">
+                <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedInteraction.rotationEnabled} onChange={(event) => updateInteraction("rotationEnabled", event.target.checked)} /> Local rotation</span><small className="editor-field-hint">The R gizmo shows the active range.</small></label>
+                <label>Rotation input<select value={selectedInteraction.rotationAxis} disabled={!selectedInteraction.rotationEnabled} onChange={(event) => updateInteraction("rotationAxis", event.target.value)}><option value="x">Local X drag</option><option value="y">Local Y drag</option></select></label>
+              </div>
+              <div className="editor-two-fields"><label>Min rotation °<input type="number" min="-180" max="0" step="1" disabled={!selectedInteraction.rotationEnabled} value={selectedInteraction.rotationMin} onChange={(event) => updateInteraction("rotationMin", Number(event.target.value))} /></label><label>Max rotation °<input type="number" min="0" max="180" step="1" disabled={!selectedInteraction.rotationEnabled} value={selectedInteraction.rotationMax} onChange={(event) => updateInteraction("rotationMax", Number(event.target.value))} /></label></div>
+              <label>Smoothing · {selectedInteraction.smoothing.toFixed(1)} (higher = faster response)<input type="range" min="1" max="24" step="0.5" value={selectedInteraction.smoothing} onChange={(event) => updateInteraction("smoothing", Number(event.target.value))} /></label>
               <button className="editor-preview-button" disabled={!project?.selectedBonePath} onClick={() => updateInteraction("followTargetBone", project?.selectedBonePath ?? null)}>Use selected bone as movement target</button>
               </div>
                </div>

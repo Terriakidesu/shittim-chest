@@ -30,4 +30,37 @@ describe("Spine interaction motion", () => {
     expect(targetBone.y).toBeCloseTo(0, 2);
     expect(nextBone.worldX).toBeCloseTo(10, 2);
   });
+
+  test("locks local translation axes and rotates within authored limits", () => {
+    const data = new SkeletonData();
+    const root = new BoneData(0, "root", null);
+    const target = new BoneData(1, "target", root);
+    target.rotation = 20;
+    data.bones.push(root, target);
+    const skeleton = new Skeleton(data);
+    skeleton.updateWorldTransform(Physics.pose);
+    const targetBone = skeleton.findBone("target")!;
+    const state = createInteractionMotionState();
+    beginInteractionMotion(state, {
+      startAnimation: "",
+      followTargetBone: "root/target",
+      sensitivity: 1,
+      limitX: 100,
+      limitY: 100,
+      smoothing: 1000,
+      allowX: true,
+      allowY: false,
+      rotationEnabled: true,
+      rotationAxis: "x",
+      rotationMin: -10,
+      rotationMax: 30,
+    }, "touch", { x: 0, y: 0 });
+
+    applyInteractionMotion(state, skeleton, { x: 50, y: 50 }, 1);
+
+    expect(targetBone.x).toBeCloseTo(50, 2);
+    expect(targetBone.y).toBeCloseTo(0, 2);
+    expect(targetBone.rotation).toBeCloseTo(35, 2);
+    expect(state.rotation).toBeCloseTo(15, 2);
+  });
 });

@@ -84,6 +84,7 @@ describe("Spine editor project model", () => {
       radiusY: 40,
       rotation: 12,
     });
+    expect(project?.interactions[0]).toMatchObject({ allowX: true, allowY: true, rotationEnabled: false, rotationAxis: "x", rotationMin: -15, rotationMax: 15 });
     expect(normalizeProject({ schemaVersion: 99, interactions: [{ id: "x" }] }, "Airi_home")).toBeNull();
   });
 
