@@ -19,6 +19,7 @@ import { serializeSubtitleDocument } from "./subtitleDocument";
 import type { RecentFile } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
 import { isTextEditingTarget } from "./editorKeyboard";
+import { panStageView, resetStageView, zoomStageView, type StageView } from "./stageView";
 
 const TIMELINE_SCALE = 96;
 const MIN_TIMELINE_DURATION = 1;
@@ -330,9 +331,13 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   const [files, setFiles] = useState<Record<string, SpineFiles | null>>({});
   const [animationDurations, setAnimationDurations] = useState<Record<string, number>>({});
   const [zoom, setZoom] = useState(1);
+  const [stageView, setStageView] = useState<StageView>(() => resetStageView());
+  const [stagePanning, setStagePanning] = useState(false);
   const [markers, setMarkers] = useState<number[]>([]);
   const [inspector, setInspector] = useState<"sequence" | "layer" | "cue" | "audio">("sequence");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const stagePanRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const addMenuRef = useRef<HTMLDetailsElement>(null);
   const scrubRef = useRef<number | null>(null);
   const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
@@ -957,6 +962,58 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
     event.preventDefault();
   }
 
+  function beginStagePan(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || (event.target instanceof Element && event.target.closest(".timeline-stage-controls"))) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    stagePanRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    setStagePanning(true);
+  }
+
+  function moveStagePan(event: ReactPointerEvent<HTMLDivElement>) {
+    const pan = stagePanRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - pan.x;
+    const deltaY = event.clientY - pan.y;
+    if (deltaX === 0 && deltaY === 0) return;
+    stagePanRef.current = { pointerId: pan.pointerId, x: event.clientX, y: event.clientY };
+    setStageView((value) => panStageView(value, deltaX, deltaY));
+  }
+
+  function endStagePan(event: ReactPointerEvent<HTMLDivElement>) {
+    const pan = stagePanRef.current;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    stagePanRef.current = null;
+    setStagePanning(false);
+  }
+
+  function zoomStageAtCursor(event: ReactWheelEvent<HTMLDivElement>) {
+    if (event.target instanceof Element && event.target.closest(".timeline-stage-controls")) return;
+    const stage = event.currentTarget;
+    const rect = stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaMode === 2 ? event.deltaY * rect.height : event.deltaY;
+    const factor = Math.exp(-delta * 0.0015);
+    setStageView((value) => zoomStageView(value, value.scale * factor, { x: event.clientX - rect.left, y: event.clientY - rect.top }, { width: rect.width, height: rect.height }));
+    event.preventDefault();
+  }
+
+  function zoomStageBy(factor: number) {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    setStageView((value) => zoomStageView(value, value.scale * factor, { x: rect.width / 2, y: rect.height / 2 }, { width: rect.width, height: rect.height }));
+  }
+
+  function resetStagePan() {
+    setStageView((value) => ({ ...value, x: 0, y: 0 }));
+  }
+
+  function fitStage() {
+    setStageView(resetStageView());
+  }
+
   function duplicateCue() {
     if (!selectedCue) return;
     const length = selectedCue.end - selectedCue.start;
@@ -970,6 +1027,12 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   useEffect(() => {
     const frame = requestAnimationFrame(fitTimeline);
     return () => cancelAnimationFrame(frame);
+  }, [directory, timeline?.sequenceId]);
+
+  useEffect(() => {
+    stagePanRef.current = null;
+    setStagePanning(false);
+    setStageView(resetStageView());
   }, [directory, timeline?.sequenceId]);
 
   useEffect(() => {
@@ -1017,16 +1080,36 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
              <span><b>{openingPhaseLabel(phase.id)}</b><small>{seconds(phase.start)}–{seconds(phase.end)}</small></span><i>▶</i>
            </button>)}
          </div>}
-        <div className="timeline-stage-wrap">
-          <div className="timeline-stage">
-              {displayLayers.map((layer) => <TimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
-            {timeline.audio.map((clip) => <audio key={clip.id} ref={(element) => { audioElementsRef.current[clip.id] = element; }} src={audioUrls[clip.id]} preload="auto" onLoadedMetadata={(event) => applyDecodedAudioDuration(clip.id, event.currentTarget.duration)} />)}
-             {activeSubtitleTexts.length > 0 && <div className="timeline-subtitle-preview" aria-live="polite">
-               {activeSubtitleTexts.map((text, index) => <div key={`${index}-${text}`}>{text}</div>)}
-             </div>}
-             {!displayLayers.length && <div className="timeline-empty"><strong>No layers</strong><span>Add a Spine set from the ＋ Add menu.</span></div>}
-           </div>
-        </div>
+         <div className="timeline-stage-wrap">
+           <div
+             ref={stageRef}
+             className={`timeline-stage${stagePanning ? " is-panning" : ""}`}
+             role="application"
+             aria-label="Timeline preview canvas. Drag to pan and use the mouse wheel to zoom."
+             onPointerDown={beginStagePan}
+             onPointerMove={moveStagePan}
+             onPointerUp={endStagePan}
+             onPointerCancel={endStagePan}
+             onWheel={zoomStageAtCursor}
+           >
+             <div className="timeline-stage-content" style={{ transform: `translate3d(${stageView.x}px, ${stageView.y}px, 0) scale(${stageView.scale})` }}>
+               {displayLayers.map((layer) => <TimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
+             {timeline.audio.map((clip) => <audio key={clip.id} ref={(element) => { audioElementsRef.current[clip.id] = element; }} src={audioUrls[clip.id]} preload="auto" onLoadedMetadata={(event) => applyDecodedAudioDuration(clip.id, event.currentTarget.duration)} />)}
+              {activeSubtitleTexts.length > 0 && <div className="timeline-subtitle-preview" aria-live="polite">
+                {activeSubtitleTexts.map((text, index) => <div key={`${index}-${text}`}>{text}</div>)}
+              </div>}
+              {!displayLayers.length && <div className="timeline-empty"><strong>No layers</strong><span>Add a Spine set from the ＋ Add menu.</span></div>}
+             </div>
+             <div className="timeline-stage-controls" aria-label="Preview canvas controls" onPointerDown={(event) => event.stopPropagation()}>
+               <button type="button" className="editor-icon-button" aria-label="Zoom out preview" title="Zoom out" onClick={() => zoomStageBy(0.8)}>−</button>
+               <output className="timeline-stage-scale" aria-label="Preview zoom">{Math.round(stageView.scale * 100)}%</output>
+               <button type="button" className="editor-icon-button" aria-label="Zoom in preview" title="Zoom in" onClick={() => zoomStageBy(1.25)}>＋</button>
+               <button type="button" className="editor-button" onClick={resetStagePan} title="Center the preview without changing zoom">Reset pan</button>
+               <button type="button" className="editor-button" onClick={fitStage} title="Reset zoom and center the preview">Fit</button>
+             </div>
+             <span className="timeline-stage-hint" aria-live="polite">{stagePanning ? "Release to stop panning" : "Drag to pan · Wheel to zoom"}</span>
+            </div>
+         </div>
 
          <div className="timeline-transport">
             <button className="editor-icon-button" aria-label={playing ? "Pause sequence" : "Play sequence"} onClick={() => { setPreviewUntil(null); setPlaying((value) => !value); }}>{playing ? "❚❚" : "▶"}</button>

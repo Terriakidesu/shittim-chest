@@ -383,6 +383,14 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--editor-cy
 .opening-phase i { flex: none; color: var(--editor-cyan); font-style: normal; font-size: 10px; }
 .timeline-stage-wrap { display: flex; justify-content: center; min-height: 320px; flex: 1 1 52%; overflow: hidden; }
 .timeline-stage { width: auto; max-width: 100%; height: 100%; min-height: 300px; aspect-ratio: 16 / 9; isolation: isolate; }
+.timeline-stage { touch-action: none; cursor: grab; }
+.timeline-stage.is-panning { cursor: grabbing; }
+.timeline-stage-content { position: absolute; inset: 0; transform-origin: center center; pointer-events: none; will-change: transform; }
+.timeline-stage-controls { position: absolute; top: 8px; right: 8px; z-index: 30; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid #ffffff2e; border-radius: 5px; background: #08121bcc; box-shadow: 0 4px 14px #0006; pointer-events: auto; }
+.timeline-stage-controls .editor-icon-button { width: 27px; height: 27px; min-height: 27px; padding: 0; font-size: 15px; line-height: 1; }
+.timeline-stage-controls .editor-button { min-height: 27px; padding: 4px 7px; font-size: 9px; }
+.timeline-stage-scale { min-width: 40px; color: var(--editor-text); font: 10px ui-monospace, monospace; text-align: center; }
+.timeline-stage-hint { position: absolute; left: 10px; bottom: 9px; z-index: 25; padding: 4px 6px; border: 1px solid #ffffff24; border-radius: 3px; background: #08121baa; color: var(--editor-muted); font: 9px ui-monospace, monospace; pointer-events: none; }
 .timeline-editor-scroll { overflow: auto; flex: 0 1 290px; min-height: 150px; }
 .timeline-track-rows { min-height: 0; }
 .timeline-ruler { touch-action: none; cursor: ew-resize; }
