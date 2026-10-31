@@ -71,6 +71,11 @@ export function timelineForSequence(project: SpineTimelineProject, sequenceId: s
   return project.sequences?.[sequenceId] ?? null;
 }
 
+export function timelinePlaybackDuration(timeline: SpineTimeline): number {
+  const layerEnd = timeline.sequenceId === "opening" ? 0 : Math.max(0, ...timeline.layers.map((layer) => layer.end));
+  return Math.max(1, timeline.duration, layerEnd);
+}
+
 /** Compute the deterministic sample clock shared by the editor and viewer. */
 export function timelineLayerSampleTime(layer: Pick<SpineTimelineLayer, "start" | "animationOffset" | "loop" | "role">, currentTime: number, sequenceId: string, openingMode: SpineTimeline["openingMode"], introDuration: number, animationDuration: number): number {
   const openingCharacter = sequenceId === "opening" && layer.role === "character";
@@ -92,11 +97,6 @@ function finiteNumber(value: unknown, fallback: number): number {
 
 function nonNegative(value: unknown, fallback: number): number {
   return Math.max(0, finiteNumber(value, fallback));
-}
-
-function positive(value: unknown, fallback: number): number {
-  const result = finiteNumber(value, fallback);
-  return result > 0 ? result : fallback;
 }
 
 function timelineRole(value: unknown): SpineTimelineLayerRole {
@@ -129,26 +129,26 @@ function normalizeLayer(value: unknown, index: number, duration: number): SpineT
     animation: stringValue(layer.animation),
     ...(typeof layer.faceAnimation === "string" ? { faceAnimation: layer.faceAnimation } : {}),
     start,
-    end: Math.max(start, finiteNumber(layer.end, duration)),
+    end: Math.max(start + 0.01, finiteNumber(layer.end, duration)),
     ...(layer.endMode === "manual" ? { endMode: "manual" as const } : layer.endMode === "auto" ? { endMode: "auto" as const } : {}),
     animationOffset: nonNegative(layer.animationOffset, 0),
     loop: layer.loop !== false,
     x: finiteNumber(layer.x, 0),
     y: finiteNumber(layer.y, 0),
-    scale: positive(layer.scale, 1),
+    scale: Math.max(0.01, finiteNumber(layer.scale, 1)),
     opacity: Math.max(0, Math.min(1, finiteNumber(layer.opacity, 1))),
-    order: finiteNumber(layer.order, index),
+    order: Math.max(0, finiteNumber(layer.order, index)),
   };
 }
 
 function normalizeSubtitle(value: unknown, index: number, duration: number): SpineTimelineSubtitle | null {
   if (!value || typeof value !== "object") return null;
   const cue = value as Partial<SpineTimelineSubtitle>;
-  const start = Math.max(0, Math.min(duration, finiteNumber(cue.start, 0)));
+  const start = Math.max(0, finiteNumber(cue.start, 0));
   return {
     id: stringValue(cue.id, `subtitle-${index + 1}`),
     start,
-    end: Math.max(start, Math.min(duration, finiteNumber(cue.end, start + 2))),
+    end: Math.max(start + 0.01, finiteNumber(cue.end, Math.min(duration, start + 2))),
     enabled: cue.enabled !== false,
     text: timelineText(cue.text),
   };
@@ -159,13 +159,13 @@ function normalizeAudio(value: unknown, index: number, duration: number): SpineT
   const clip = value as Partial<SpineTimelineAudio>;
   const path = stringValue(clip.path);
   if (!path) return null;
-  const start = Math.max(0, Math.min(duration, finiteNumber(clip.start, 0)));
+  const start = Math.max(0, finiteNumber(clip.start, 0));
   return {
     id: stringValue(clip.id, `audio-${index + 1}`),
     name: stringValue(clip.name, path.split(/[\\/]/).pop() ?? path),
     path,
     start,
-    end: Math.max(start, Math.min(duration, finiteNumber(clip.end, start + 2))),
+    end: Math.max(start + 0.01, finiteNumber(clip.end, Math.min(duration, start + 2))),
     enabled: clip.enabled !== false,
     volume: Math.max(0, Math.min(1, finiteNumber(clip.volume, 1))),
   };

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { timelineForSequence, timelineLayerSampleTime, timelineSequenceIds, type SpineTimeline } from "./spineTimeline";
+import { timelineForSequence, timelineLayerSampleTime, timelinePlaybackDuration, timelineSequenceIds, type SpineTimeline } from "./spineTimeline";
 
 const character = { start: 1, animationOffset: 0.25, loop: false, role: "character" as const };
 
@@ -20,4 +20,9 @@ test("sequence helpers preserve the active timeline and stored sequence copies",
   expect(timelineSequenceIds(project)).toEqual(["talk-1", "opening"]);
   expect(timelineForSequence(project, "talk-1")).toBe(active);
   expect(timelineForSequence(project, "opening")).toBe(opening);
+});
+
+test("talk playback includes a saved layer that extends the nominal duration", () => {
+  const timeline: SpineTimeline = { sequenceId: "talk-1", openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3, durationMode: "manual", duration: 4, loop: false, layers: [{ id: "layer", name: "Airi", role: "character", directory: "Airi_home", enabled: true, animation: "Talk_01_M", start: 0, end: 6, animationOffset: 0, loop: false, x: 0, y: 0, scale: 1, opacity: 1, order: 1 }], subtitles: [], audio: [], language: "en" };
+  expect(timelinePlaybackDuration(timeline)).toBe(6);
 });

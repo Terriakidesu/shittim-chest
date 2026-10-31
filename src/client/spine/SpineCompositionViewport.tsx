@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type CSSProperties } from "react";
 import { SpineRenderer, type SpineCameraPose, type SpineFiles, type SpineMeta, type SpineProgress } from "./spineRuntime";
 import type { AssetSource } from "./spineAssets";
-import { timelineLayerSampleTime, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
+import { timelineLayerSampleTime, timelinePlaybackDuration, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
 
 export interface SpineCompositionViewportHandle {
   resetCamera: () => void;
@@ -206,7 +206,7 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
   }, [audioKey, source, timeline.audio]);
 
   useEffect(() => {
-    const duration = Math.max(1, timeline.duration);
+    const duration = timelinePlaybackDuration(timeline);
     const time = Math.max(0, Math.min(duration, currentTimeRef.current));
     currentTimeRef.current = time;
     onProgressRef.current({ time, duration, animation: null });
@@ -241,7 +241,7 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
       if (!previous) previous = now;
       const elapsed = Math.max(0, (now - previous) / 1000) * speed;
       previous = now;
-      const duration = Math.max(1, timeline.duration);
+      const duration = timelinePlaybackDuration(timeline);
       let next = currentTimeRef.current + elapsed;
       if (next >= duration) {
         if (timeline.loop) next %= duration;
@@ -262,7 +262,7 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, speed, timeline.duration, timeline.loop]);
+  }, [playing, speed, timeline]);
 
   useImperativeHandle(ref, () => ({
     resetCamera: () => setResetCameraSignal((value) => value + 1),
@@ -270,9 +270,9 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
       if (document.fullscreenElement) await document.exitFullscreen();
       else if (stageRef.current?.requestFullscreen) await stageRef.current.requestFullscreen();
     },
-    restartPlayback: () => onProgressRef.current({ time: 0, duration: Math.max(1, timeline.duration), animation: null }),
-    seek: (time) => onProgressRef.current({ time: Math.max(0, Math.min(Math.max(1, timeline.duration), time)), duration: Math.max(1, timeline.duration), animation: null }),
-  }), [timeline.duration]);
+    restartPlayback: () => onProgressRef.current({ time: 0, duration: timelinePlaybackDuration(timeline), animation: null }),
+    seek: (time) => onProgressRef.current({ time: Math.max(0, Math.min(timelinePlaybackDuration(timeline), time)), duration: timelinePlaybackDuration(timeline), animation: null }),
+  }), [timeline]);
 
   const subtitle = timeline.subtitles
     .filter((cue) => cue.enabled && currentTime >= cue.start && currentTime <= cue.end)

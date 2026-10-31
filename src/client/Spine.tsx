@@ -44,7 +44,7 @@ import {
   type SpineVoiceLine,
 } from "./spine/spineVoicelines";
 import { SpineCompositionViewport, type SpineCompositionViewportHandle } from "./spine/SpineCompositionViewport";
-import { timelineForSequence, timelineSequenceIds } from "./spine/spineTimeline";
+import { timelineForSequence, timelinePlaybackDuration, timelineSequenceIds } from "./spine/spineTimeline";
 
 const characterIndex = characterIndexJson as CharacterIndex;
 const characterNames = Object.keys(characterIndex.characters).sort((a, b) => a.localeCompare(b));
@@ -1105,7 +1105,7 @@ export function Spine() {
                   {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}
                 </select></label>
                 {!compositionActive && <label className="spine-check"><input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>}
-                {compositionActive && compositionSequenceIds.length > 0 && <label className="spine-setting-field"><span>{t("spine.sequence")}</span><select value={compositionSequenceId} onChange={(event) => { setProgress({ time: 0, duration: compositionTimeline?.duration ?? 0, animation: null }); setSelectedSequenceId(event.target.value); }} aria-label={t("spine.sequenceAria")}>
+                {compositionActive && compositionSequenceIds.length > 0 && <label className="spine-setting-field"><span>{t("spine.sequence")}</span><select value={compositionSequenceId} onChange={(event) => { setProgress({ time: 0, duration: compositionTimeline ? timelinePlaybackDuration(compositionTimeline) : 0, animation: null }); setSelectedSequenceId(event.target.value); }} aria-label={t("spine.sequenceAria")}>
                   {compositionSequenceIds.map((id) => <option key={id} value={id}>{id === "opening" ? t("spine.sequenceOpening") : id.match(/^talk-(\d+)$/)?.[1] ? t("spine.sequenceTalk", { n: id.match(/^talk-(\d+)$/)![1]! }) : id}</option>)}
                 </select></label>}
                 </>}
