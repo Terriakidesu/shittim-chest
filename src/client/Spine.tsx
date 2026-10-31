@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { IconAlert, IconClose, IconCompress, IconExpand, IconFolder, IconHand, IconMessage, IconPause, IconPlay, IconRotate, IconSearch, IconSliders, IconTarget, IconUsers } from "./components/icons";
+import { IconAlert, IconClose, IconCompress, IconDot, IconExpand, IconEye, IconEyeOff, IconFolder, IconHand, IconMessage, IconPause, IconPlay, IconRotate, IconSearch, IconSliders, IconTarget, IconUsers } from "./components/icons";
 import { LanguageSwitch } from "./components/LanguageSwitch";
 import { SiteNav } from "./components/SiteNav";
 import { ThemeSwitch } from "./components/ThemeSwitch";
@@ -286,6 +286,7 @@ export function Spine() {
   const [skipIntro, setSkipIntro] = useState(false);
   const [showInteractionPoints, setShowInteractionPoints] = useState(false);
   const [showFullscreenControls, setShowFullscreenControls] = useState(true);
+  const [fullscreenClean, setFullscreenClean] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [effectsStrength, setEffectsStrength] = useState(DEFAULT_EFFECTS_STRENGTH);
   const [progress, setProgress] = useState<SpineProgress>({ time: 0, duration: 0, animation: null });
@@ -311,6 +312,7 @@ export function Spine() {
   const voiceRunRef = useRef(0);
   const voiceSessionRef = useRef<VoiceSession | null>(null);
   const autoPlayTimerRef = useRef<number | null>(null);
+  const fullscreenHideTimerRef = useRef<number | null>(null);
   const talkAutoplayRef = useRef(false);
   const authoredTalkIndexRef = useRef(0);
   const stagePointer = useRef<{ x: number; y: number } | null>(null);
@@ -743,6 +745,41 @@ export function Spine() {
     setSelectedDirectory(nextVariant?.directory ?? "");
   }, [availableDirectories, selectedCharacter, source]);
 
+  const clearFullscreenHideTimer = () => {
+    if (fullscreenHideTimerRef.current !== null) window.clearTimeout(fullscreenHideTimerRef.current);
+    fullscreenHideTimerRef.current = null;
+  };
+
+  const scheduleFullscreenHide = () => {
+    clearFullscreenHideTimer();
+    if (!fullscreen || fullscreenClean || showOptions) return;
+    fullscreenHideTimerRef.current = window.setTimeout(() => {
+      fullscreenHideTimerRef.current = null;
+      if (document.fullscreenElement) setShowFullscreenControls(false);
+    }, 3600);
+  };
+
+  const handleFullscreenActivity = () => {
+    if (!fullscreen || fullscreenClean) return;
+    setShowFullscreenControls(true);
+    scheduleFullscreenHide();
+  };
+
+  const enterCleanFullscreen = () => {
+    if (!fullscreen) return;
+    clearFullscreenHideTimer();
+    setShowOptions(false);
+    setShowSidebar(false);
+    setShowFullscreenControls(false);
+    setFullscreenClean(true);
+  };
+
+  const exitCleanFullscreen = () => {
+    setFullscreenClean(false);
+    setShowFullscreenControls(true);
+    scheduleFullscreenHide();
+  };
+
   useEffect(() => {
     const onFullscreen = () => {
       const active = Boolean(document.fullscreenElement);
@@ -750,10 +787,18 @@ export function Spine() {
       setShowSidebar(!active);
       setShowOptions(false);
       setShowFullscreenControls(true);
+      setFullscreenClean(false);
     };
     document.addEventListener("fullscreenchange", onFullscreen);
     return () => document.removeEventListener("fullscreenchange", onFullscreen);
   }, []);
+
+  useEffect(() => {
+    scheduleFullscreenHide();
+    return clearFullscreenHideTimer;
+  }, [fullscreen, fullscreenClean, showOptions]);
+
+  useEffect(() => () => clearFullscreenHideTimer(), []);
 
   useEffect(() => {
     if (window.matchMedia("(max-width: 900px)").matches) setShowSidebar(false);
@@ -1010,14 +1055,21 @@ export function Spine() {
       } else if (key === "o") {
         event.preventDefault();
         setShowOptions((shown) => !shown);
+      } else if (key === "escape" && fullscreenClean) {
+        event.preventDefault();
+        exitCleanFullscreen();
       } else if (key === "h" && fullscreen) {
         event.preventDefault();
-        setShowFullscreenControls((shown) => !shown);
+        if (fullscreenClean) exitCleanFullscreen();
+        else if (showFullscreenControls) {
+          clearFullscreenHideTimer();
+          setShowFullscreenControls(false);
+        } else handleFullscreenActivity();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [cameraMode, fullscreen, interactionMode, interactionReady, loop, meta, playing, speed]);
+  }, [cameraMode, fullscreen, fullscreenClean, interactionMode, interactionReady, loop, meta, playing, showFullscreenControls, speed]);
 
   return <main className="spine-page">
     <SiteNav active="spine" />
@@ -1054,7 +1106,7 @@ export function Spine() {
 
     {error && <div className="alert spine-alert" role="alert">{error}</div>}
 
-    <div className={`spine-layout${showSidebar ? "" : " spine-sidebar-hidden"}`}>
+    <div className={`spine-layout${showSidebar ? "" : " spine-sidebar-hidden"}${fullscreenClean ? " spine-clean-mode" : ""}`}>
       <aside id="spine-sidebar" className="spine-sidebar">
         <section className="spine-selector panel">
           <div className="spine-panel-heading">
@@ -1107,7 +1159,7 @@ export function Spine() {
         </section>
       </aside>
 
-      <section className={`spine-workspace${showFullscreenControls ? "" : " spine-controls-hidden"}`} aria-label={t("spine.viewerAria")}>
+       <section className={`spine-workspace${showFullscreenControls && !fullscreenClean ? "" : " spine-controls-hidden"}`} aria-label={t("spine.viewerAria")} onPointerMove={handleFullscreenActivity} onPointerDown={handleFullscreenActivity}>
         <div className="spine-workspace-heading">
            <div className="spine-workspace-identity"><strong>{selectedCharacter}</strong><span>{selectedVariant?.extraType ? extraLabel(selectedVariant.extraType) : selectedVariant?.variant}</span></div>
           <div className="spine-workspace-status">
@@ -1122,9 +1174,10 @@ export function Spine() {
         }} onPointerUp={(event) => {
           const start = stagePointer.current;
           stagePointer.current = null;
-          if (fullscreen && interactionMode === "free" && start && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 5) {
-            setShowFullscreenControls((shown) => !shown);
-          }
+           if (fullscreen && start && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 5) {
+             if (fullscreenClean) exitCleanFullscreen();
+             else if (interactionMode === "free") setShowFullscreenControls((shown) => !shown);
+           }
         }} onPointerCancel={() => { stagePointer.current = null; }}>
           {compositionActive && compositionTimeline && source
              ? <SpineCompositionViewport
@@ -1181,7 +1234,7 @@ export function Spine() {
           {isLoading && setFiles && <div className="spine-loading" aria-live="polite">{t("spine.loading")}</div>}
           <div className="spine-stage-hint">{t(interactionMode === "interaction" ? "spine.interactionHint" : "spine.stageHint")}</div>
         </div>
-        {fullscreen && !showFullscreenControls && <button className="spine-show-controls-floating" type="button" onClick={() => setShowFullscreenControls(true)}><IconSliders /><span>{t("spine.controls.show")}</span></button>}
+         {fullscreen && !fullscreenClean && !showFullscreenControls && <button className="spine-show-controls-floating" type="button" onClick={handleFullscreenActivity}><IconSliders /><span>{t("spine.controls.show")}</span></button>}
 
         <div id="spine-playback-controls" className={`spine-controls${showOptions ? " spine-options-open" : ""}`} aria-label={t("spine.controlsAria")}>
           <div className="spine-toolbar-row">
@@ -1195,7 +1248,8 @@ export function Spine() {
               <button className={`spine-tool-button${showInteractionPoints ? " is-active" : ""}`} type="button" disabled={!meta} aria-pressed={showInteractionPoints} onClick={() => setShowInteractionPoints((shown) => !shown)} aria-label={t("spine.showInteractionPoints")} title={t("spine.showInteractionPoints")}><IconTarget /><span>{t("spine.points")}</span></button>
               <button className={`spine-tool-button${showOptions ? " is-active" : ""}`} type="button" aria-expanded={showOptions} aria-controls="spine-options" onClick={() => setShowOptions((shown) => !shown)}><IconSliders /><span>{t("spine.options")}</span></button>
               <button className="spine-tool-button spine-sidebar-toggle" type="button" aria-expanded={showSidebar} aria-controls="spine-sidebar" onClick={() => setShowSidebar((shown) => !shown)} title={t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}><IconUsers /><span>{t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}</span></button>
-              {fullscreen && <button className="spine-tool-button spine-fullscreen-controls-toggle" type="button" aria-expanded={showFullscreenControls} onClick={() => setShowFullscreenControls((shown) => !shown)} title={t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}><IconSliders /><span>{t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}</span></button>}
+               {fullscreen && <button className="spine-tool-button spine-clean-mode-toggle" type="button" aria-pressed={fullscreenClean} onClick={fullscreenClean ? exitCleanFullscreen : enterCleanFullscreen} title={t(fullscreenClean ? "spine.cleanMode.exit" : "spine.cleanMode.enter")}><span>{fullscreenClean ? <IconEye /> : <IconEyeOff />}</span><span>{t("spine.cleanMode")}</span></button>}
+               {fullscreen && <button className="spine-tool-button spine-fullscreen-controls-toggle" type="button" aria-expanded={showFullscreenControls} onClick={() => setShowFullscreenControls((shown) => !shown)} title={t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}><IconSliders /><span>{t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}</span></button>}
                <button className="spine-tool-button" type="button" onClick={() => void activeViewport()?.toggleFullscreen()} aria-label={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")} title={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")}><span>{fullscreen ? <IconCompress /> : <IconExpand />}</span><span className="spine-button-label">{t("spine.fullscreen")}</span></button>
             </div>
            </div>
@@ -1253,7 +1307,7 @@ export function Spine() {
                   </select></label>}
                  {!compositionActive && <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={skipIntro} onChange={(event) => toggleSkipIntro(event.target.checked)} />{t("spine.skipIntro")}</label>}
                 {voiceLines.length > 0 && <>
-                  <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={voiceEnabled} onChange={(event) => setVoiceEnabled(event.target.checked)} />{t("spine.voice")}{voicePlaying && <small>●</small>}</label>
+                   <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={voiceEnabled} onChange={(event) => setVoiceEnabled(event.target.checked)} />{t("spine.voice")}{voicePlaying && <small><IconDot /></small>}</label>
                   <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={showDialogue} onChange={(event) => setShowDialogue(event.target.checked)} />{t("spine.dialogue")}</label>
                 </>}
                 <label className="spine-setting-field spine-effects-field"><span>{t("spine.effects")}</span><input type="range" min="0" max="1" step="0.05" value={effectsStrength} onChange={(event) => setEffectsStrength(Number(event.target.value))} aria-label={t("spine.effects")} title={t("spine.effects.hint")} /><output>{Math.round(effectsStrength * 100)}%</output></label>

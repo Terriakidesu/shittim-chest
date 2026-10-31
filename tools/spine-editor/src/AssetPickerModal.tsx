@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { IconCheck, IconChevronRight, IconClose, IconFolder, IconSearch } from "../../../src/client/components/icons";
 
 export interface AssetPickerModalProps {
   open: boolean;
@@ -58,15 +59,15 @@ export function AssetPickerModal({ open, title, eyebrow = "CHOOSE ASSET SET", de
           <h2 id="asset-picker-title">{title}</h2>
           {description && <p>{description}</p>}
         </div>
-        <button className="editor-modal-close" type="button" aria-label="Close asset picker" onClick={onClose}>×</button>
+         <button className="editor-modal-close" type="button" aria-label="Close asset picker" onClick={onClose}><IconClose /></button>
       </header>
-      <label className="editor-modal-search"><span aria-hidden="true">⌕</span><input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={chooseFirst} placeholder="Search asset sets…" aria-label="Search asset sets" /></label>
+       <label className="editor-modal-search"><IconSearch /><input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={chooseFirst} placeholder="Search asset sets…" aria-label="Search asset sets" /></label>
       <div className="editor-modal-count">{filtered.length} of {directories.length} asset sets{query && <span> · Enter opens the first match</span>}</div>
       <div className="editor-modal-list" role="listbox" aria-label={title}>
         {filtered.map((directory) => <button key={directory} type="button" role="option" aria-selected={directory === selected} className={`editor-modal-option${directory === selected ? " is-selected" : ""}`} onClick={() => onSelect(directory)}>
-          <span className="editor-modal-option-icon">{directory === selected ? "✓" : "◇"}</span>
-          <span className="editor-modal-option-label">{renderLabel ? renderLabel(directory) : directory}</span>
-          <span className="editor-modal-option-arrow">›</span>
+           <span className="editor-modal-option-icon">{directory === selected ? <IconCheck /> : <IconFolder />}</span>
+           <span className="editor-modal-option-label">{renderLabel ? renderLabel(directory) : directory}</span>
+           <span className="editor-modal-option-arrow"><IconChevronRight /></span>
         </button>)}
         {filtered.length === 0 && <div className="editor-modal-empty">{emptyLabel}</div>}
       </div>

@@ -61,6 +61,46 @@ export function IconChevronDown(props: IconProps) {
   );
 }
 
+export function IconPlus(props: IconProps) {
+  return <Base {...props}><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></Base>;
+}
+
+export function IconMinus(props: IconProps) {
+  return <Base {...props}><line x1="5" y1="12" x2="19" y2="12" /></Base>;
+}
+
+export function IconMenu(props: IconProps) {
+  return <Base {...props}><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></Base>;
+}
+
+export function IconDot(props: IconProps) {
+  return <Base {...props}><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" /></Base>;
+}
+
+export function IconFile(props: IconProps) {
+  return <Base {...props}><path d="M6 3h8l4 4v14H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /><path d="M14 3v5h5M8 13h8M8 17h6" /></Base>;
+}
+
+export function IconLink(props: IconProps) {
+  return <Base {...props}><path d="m10 13.5 4-4" /><path d="M7.5 17.5H6a4 4 0 0 1 0-8h3" /><path d="M16.5 6.5H18a4 4 0 0 1 0 8h-3" /></Base>;
+}
+
+export function IconUnlink(props: IconProps) {
+  return <Base {...props}><path d="m9 15 6-6" /><path d="M7.5 17.5H6a4 4 0 0 1-2.4-7.2M16.5 6.5H18a4 4 0 0 1 2.4 7.2" /><path d="M8 8h2M14 16h2" /></Base>;
+}
+
+export function IconSync(props: IconProps) {
+  return <Base {...props}><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.1 9A7 7 0 0 1 18.5 7L20 8.5M4 15.5 5.5 17A7 7 0 0 0 17.9 15" /></Base>;
+}
+
+export function IconSkipBack(props: IconProps) {
+  return <Base {...props}><line x1="6" y1="5" x2="6" y2="19" /><path d="m18 6-7 6 7 6Z" /></Base>;
+}
+
+export function IconSkipForward(props: IconProps) {
+  return <Base {...props}><line x1="18" y1="5" x2="18" y2="19" /><path d="m6 6 7 6-7 6Z" /></Base>;
+}
+
 export function IconClose(props: IconProps) {
   return (
     <Base {...props}>
@@ -127,6 +167,14 @@ export function IconSliders(props: IconProps) {
 
 export function IconTarget(props: IconProps) {
   return <Base {...props}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /><path d="M12 2v3m0 14v3M2 12h3m14 0h3" /></Base>;
+}
+
+export function IconEye(props: IconProps) {
+  return <Base {...props}><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /></Base>;
+}
+
+export function IconEyeOff(props: IconProps) {
+  return <Base {...props}><path d="m3 3 18 18" /><path d="M10.6 6.2A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a17.5 17.5 0 0 1-3.1 3.8M6.2 6.8C3.8 8.5 2.5 12 2.5 12s3.5 6 9.5 6a9.7 9.7 0 0 0 3-.5" /></Base>;
 }
 
 export function IconHand(props: IconProps) {

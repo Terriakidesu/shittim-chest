@@ -421,6 +421,10 @@ a { color: var(--cyan); }
 .spine-layout:fullscreen .spine-workspace-heading { display: none; }
 .spine-layout:fullscreen .spine-controls { position: absolute; z-index: 7; bottom: max(18px, env(safe-area-inset-bottom)); left: 50%; right: auto; transform: translateX(-50%); width: min(760px, calc(100% - 24px)); box-sizing: border-box; max-height: 48vh; overflow-y: auto; margin: 0; padding: 7px 9px; border: 1px solid #ffffff20; border-radius: 12px; background: #10202dbf; backdrop-filter: blur(12px); color: #edf7ff; box-shadow: 0 4px 20px #0003; }
 .spine-layout:fullscreen .spine-workspace.spine-controls-hidden .spine-controls { display: none; }
+.spine-layout:fullscreen .spine-dialogue { bottom: calc(min(48vh, 420px) + max(34px, env(safe-area-inset-bottom))); }
+.spine-layout:fullscreen .spine-workspace.spine-controls-hidden .spine-dialogue { bottom: clamp(24px, 8%, 72px); }
+.spine-layout:fullscreen.spine-clean-mode .spine-sidebar, .spine-layout:fullscreen.spine-clean-mode .spine-controls, .spine-layout:fullscreen.spine-clean-mode .spine-show-controls-floating { display: none; }
+.spine-layout:fullscreen.spine-clean-mode .spine-loading, .spine-layout:fullscreen.spine-clean-mode .spine-stage-empty { display: none; }
 .spine-layout:fullscreen .spine-controls .spine-tool-button, .spine-layout:fullscreen .spine-controls .spine-mode-switch button { color: #edf7ff; }
 .spine-layout:fullscreen .spine-controls .spine-tool-button:hover, .spine-layout:fullscreen .spine-controls .spine-tool-button.is-active, .spine-layout:fullscreen .spine-mode-switch button.is-selected { background: #ffffff1c; color: #8eeaff; }
 .spine-layout:fullscreen .spine-playback-row { border-color: #ffffff20; }

@@ -1,4 +1,4 @@
-import { ensureTimelineLayers, type EditorProject, type EditorTimeline, type EditorTimelineLayer } from "./editorModel";
+import { ensureTimelineLayers, type EditorAudioClip, type EditorProject, type EditorSubtitleCue, type EditorTimeline, type EditorTimelineLayer } from "./editorModel";
 import { timelineLayerPlaybackEnd, timelineOpeningDuration } from "../../../src/client/spine/spineTimeline";
 
 export type OpeningPhaseId = "scene" | "intro" | "idle";
@@ -60,6 +60,47 @@ export function extendTimelineDuration(timeline: EditorTimeline): EditorTimeline
   return duration === timeline.duration ? timeline : { ...timeline, duration };
 }
 
+/** Resolve an audio clip's explicit link, then retain compatibility with imported lineId links. */
+export function linkedSubtitleForAudio(timeline: EditorTimeline, clip: Pick<EditorAudioClip, "subtitleId" | "lineId" | "start">): EditorSubtitleCue | null {
+  if (clip.subtitleId === null) return null;
+  if (clip.subtitleId) return timeline.subtitles.find((cue) => cue.id === clip.subtitleId) ?? null;
+  if (!clip.lineId) return null;
+  return timeline.subtitles
+    .filter((cue) => cue.lineId === clip.lineId)
+    .sort((a, b) => Math.abs(a.start - clip.start) - Math.abs(b.start - clip.start))[0] ?? null;
+}
+
+/** Set or clear an explicit one-to-one audio/subtitle relationship. */
+export function linkAudioToSubtitle(timeline: EditorTimeline, audioId: string, subtitleId: string | null): EditorTimeline {
+  if (subtitleId !== null && !timeline.subtitles.some((cue) => cue.id === subtitleId)) return timeline;
+  if (!timeline.audio.some((clip) => clip.id === audioId)) return timeline;
+  return {
+    ...timeline,
+    audio: timeline.audio.map((clip) => clip.id === audioId
+      ? { ...clip, subtitleId }
+      : subtitleId !== null && clip.subtitleId === subtitleId
+        ? { ...clip, subtitleId: null }
+        : clip),
+  };
+}
+
+/** Fit an audio clip to its decoded source, and fit its linked subtitle when one exists. */
+export function matchAudioAndSubtitleLength(timeline: EditorTimeline, audioId: string, decodedDuration: number): EditorTimeline {
+  if (!Number.isFinite(decodedDuration) || decodedDuration <= 0) return timeline;
+  const clip = timeline.audio.find((item) => item.id === audioId);
+  if (!clip) return timeline;
+  const start = Math.max(0, clip.start);
+  const end = start + Math.max(0.01, decodedDuration);
+  const linked = linkedSubtitleForAudio(timeline, clip);
+  return extendTimelineDuration({
+    ...timeline,
+    audio: timeline.audio.map((item) => item.id === audioId ? { ...item, start, end, autoEnd: true } : item),
+    subtitles: linked
+      ? timeline.subtitles.map((cue) => cue.id === linked.id ? { ...cue, start, end } : cue)
+      : timeline.subtitles,
+  });
+}
+
 /** Move an audio clip and its nearest subtitle cue from the same imported line together. */
 export function moveAudioClip(timeline: EditorTimeline, id: string, start: number): EditorTimeline {
   const clip = timeline.audio.find((item) => item.id === id);
@@ -69,20 +110,9 @@ export function moveAudioClip(timeline: EditorTimeline, id: string, start: numbe
   const audio = timeline.audio.map((item) => item.id === id
     ? { ...item, start: nextStart, end: Math.max(nextStart + 0.01, item.end + delta) }
     : item);
-  if (Math.abs(delta) < 0.000001 || !clip.lineId) return extendTimelineDuration({ ...timeline, audio });
-
-  let linkedIndex = -1;
-  let linkedDistance = Number.POSITIVE_INFINITY;
-  timeline.subtitles.forEach((cue, index) => {
-    if (cue.lineId !== clip.lineId) return;
-    const distance = Math.abs(cue.start - clip.start);
-    if (distance < linkedDistance) {
-      linkedIndex = index;
-      linkedDistance = distance;
-    }
-  });
-  if (linkedIndex < 0) return extendTimelineDuration({ ...timeline, audio });
-  const subtitles = timeline.subtitles.map((cue, index) => index === linkedIndex
+  const linked = linkedSubtitleForAudio(timeline, clip);
+  if (Math.abs(delta) < 0.000001 || !linked) return extendTimelineDuration({ ...timeline, audio });
+  const subtitles = timeline.subtitles.map((cue) => cue.id === linked.id
     ? { ...cue, start: Math.max(0, cue.start + delta), end: Math.max(cue.start + delta + 0.01, cue.end + delta) }
     : cue);
   return extendTimelineDuration({ ...timeline, audio, subtitles });

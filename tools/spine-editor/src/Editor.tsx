@@ -38,6 +38,7 @@ import { characterDirectoryLabel, parseCharacterDirectoryLabels, type CharacterD
 import { editorProjectPath } from "./editorStorage";
 import { pendingProjectForDirectory, readSavedEditorProject, saveManifestEditorProject } from "./editorProject";
 import { isTextEditingTarget } from "./editorKeyboard";
+import { IconCheck, IconChevronDown, IconChevronRight, IconClose, IconDot, IconExpand, IconFile, IconFolder, IconHand, IconMenu, IconMessage, IconPause, IconPlay, IconPlus, IconSliders, IconSound, IconTarget } from "../../../src/client/components/icons";
 
 function displayName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -723,7 +724,7 @@ export function Editor() {
           setStatus(`Loading ${item.label} into the timeline…`);
         } else {
           setPendingAudioPaths(null);
-          setStatus(`Reopened ${item.label}. Use Add → Audio files to place it on the timeline.`);
+           setStatus(`Reopened ${item.label}. Use Add, then Audio files, to place it on the timeline.`);
         }
       }
     } catch (value) {
@@ -1100,10 +1101,10 @@ export function Editor() {
     return <div className="editor-recent-list">
       {recentFiles.slice(0, limit).map((item) => <div className="editor-recent-item" key={`${item.kind}:${item.rootPath}:${item.path}`}>
         <button className="editor-recent-open" title={recentPath(item)} onClick={() => void openRecentFile(item)}>
-          <span className={`editor-recent-icon kind-${item.kind}`}>{item.kind === "folder" ? "▰" : item.kind === "project" ? "◇" : item.kind === "subtitle" ? "≡" : "♫"}</span>
+           <span className={`editor-recent-icon kind-${item.kind}`}>{item.kind === "folder" ? <IconFolder /> : item.kind === "project" ? <IconFile /> : item.kind === "subtitle" ? <IconMessage /> : <IconSound />}</span>
           <span><b>{item.label}</b><small>{recentKindLabel(item.kind)} · {displayName(item.rootPath)}</small></span>
         </button>
-        <button className="editor-recent-remove" aria-label={`Remove ${item.label} from recent files`} title="Remove from recent files" onClick={() => forgetRecentFile(item)}>×</button>
+         <button className="editor-recent-remove" aria-label={`Remove ${item.label} from recent files`} title="Remove from recent files" onClick={() => forgetRecentFile(item)}><IconClose /></button>
       </div>)}
       {recentFiles.length > limit && <span className="editor-recent-more">{recentFiles.length - limit} more in Open menu</span>}
     </div>;
@@ -1121,9 +1122,9 @@ export function Editor() {
             <button className={`editor-button${workspace === "interaction" ? " active" : ""}`} role="tab" aria-selected={workspace === "interaction"} onClick={() => setWorkspace("interaction")}>Interactions</button>
             <button className={`editor-button${workspace === "timeline" ? " active" : ""}`} role="tab" aria-selected={workspace === "timeline"} onClick={() => setWorkspace("timeline")} disabled={!assetLoaded}>Timeline</button>
           </div>
-          <div className="editor-asset-picker"><span>Set</span><button className="editor-asset-picker-button" type="button" aria-haspopup="dialog" aria-expanded={assetPickerOpen} onClick={() => setAssetPickerOpen(true)} disabled={!directories.length} title={directory || "Open a folder first"}><span>{directory ? characterDirectoryLabel(directory, directoryLabels) : "Open a folder…"}</span><b aria-hidden="true">⌄</b></button></div>
+           <div className="editor-asset-picker"><span>Set</span><button className="editor-asset-picker-button" type="button" aria-haspopup="dialog" aria-expanded={assetPickerOpen} onClick={() => setAssetPickerOpen(true)} disabled={!directories.length} title={directory || "Open a folder first"}><span>{directory ? characterDirectoryLabel(directory, directoryLabels) : "Open a folder…"}</span><IconChevronDown /></button></div>
           <details className="editor-open-menu">
-            <summary className="editor-button">Open ▾</summary>
+             <summary className="editor-button"><IconFolder /> Open <IconChevronDown /></summary>
             <div className="editor-open-menu-popover">
               <button className="editor-button" onClick={() => void openFolder()}>Asset folder…</button>
               <button className="editor-button" onClick={() => void openProjectFile()}>Project file…</button>
@@ -1131,14 +1132,14 @@ export function Editor() {
               {recentList(8)}
             </div>
           </details>
-          <span className={`editor-save-state is-${saveState}`} aria-live="polite">● {saveLabel}</span>
+           <span className={`editor-save-state is-${saveState}`} aria-live="polite"><IconDot /> {saveLabel}</span>
           <button className="editor-button editor-save-button" onClick={() => void saveProject()} disabled={!assetLoaded || saveState === "saving"}>Save files</button>
           <button className="editor-button" onClick={() => setHelp((value) => !value)} title="Keyboard shortcuts (?)">? Help</button>
         </div>
       </header>
       <AssetPickerModal open={assetPickerOpen} title="Switch character or asset set" eyebrow="CHARACTER / ASSET SET" description="Search the loaded Spine catalog, then choose the set to edit." directories={directories} selected={directory} renderLabel={(item) => characterDirectoryLabel(item, directoryLabels)} getSearchText={(item) => characterDirectoryLabel(item, directoryLabels)} onClose={() => setAssetPickerOpen(false)} onSelect={(next) => { setAssetPickerOpen(false); void changeDirectory(next); }} />
 
-      {help && <div className="editor-help" role="region" aria-label="Editor help"><strong>Shortcuts</strong>{workspace === "timeline" ? <span>Space Play/pause · ←/→ Frame · Shift+←/→ 10 frames · Home/End · S Split subtitle · Ctrl/⌘ D Duplicate · Delete Remove · F Fit · Ctrl/⌘ S Save</span> : <><span>Draw a hit region → choose animations → Test → press, hold, drag, release.</span><span>V Select · H Pan · R Draw · T Test · F Fit · B Bones · Space Play/pause · Esc Idle/Edit</span><span>Ctrl/⌘ Z Undo · Shift Z Redo · Ctrl/⌘ D Duplicate · Delete Remove region · Ctrl/⌘ S Save</span></>}<button className="editor-button" onClick={() => setHelp(false)}>Close</button></div>}
+       {help && <div className="editor-help" role="region" aria-label="Editor help"><strong>Shortcuts</strong>{workspace === "timeline" ? <span>Space Play/pause · Left/right Frame · Shift+Left/right 10 frames · Home/End · S Split subtitle · Ctrl/⌘ D Duplicate · Delete Remove · F Fit · Ctrl/⌘ S Save</span> : <><span>Draw a hit region, choose animations, then test it with press, hold, drag, and release.</span><span>V Select · H Pan · R Draw · T Test · F Fit · B Bones · Space Play/pause · Esc Idle/Edit</span><span>Ctrl/⌘ Z Undo · Shift Z Redo · Ctrl/⌘ D Duplicate · Delete Remove region · Ctrl/⌘ S Save</span></>}<button className="editor-button" onClick={() => setHelp(false)}><IconClose /> Close</button></div>}
       <main className={`editor-layout${leftHidden ? " hide-left" : ""}${rightHidden ? " hide-right" : ""}${!assetLoaded ? " is-loading" : ""}`} style={{ position: workspace === "timeline" ? "absolute" : undefined, visibility: workspace === "timeline" ? "hidden" : undefined, inset: workspace === "timeline" ? "100px 0 40px" : undefined, pointerEvents: workspace === "timeline" ? "none" : undefined, gridTemplateColumns: `${leftHidden ? "" : `${leftWidth}px `}minmax(180px, 1fr)${rightHidden ? "" : ` ${rightWidth}px`}` }}>
         {assetLoaded && (["left", "right"] as const).filter((side) => side === "left" ? !leftHidden : !rightHidden).map((side) => <div key={side} className={`editor-panel-resizer ${side}`} role="separator" aria-label={`Resize ${side} panel`} aria-orientation="vertical" tabIndex={0} style={side === "left" ? { left: leftWidth + 7 } : { right: rightWidth + 7 }} onDoubleClick={() => side === "left" ? setLeftWidth(220) : setRightWidth(320)} onKeyDown={(event) => {
           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -1160,7 +1161,7 @@ export function Editor() {
                 const hasChildren = frame?.bones.some((candidate) => candidate.path.startsWith(`${bone.path}/`)) ?? false;
                 const collapsed = collapsedBones.has(bone.path);
                 return <div key={bone.path} className="editor-bone-row" style={{ paddingLeft: `${Math.min(32, depth * 12)}px` }}>
-                  <button className="editor-bone-toggle" disabled={!hasChildren} aria-label={`${collapsed ? "Expand" : "Collapse"} ${bone.name}`} aria-expanded={hasChildren ? !collapsed : undefined} onClick={() => toggleBone(bone.path)}>{hasChildren ? collapsed ? "▸" : "▾" : "·"}</button>
+                   <button className="editor-bone-toggle" disabled={!hasChildren} aria-label={`${collapsed ? "Expand" : "Collapse"} ${bone.name}`} aria-expanded={hasChildren ? !collapsed : undefined} onClick={() => toggleBone(bone.path)}>{hasChildren ? collapsed ? <IconChevronRight /> : <IconChevronDown /> : <IconDot />}</button>
                   <button className={`editor-bone-item${project?.selectedBonePath === bone.path ? " is-selected" : ""}`} title={bone.path} onClick={() => live((current) => ({ ...current, selectedBonePath: bone.path }))}>
                     <span className="editor-bone-dot" />{bone.name}
                   </button>
@@ -1168,8 +1169,8 @@ export function Editor() {
               })}
             </div>
           </section>
-          <details className="editor-section editor-constraints">
-            <summary className="editor-section-title"><strong>Constraints</strong><span>{frame?.constraints.length ?? 0}</span></summary>
+           <details className="editor-section editor-constraints">
+             <summary className="editor-section-title"><strong>Constraints</strong><span>{frame?.constraints.length ?? 0}</span><IconPlus className="editor-details-icon" /></summary>
             <div className="editor-constraint-list">
               {frame?.constraints.map((constraint) => <div key={`${constraint.type}-${constraint.name}`}><b>{constraint.type}</b> {constraint.name}<small>{constraint.target || "physics"}</small></div>)}
               {!frame?.constraints.length && <p className="editor-muted">No constraints in this skeleton.</p>}
@@ -1195,14 +1196,14 @@ export function Editor() {
             </div>
           </div>}
           <div className="editor-toolbar" role="toolbar" aria-label="Canvas tools">
-            <button className="editor-button" onClick={() => setLeftHidden((value) => !value)} title="Toggle bone panel">☰ Bones</button>
-            <button className={`editor-button${!testing && tool === "select" ? " active" : ""}`} onClick={() => { setTesting(false); setTool("select"); }} title="Select and transform regions (V)">Select</button>
-            <button className={`editor-button${!testing && tool === "pan" ? " active" : ""}`} onClick={() => { setTesting(false); setTool("pan"); }} title="Drag canvas to pan; wheel to zoom (H)">Pan</button>
-            <button className={`editor-button${!testing && tool === "draw" ? " active" : ""}`} disabled={!selectedInteraction} onClick={() => { setTesting(false); setTool("draw"); setStatus("Click and drag on the canvas to draw a hit region."); }} title="Draw a hit region (R)">Draw region</button>
-            <button className={`editor-button${testing ? " active test" : ""}`} onClick={toggleTest} disabled={!project} title="Run the full authored interaction (T)">{testing ? "● Test" : "▶ Test"}</button>
-            <button className="editor-button" onClick={() => rendererRef.current?.resetCamera()} title="Fit artwork to canvas (F)">Fit</button>
-            <details className="editor-overlay-menu">
-              <summary className="editor-button">Overlays ▾</summary>
+             <button className="editor-button" onClick={() => setLeftHidden((value) => !value)} title="Toggle bone panel"><IconMenu /> Bones</button>
+             <button className={`editor-button${!testing && tool === "select" ? " active" : ""}`} onClick={() => { setTesting(false); setTool("select"); }} title="Select and transform regions (V)"><IconTarget /> Select</button>
+             <button className={`editor-button${!testing && tool === "pan" ? " active" : ""}`} onClick={() => { setTesting(false); setTool("pan"); }} title="Drag canvas to pan; wheel to zoom (H)"><IconHand /> Pan</button>
+             <button className={`editor-button${!testing && tool === "draw" ? " active" : ""}`} disabled={!selectedInteraction} onClick={() => { setTesting(false); setTool("draw"); setStatus("Click and drag on the canvas to draw a hit region."); }} title="Draw a hit region (R)"><IconPlus /> Draw region</button>
+             <button className={`editor-button${testing ? " active test" : ""}`} onClick={toggleTest} disabled={!project} title="Run the full authored interaction (T)">{testing ? <><IconPause /> Test</> : <><IconPlay /> Test</>}</button>
+             <button className="editor-button" onClick={() => rendererRef.current?.resetCamera()} title="Fit artwork to canvas (F)"><IconExpand /> Fit</button>
+             <details className="editor-overlay-menu">
+               <summary className="editor-button"><IconSliders /> Overlays <IconChevronDown /></summary>
               <div className="editor-overlay-menu-popover">
                 <label><input type="checkbox" checked={displaySettings.showBones} onChange={(event) => updateViewSetting("showBones", event.target.checked)} /> Bones</label>
                 <label><input type="checkbox" checked={displaySettings.showBoneNames} onChange={(event) => updateViewSetting("showBoneNames", event.target.checked)} /> Names</label>
@@ -1211,7 +1212,7 @@ export function Editor() {
               </div>
             </details>
             <button className="editor-button" onClick={resetPreview} disabled={!meta}>Reset idle</button>
-            <button className="editor-button" onClick={() => setRightHidden((value) => !value)} title="Toggle inspector">Inspector ☰</button>
+             <button className="editor-button" onClick={() => setRightHidden((value) => !value)} title="Toggle inspector">Inspector <IconMenu /></button>
           </div>
           <div className="editor-stage" ref={stageRef} onDoubleClick={(event) => { if (!testing && event.target === canvasRef.current) rendererRef.current?.resetCamera(); }}>
             <canvas ref={canvasRef} aria-label="Spine editor canvas" />
@@ -1255,7 +1256,7 @@ export function Editor() {
            </div>}
           <div className="editor-timeline">
             <div className="editor-timeline-top">
-              <button className="editor-icon-button" title="Play/pause (Space)" onClick={() => { const next = !playing; setPlaying(next); rendererRef.current?.setPlaying(next); }} disabled={!frame || testing}>{playing ? "❚❚" : "▶"}</button>
+               <button className="editor-icon-button" title="Play/pause (Space)" onClick={() => { const next = !playing; setPlaying(next); rendererRef.current?.setPlaying(next); }} disabled={!frame || testing}>{playing ? <IconPause /> : <IconPlay />}</button>
               <select aria-label="Preview animation" value={selectedAnimation} onChange={(event) => { setSelectedAnimation(event.target.value); rendererRef.current?.setAnimation(event.target.value, true); }} disabled={!meta || testing}>
                 {meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}
               </select>
@@ -1269,14 +1270,14 @@ export function Editor() {
         <aside className={`editor-panel editor-right-panel tab-${inspectorTab}`} hidden={!assetLoaded || rightHidden}>
            <nav className="editor-tabs" aria-label="Inspector sections">{(["region", "animation", "movement"] as const).map((tab) => <button key={tab} aria-pressed={inspectorTab === tab} onClick={(event) => { setInspectorTab(tab); event.currentTarget.closest("aside")?.scrollTo({ top: 0 }); }}>{tab === "region" ? "Region" : tab === "animation" ? "Animation" : "Movement"}</button>)}</nav>
           <section className="editor-section editor-interactions-section">
-            <div className="editor-section-title"><strong>Interactions</strong><button onClick={addInteraction} disabled={!project || !frame}>＋ Add</button></div>
+             <div className="editor-section-title"><strong>Interactions</strong><button onClick={addInteraction} disabled={!project || !frame}><IconPlus /> Add</button></div>
             <input className="editor-search" value={interactionSearch} onChange={(event) => setInteractionSearch(event.target.value)} placeholder="Filter interactions…" />
             <div className="editor-interaction-list">
               {visibleInteractions.map((item) => <button key={item.id} className={item.id === project?.selectedInteractionId ? "is-selected" : ""} onClick={() => selectInteraction(item.id)}><i style={{ background: item.color }} />{item.name}<small>{item.regions.length} region{item.regions.length === 1 ? "" : "s"}</small></button>)}
             </div>
           </section>
           <details className={`editor-section editor-validation${validationWarnings.length ? " has-warnings" : ""}`}>
-            <summary>{validationWarnings.length ? `${validationWarnings.length} checks to review` : "✓ Project checks passed"}</summary>
+             <summary>{validationWarnings.length ? `${validationWarnings.length} checks to review` : <><IconCheck /> Project checks passed</>}</summary>
             <div className="editor-section-title"><strong>Validation</strong><span>{validationWarnings.length ? `${validationWarnings.length} warning${validationWarnings.length === 1 ? "" : "s"}` : "Ready"}</span></div>
             {validationWarnings.length === 0
               ? <p className="editor-muted">No missing animations, bones, or overlapping regions.</p>
@@ -1291,7 +1292,7 @@ export function Editor() {
              <div className="editor-two-fields"><label>Trigger<select value={selectedInteraction.trigger} onChange={(event) => updateInteraction("trigger", event.target.value)}><option value="press">Press</option><option value="hold">Hold</option><option value="drag">Drag</option></select></label><label>Color<input type="color" value={selectedInteraction.color} onChange={(event) => updateInteraction("color", event.target.value)} /></label></div>
              <label><input type="checkbox" checked={selectedInteraction.enabled} onChange={(event) => updateInteraction("enabled", event.target.checked)} /> Enabled</label>
               <div className="editor-animation-fields">
-              <div className="editor-subheading">On press → While held → On release</div>
+              <div className="editor-subheading">On press, while held, on release</div>
               <p className="editor-muted">Body and face tracks play together over idle. Test runs the complete sequence.</p>
               <button className="editor-preview-button" onClick={detectPhases}>Auto-detect phases from press animation</button>
               <div className="editor-phase-strip" aria-label="Interaction animation phases">
@@ -1346,7 +1347,7 @@ export function Editor() {
                </div>
              </details>
               <div className="editor-region-fields">
-             <div className="editor-subheading editor-region-heading"><span>Hit regions</span><button onClick={addRegion}>＋ Add region</button></div>
+              <div className="editor-subheading editor-region-heading"><span>Hit regions</span><button onClick={addRegion}><IconPlus /> Add region</button></div>
             <div className="editor-region-list">
               {selectedInteraction.regions.map((region) => <button key={region.id} className={region.id === project?.selectedRegionId ? "is-selected" : ""} onClick={() => live((current) => ({ ...current, selectedRegionId: region.id }))}><i style={{ background: selectedInteraction.color }} />{region.name}<small>{region.shape}</small></button>)}
               {!selectedInteraction.regions.length && <p className="editor-muted">No hit regions. Add one to make this interaction clickable.</p>}

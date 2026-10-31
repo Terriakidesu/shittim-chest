@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createProject, normalizeProject } from "./editorModel";
-import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, moveAudioClip, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
+import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAudioClip, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
 
 test("talk sequences pair body and face and isolate subtitle clocks", () => {
   const animations = ["Idle_01", "Talk_01_M", "Talk_01_A", "Talk_02_M", "Talk_02_A"];
@@ -146,6 +146,25 @@ test("moving linked audio moves its nearest subtitle cue but not unlinked cues",
   expect(moved.audio.find((clip) => clip.id === "linked")).toMatchObject({ start: 4, end: 6 });
   expect(moved.subtitles.find((cue) => cue.id === "linked-cue")).toMatchObject({ start: 4, end: 5 });
   expect(moved.subtitles.find((cue) => cue.id === "free-cue")).toMatchObject({ start: 1, end: 2 });
+});
+
+test("audio links can target a cue directly and match both ranges to decoded duration", () => {
+  const timeline = createProject("Airi_home", [], []).timeline;
+  timeline.audio = [{ id: "voice", name: "voice.ogg", path: "voice.ogg", start: 1, end: 2, enabled: true, volume: 1 }];
+  timeline.subtitles = [
+    { id: "first", start: 1, end: 1.5, enabled: true, text: { en: "First", ja: "", ko: "" } },
+    { id: "second", start: 3, end: 4, enabled: true, text: { en: "Second", ja: "", ko: "" } },
+  ];
+  const linked = linkAudioToSubtitle(timeline, "voice", "second");
+  expect(linkedSubtitleForAudio(linked, linked.audio[0]! )?.id).toBe("second");
+  const matched = matchAudioAndSubtitleLength(linked, "voice", 2.75);
+  expect(matched.audio[0]).toMatchObject({ start: 1, end: 3.75, autoEnd: true });
+  expect(matched.subtitles.find((cue) => cue.id === "second")).toMatchObject({ start: 1, end: 3.75 });
+  const unlinked = linkAudioToSubtitle(matched, "voice", null);
+  expect(linkedSubtitleForAudio(unlinked, unlinked.audio[0]!)).toBeNull();
+  const secondAudio = { id: "voice-2", name: "voice-2.ogg", path: "voice-2.ogg", start: 3, end: 4, enabled: true, volume: 1, subtitleId: "second" };
+  const oneToOne = linkAudioToSubtitle({ ...unlinked, audio: [...unlinked.audio, secondAudio] }, "voice", "second");
+  expect(oneToOne.audio.find((clip) => clip.id === "voice-2")?.subtitleId).toBeNull();
 });
 
 test("opening phases keep scene, intro, and idle boundaries explicit", () => {

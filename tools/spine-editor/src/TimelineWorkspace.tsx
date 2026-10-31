@@ -14,7 +14,7 @@ import {
 import type { DesktopAssetSource } from "./desktopSource";
 import { manifestReferenceCandidates } from "../../../src/client/spine/spineManifest";
 import { audioPlaybackDecision, clampAudioEnd, clampAudioStart, decodedAudioTiming } from "./audioModel";
-import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
+import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
 import { advanceSpineTimeline, timelineActiveSubtitleTexts, timelineMainAnimation, timelinePlaybackDuration } from "../../../src/client/spine/spineTimeline";
 import { SpineTimelineLayerCanvas } from "../../../src/client/spine/SpineTimelineLayerCanvas";
 import { spineAudioPathCandidates } from "../../../src/client/spine/spineAudio";
@@ -24,6 +24,7 @@ import { AssetPickerModal } from "./AssetPickerModal";
 import { characterDirectoryLabel, type CharacterDirectoryLabels } from "./characterCatalog";
 import { isTextEditingTarget } from "./editorKeyboard";
 import { panStageView, resetStageView, zoomStageView, type StageView } from "./stageView";
+import { IconChevronDown, IconChevronLeft, IconChevronRight, IconExpand, IconLink, IconMinus, IconPause, IconPlay, IconPlus, IconSkipBack, IconSkipForward, IconSound, IconSync, IconUnlink } from "../../../src/client/components/icons";
 
 const TIMELINE_SCALE = 96;
 const MIN_TIMELINE_DURATION = 1;
@@ -538,11 +539,10 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     if (!clip?.autoEnd) return;
     const timing = decodedAudioTiming(clip.start, decodedDuration);
     if (!timing) return;
-    if (Math.abs(clip.end - timing.end) < 0.01) return;
-    updateTimeline((value) => extendTimelineDuration({
-      ...value,
-      audio: value.audio.map((item) => item.id === id ? { ...item, end: timing.end } : item),
-    }), false);
+    const linked = linkedSubtitleForAudio(currentTimeline, clip);
+    const linkedTimingMatches = !linked || (Math.abs(linked.start - clip.start) < 0.01 && Math.abs(linked.end - timing.end) < 0.01);
+    if (Math.abs(clip.end - timing.end) < 0.01 && linkedTimingMatches) return;
+    updateTimeline((value) => matchAudioAndSubtitleLength(value, id, decodedDuration), false);
   }
 
   useEffect(() => {
@@ -694,6 +694,28 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
 
   function updateAudio(id: string, patch: Partial<EditorAudioClip>, history = true) {
     updateTimeline((value) => extendTimelineDuration({ ...value, audio: value.audio.map((clip) => clip.id === id ? { ...clip, ...patch } : clip) }), history);
+  }
+
+  function setAudioSubtitleLink(audioId: string, subtitleId: string | null) {
+    updateTimeline((value) => linkAudioToSubtitle(value, audioId, subtitleId));
+    setPreviewUntil(null);
+  }
+
+  function matchSelectedAudioLength() {
+    if (!selectedAudio || selectedAudioDuration === undefined) {
+      onStatus("Decode the audio first before matching its length.");
+      return;
+    }
+    const linked = timeline ? linkedSubtitleForAudio(timeline, selectedAudio) : null;
+    updateTimeline((value) => matchAudioAndSubtitleLength(value, selectedAudio.id, selectedAudioDuration));
+    onStatus(linked ? "Matched the audio clip and linked subtitle to the source duration." : "Matched the audio clip to the source duration.");
+  }
+
+  function previewSelectedAudio() {
+    if (!selectedAudio) return;
+    setCurrentTime(selectedAudio.start);
+    setPreviewUntil(selectedAudio.end);
+    setPlaying(true);
   }
 
   function addAudioFiles(selected: Array<{ path: string; file: File }>) {
@@ -892,7 +914,8 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     if (!selectedCue) return;
     updateTimeline((value) => {
       const subtitles = value.subtitles.filter((cue) => cue.id !== selectedCue.id);
-      return { ...value, subtitles, selectedCueId: null };
+      const audio = value.audio.map((clip) => clip.subtitleId === selectedCue.id ? { ...clip, subtitleId: null } : clip);
+      return { ...value, subtitles, audio, selectedCueId: null };
     });
     setSelectedClips([]);
     setInspector("sequence");
@@ -919,7 +942,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       ...value,
       layers: value.layers.filter((layer) => !removableLayers.has(layer.id)),
       subtitles: value.subtitles.filter((cue) => !cues.has(cue.id)),
-      audio: value.audio.filter((clip) => !audio.has(clip.id)),
+      audio: value.audio.filter((clip) => !audio.has(clip.id)).map((clip) => clip.subtitleId && cues.has(clip.subtitleId) ? { ...clip, subtitleId: null } : clip),
       selectedLayerId: removableLayers.has(value.selectedLayerId ?? "") ? null : value.selectedLayerId,
       selectedCueId: cues.has(value.selectedCueId ?? "") ? null : value.selectedCueId,
     }));
@@ -990,11 +1013,10 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     return items.flatMap((item) => {
       if (item.kind !== "audio" || !item.linked) return [];
       const clip = timeline.audio.find((candidate) => candidate.id === item.id);
-      if (!clip?.lineId) return [];
-      const cue = timeline.subtitles
-        .filter((candidate) => candidate.lineId === clip.lineId && !existing.has(candidate.id))
-        .sort((a, b) => Math.abs(a.start - clip.start) - Math.abs(b.start - clip.start))[0];
+      if (!clip) return [];
+      const cue = linkedSubtitleForAudio(timeline, clip);
       if (!cue) return [];
+      if (existing.has(cue.id)) return [];
       existing.add(cue.id);
       return [{ kind: "cue" as const, id: cue.id, start: cue.start, end: cue.end, linked: true }];
     });
@@ -1232,6 +1254,10 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   ] as const).filter(([, count]) => count > 0).map(([, count, label]) => `${count} ${label}${count === 1 ? "" : "s"}`).join(" · ");
   const deletableSelectionCount = selectedClipDetails.filter((item) => item.removable).length;
   const selectedAudioDuration = selectedAudio ? audioDurations[selectedAudio.id] : undefined;
+  const selectedAudioLinkedSubtitle = selectedAudio && timeline ? linkedSubtitleForAudio(timeline, selectedAudio) : null;
+  const selectedAudioLinkCandidate = selectedAudioLinkedSubtitle ?? (selectedAudio && timeline
+    ? [...timeline.subtitles].sort((a, b) => Math.abs(a.start - selectedAudio.start) - Math.abs(b.start - selectedAudio.start))[0] ?? null
+    : null);
   const selectedAudioMaximumEnd = selectedAudio && selectedAudioDuration !== undefined
     ? clampAudioEnd(selectedAudio.start, Number.POSITIVE_INFINITY, selectedAudioDuration)
     : undefined;
@@ -1254,7 +1280,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
          <div className="sequence-heading"><div><strong>{timeline.sequenceId === "opening" ? "Opening / Intro" : timeline.sequenceId?.startsWith("talk-") ? `Talk ${timeline.sequenceId.replace("talk-", "")}` : "Recovered composition"}</strong><small>{timeline.sequenceId === "opening" ? "Compose the scene, character entrance, and idle hold." : "Synchronized Spine composition"}</small></div>{timeline.sequenceId === "opening" && <span className="opening-duration-badge">{timeline.durationMode === "auto" ? "AUTO" : "MANUAL"} · {seconds(duration)}</span>}</div>
          {timeline.sequenceId === "opening" && <div className="opening-phase-strip" aria-label="Opening phases">
            {openingPhases.map((phase) => <button key={phase.id} className={`opening-phase${currentTime >= phase.start && currentTime < phase.end ? " is-active" : ""}`} onClick={() => previewOpeningPhase(phase)} title={`Preview ${openingPhaseLabel(phase.id)}`}>
-             <span><b>{openingPhaseLabel(phase.id)}</b><small>{seconds(phase.start)}–{seconds(phase.end)}</small></span><i>▶</i>
+              <span><b>{openingPhaseLabel(phase.id)}</b><small>{seconds(phase.start)}–{seconds(phase.end)}</small></span><i><IconPlay /></i>
            </button>)}
          </div>}
          <div className="timeline-stage-wrap">
@@ -1272,15 +1298,15 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
                <div className="timeline-stage-content" style={{ transform: `translate3d(${stageView.x}px, ${stageView.y}px, 0) scale(${stageView.scale})` }}>
                   {displayLayers.map((layer) => <SpineTimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} mainAnimation={mainAnimation} mainAnimationTime={mainAnimationTime} mainAnimationLoop={mainAnimationLoop} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
                  {timeline.audio.map((clip) => <audio key={clip.id} ref={(element) => { audioElementsRef.current[clip.id] = element; }} src={audioUrls[clip.id]} preload="auto" onLoadedMetadata={(event) => applyDecodedAudioDuration(clip.id, event.currentTarget.duration)} />)}
-                 {!displayLayers.length && <div className="timeline-empty"><strong>No layers</strong><span>Add a Spine set from the ＋ Add menu.</span></div>}
+                  {!displayLayers.length && <div className="timeline-empty"><strong>No layers</strong><span>Add a Spine set from the Add menu.</span></div>}
                </div>
                {activeSubtitleTexts.length > 0 && <div className="timeline-subtitle-preview" aria-live="polite">
                  {activeSubtitleTexts.map((text, index) => <div key={`${index}-${text}`}>{text}</div>)}
                </div>}
                <div className="timeline-stage-controls" aria-label="Preview canvas controls" onPointerDown={(event) => event.stopPropagation()}>
-               <button type="button" className="editor-icon-button" aria-label="Zoom out preview" title="Zoom out" onClick={() => zoomStageBy(0.8)}>−</button>
+                <button type="button" className="editor-icon-button" aria-label="Zoom out preview" title="Zoom out" onClick={() => zoomStageBy(0.8)}><IconMinus /></button>
                <output className="timeline-stage-scale" aria-label="Preview zoom">{Math.round(stageView.scale * 100)}%</output>
-               <button type="button" className="editor-icon-button" aria-label="Zoom in preview" title="Zoom in" onClick={() => zoomStageBy(1.25)}>＋</button>
+                <button type="button" className="editor-icon-button" aria-label="Zoom in preview" title="Zoom in" onClick={() => zoomStageBy(1.25)}><IconPlus /></button>
                <button type="button" className="editor-button" onClick={resetStagePan} title="Center the preview without changing zoom">Reset pan</button>
                <button type="button" className="editor-button" onClick={fitStage} title="Reset zoom and center the preview">Fit</button>
              </div>
@@ -1289,10 +1315,10 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
          </div>
 
          <div className="timeline-transport">
-            <button className="editor-icon-button" aria-label={playing ? "Pause sequence" : "Play sequence"} onClick={() => { setPreviewUntil(null); setPlaying((value) => !value); }}>{playing ? "❚❚" : "▶"}</button>
-            <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(0); setPlaying(false); }}>⏮ Start</button>
-           {timeline.sequenceId === "opening" && <><button className="editor-button" onClick={() => stepOpeningPhase(-1)} disabled={!openingPhases.length}>◀ Phase</button><button className="editor-button" onClick={() => stepOpeningPhase(1)} disabled={!openingPhases.length}>Phase ▶</button></>}
-            <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(duration); setPlaying(false); }}>End ⏭</button>
+             <button className="editor-icon-button" aria-label={playing ? "Pause sequence" : "Play sequence"} onClick={() => { setPreviewUntil(null); setPlaying((value) => !value); }}>{playing ? <IconPause /> : <IconPlay />}</button>
+             <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(0); setPlaying(false); }}><IconSkipBack /> Start</button>
+            {timeline.sequenceId === "opening" && <><button className="editor-button" onClick={() => stepOpeningPhase(-1)} disabled={!openingPhases.length}><IconChevronLeft /> Phase</button><button className="editor-button" onClick={() => stepOpeningPhase(1)} disabled={!openingPhases.length}>Phase <IconChevronRight /></button></>}
+             <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(duration); setPlaying(false); }}>End <IconSkipForward /></button>
           <label className="editor-speed">Speed <input type="number" min="0.1" max="3" step="0.1" value={speed} onChange={(event) => setSpeed(Math.max(0.1, Number(event.target.value) || 1))} /></label>
           <label className="timeline-loop"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop</label>
           <span className="editor-time">{seconds(currentTime)} / {seconds(duration)}</span>
@@ -1337,7 +1363,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
             <div className="timeline-row audio-row">
               <div className="timeline-track-label"><b>AUDIO</b><span>{timeline.audio.length} clip{timeline.audio.length === 1 ? "" : "s"}</span></div>
               <div className="timeline-track timeline-audio-track" onPointerDown={seekFromEvent}>
-                  {timeline.audio.map((clip) => <div key={clip.id} className={`timeline-audio-clip${isClipSelected("audio", clip.id) || clip.id === selectedAudio?.id ? " is-selected" : ""}${clip.enabled ? "" : " is-disabled"}`} title="Drag to move the audio; drag an edge to change its timing. Shift/Ctrl-click to select multiple." style={{ left: clip.start * TIMELINE_SCALE * zoom, width: Math.max(12, (clip.end - clip.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { const selection = selectTimelineClip({ kind: "audio", id: clip.id }, event); if (selection) beginDrag(event, "audio", clip.id, clip.start, clip.end, selection); }}><button type="button" className="timeline-clip-start-handle" aria-label={`Move ${clip.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "audio", id: clip.id }, event); if (selection) beginDrag(event, "audio-start", clip.id, clip.start, clip.end, selection); }} /><button type="button" className="timeline-clip-end-handle" aria-label={`Move ${clip.name} end`} title="Drag to change end time" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "audio", id: clip.id }, event); if (selection) beginDrag(event, "audio-end", clip.id, clip.start, clip.end, selection); }} /><AudioWaveform url={audioUrls[clip.id]} onDuration={(value) => applyDecodedAudioDuration(clip.id, value)} /><span>♫ {clip.name}</span></div>)}
+                   {timeline.audio.map((clip) => <div key={clip.id} className={`timeline-audio-clip${isClipSelected("audio", clip.id) || clip.id === selectedAudio?.id ? " is-selected" : ""}${clip.enabled ? "" : " is-disabled"}`} title="Drag to move the audio; drag an edge to change its timing. Shift/Ctrl-click to select multiple." style={{ left: clip.start * TIMELINE_SCALE * zoom, width: Math.max(12, (clip.end - clip.start) * TIMELINE_SCALE * zoom) }} onPointerDown={(event) => { const selection = selectTimelineClip({ kind: "audio", id: clip.id }, event); if (selection) beginDrag(event, "audio", clip.id, clip.start, clip.end, selection); }}><button type="button" className="timeline-clip-start-handle" aria-label={`Move ${clip.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "audio", id: clip.id }, event); if (selection) beginDrag(event, "audio-start", clip.id, clip.start, clip.end, selection); }} /><button type="button" className="timeline-clip-end-handle" aria-label={`Move ${clip.name} end`} title="Drag to change end time" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "audio", id: clip.id }, event); if (selection) beginDrag(event, "audio-end", clip.id, clip.start, clip.end, selection); }} /><AudioWaveform url={audioUrls[clip.id]} onDuration={(value) => applyDecodedAudioDuration(clip.id, value)} /><span><IconSound /> {clip.name}</span></div>)}
                 <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
               </div>
             </div>
@@ -1346,9 +1372,9 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
          <div className="timeline-bottom-tools">
            <label>Snap <select value={timeline.snap} onChange={(event) => updateTimeline((value) => ({ ...value, snap: Number(event.target.value) }))}><option value="0">Off</option><option value="0.01">10 ms</option><option value="0.1">100 ms</option><option value="0.25">250 ms</option><option value="0.5">500 ms</option></select></label>
            <label>Zoom <input type="range" min="0.5" max="3" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
-           <button className="editor-button" onClick={fitTimeline}>Fit (F)</button>
-            <details ref={addMenuRef} className="timeline-add-menu">
-              <summary className="editor-button">＋ Add</summary>
+            <button className="editor-button" onClick={fitTimeline}><IconExpand /> Fit (F)</button>
+             <details ref={addMenuRef} className="timeline-add-menu">
+               <summary className="editor-button"><IconPlus /> Add <IconChevronDown /></summary>
               <div className="timeline-add-menu-popover">
                 <button className="editor-button" onClick={() => { closeAddMenu(); addCue(); }}>Subtitle cue</button>
                 <button className="editor-button" onClick={() => { closeAddMenu(); void importAudio(); }}>Audio files</button>
@@ -1371,7 +1397,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
                 const openingMode = event.target.value as "direct" | "scene-first" | "skip";
                 const start = Math.max(0, value.sceneDuration ?? 3);
                 return { ...value, openingMode, layers: openingMode === "scene-first" ? value.layers.map((layer) => layer.role === "character" ? { ...layer, start } : layer) : value.layers };
-              })}><option value="scene-first">Scene → Intro → Idle</option><option value="direct">Intro → Idle</option><option value="skip">Idle only</option></select></label>
+               })}><option value="scene-first">Scene / Intro / Idle</option><option value="direct">Intro / Idle</option><option value="skip">Idle only</option></select></label>
               {timeline.openingMode === "scene-first" && <label>Scene lead-in / intro start (s)<input type="number" min="0" step="0.1" value={Number((characterLayer?.start ?? timeline.sceneDuration ?? 0).toFixed(3))} onChange={(event) => updateTimeline((value) => {
                 const start = Math.max(0, Number(event.target.value) || 0);
                 return { ...value, sceneDuration: start, layers: value.layers.map((layer) => layer.role === "character" ? { ...layer, start } : layer) };
@@ -1385,7 +1411,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
              <div className="opening-phase-summary">{openingPhases.map((phase) => <button key={phase.id} onClick={() => previewOpeningPhase(phase)}><b>{openingPhaseLabel(phase.id)}</b><span>{seconds(phase.end - phase.start)}</span></button>)}</div>
            </div>}
           <div className="timeline-context-summary"><span>Layers <b>{displayLayers.length}</b></span><span>Subtitles <b>{timeline.subtitles.length}</b></span><span>Audio <b>{timeline.audio.length}</b></span></div>
-          <p className="editor-muted">Select a clip in the timeline to edit its properties. Add content from the <b>＋ Add</b> menu.</p>
+           <p className="editor-muted">Select a clip in the timeline to edit its properties. Add content from the <b>Add</b> menu.</p>
            {timeline.subtitles.some((cue, index, all) => all.some((other, j) => index !== j && cue.start < other.end && cue.end > other.start)) && <p className="editor-error">Overlapping subtitle cues: review timing before export.</p>}
          </section>}
 
@@ -1435,9 +1461,20 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           <label>Name<input value={selectedAudio.name} onChange={(event) => updateAudio(selectedAudio.id, { name: event.target.value })} /></label>
              <div className="editor-two-fields"><label>Start (s)<input type="number" min={selectedAudioMinimumStart} step="0.001" value={Number(selectedAudio.start.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { start: selectedAudioDuration !== undefined ? clampAudioStart(selectedAudio.end, Number(event.target.value) || 0, selectedAudioDuration) : Math.min(selectedAudio.end - 0.01, Math.max(0, Number(event.target.value) || 0)) })} /></label><label>End (s)<input type="number" min="0.01" max={selectedAudioMaximumEnd} step="0.001" value={Number(selectedAudio.end.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { autoEnd: false, end: selectedAudioDuration !== undefined ? clampAudioEnd(selectedAudio.start, Number(event.target.value) || selectedAudio.start + 0.01, selectedAudioDuration) : Math.max(selectedAudio.start + 0.01, Number(event.target.value) || selectedAudio.start + 0.01) })} /></label></div>
              {selectedAudioDuration !== undefined && <small className="editor-field-hint">Source duration: {seconds(selectedAudioDuration)}. The clip cannot be extended past its source.</small>}
-          <label>Volume · {Math.round(selectedAudio.volume * 100)}%<input type="range" min="0" max="1" step="0.01" value={selectedAudio.volume} onChange={(event) => updateAudio(selectedAudio.id, { volume: Number(event.target.value) })} /></label>
-          <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAudio.enabled} onChange={(event) => updateAudio(selectedAudio.id, { enabled: event.target.checked })} /> Enabled</span></label>
-          {missingAudio.includes(selectedAudio.path) && <><p className="editor-error">Audio file is missing from the selected asset root.</p><button className="editor-button" onClick={() => void relinkAudio()}>Relink audio</button></>}
+           <label>Volume · {Math.round(selectedAudio.volume * 100)}%<input type="range" min="0" max="1" step="0.01" value={selectedAudio.volume} onChange={(event) => updateAudio(selectedAudio.id, { volume: Number(event.target.value) })} /></label>
+           <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAudio.enabled} onChange={(event) => updateAudio(selectedAudio.id, { enabled: event.target.checked })} /> Enabled</span></label>
+           <label>Linked subtitle<select aria-label="Linked subtitle" value={selectedAudio.subtitleId === null ? "__none__" : selectedAudio.subtitleId ?? selectedAudioLinkedSubtitle?.id ?? "__none__"} onChange={(event) => setAudioSubtitleLink(selectedAudio.id, event.target.value === "__none__" ? null : event.target.value)}>
+             <option value="__none__">No linked subtitle</option>
+             {timeline.subtitles.map((cue) => <option key={cue.id} value={cue.id}>{seconds(cue.start)} · {cueText(cue, timeline.language)}</option>)}
+           </select><small className="editor-field-hint">{selectedAudio.subtitleId === undefined && selectedAudioLinkedSubtitle ? "Imported line link; Link subtitle saves an explicit relationship." : "Moving the audio moves its linked subtitle."}</small></label>
+           <div className="timeline-audio-actions">
+             <button className="editor-button" type="button" disabled={!selectedAudioLinkCandidate} onClick={() => selectedAudioLinkCandidate && setAudioSubtitleLink(selectedAudio.id, selectedAudioLinkCandidate.id)} title="Link the nearest subtitle, or make the current legacy link explicit"><IconLink /> {selectedAudioLinkedSubtitle ? "Link subtitle" : "Link nearest"}</button>
+             <button className="editor-button" type="button" disabled={!selectedAudioLinkedSubtitle && selectedAudio.subtitleId == null} onClick={() => setAudioSubtitleLink(selectedAudio.id, null)} title="Remove the audio/subtitle relationship"><IconUnlink /> Unlink</button>
+             <button className="editor-button" type="button" disabled={selectedAudioDuration === undefined} onClick={matchSelectedAudioLength} title="Set this clip and its linked subtitle to the decoded source duration"><IconSync /> Match source</button>
+             <button className="editor-button" type="button" onClick={previewSelectedAudio} title="Preview this clip"><IconPlay /> Preview</button>
+           </div>
+           {selectedAudioLinkedSubtitle && <p className="editor-muted timeline-audio-link-note">Linked to “{cueText(selectedAudioLinkedSubtitle, timeline.language)}” · {seconds(selectedAudioLinkedSubtitle.start)}–{seconds(selectedAudioLinkedSubtitle.end)}</p>}
+           {missingAudio.includes(selectedAudio.path) && <><p className="editor-error">Audio file is missing from the selected asset root.</p><button className="editor-button" onClick={() => void relinkAudio()}>Relink audio</button></>}
           <button className="editor-preview-button danger" onClick={deleteAudio}>Delete clip</button>
           <p className="editor-muted" title={selectedAudio.path}>{selectedAudio.path}</p>
         </section>}

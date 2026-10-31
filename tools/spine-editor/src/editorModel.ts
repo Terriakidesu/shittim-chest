@@ -84,6 +84,8 @@ export interface EditorSubtitleCue {
 export interface EditorAudioClip {
   autoEnd?: boolean;
   lineId?: string;
+  /** Explicit one-to-one subtitle link; null disables the legacy lineId link. */
+  subtitleId?: string | null;
   id: string;
   name: string;
   path: string;
@@ -487,6 +489,7 @@ function normalizeAudioClip(value: Partial<EditorAudioClip>, index: number, dura
     path,
     autoEnd: value.autoEnd === true,
     lineId: typeof value.lineId === "string" ? value.lineId : undefined,
+    ...(typeof value.subtitleId === "string" || value.subtitleId === null ? { subtitleId: value.subtitleId } : {}),
     start,
     end: Math.max(start + 0.01, finiteNumber(value.end, Math.min(duration, start + 2), 0)),
     enabled: value.enabled !== false,
@@ -548,7 +551,8 @@ export function normalizeTimeline(value: unknown, directory: string): EditorTime
   const audio = collapseDuplicateAudio((Array.isArray(raw.audio) ? raw.audio as unknown[] : [])
     .filter((item) => Boolean(item && typeof item === "object"))
     .map((item, index) => normalizeAudioClip(item as Partial<EditorAudioClip>, index, duration))
-    .filter((item): item is EditorAudioClip => item !== null));
+    .filter((item): item is EditorAudioClip => item !== null))
+    .map((clip) => clip.subtitleId && !subtitles.some((cue) => cue.id === clip.subtitleId) ? { ...clip, subtitleId: null } : clip);
   const selectedLayer = typeof raw.selectedLayerId === "string" && layers.some((layer) => layer.id === raw.selectedLayerId) ? raw.selectedLayerId : layers[0]?.id ?? null;
   const selectedCue = typeof raw.selectedCueId === "string" && subtitles.some((cue) => cue.id === raw.selectedCueId) ? raw.selectedCueId : subtitles[0]?.id ?? null;
   return {
