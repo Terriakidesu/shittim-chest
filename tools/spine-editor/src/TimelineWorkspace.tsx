@@ -333,6 +333,7 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   const [markers, setMarkers] = useState<number[]>([]);
   const [inspector, setInspector] = useState<"sequence" | "layer" | "cue" | "audio">("sequence");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const addMenuRef = useRef<HTMLDetailsElement>(null);
   const scrubRef = useRef<number | null>(null);
   const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
   const [layerPickerOpen, setLayerPickerOpen] = useState(false);
@@ -655,6 +656,16 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   });
 
   useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      const menu = addMenuRef.current;
+      if (!menu?.open || (event.target instanceof Node && menu.contains(event.target))) return;
+      menu.open = false;
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, []);
+
+  useEffect(() => {
     if (!project || !source || Object.keys(subtitleDocumentsRef.current).length === 0) return;
     const timer = window.setTimeout(() => {
       void saveSubtitleDocuments().then((paths) => {
@@ -734,6 +745,10 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   function setSelectedAudio(id: string | null) {
     setPreviewUntil(null); setSelectedAudioId(id);
     setInspector(id ? "audio" : "sequence");
+  }
+
+  function closeAddMenu() {
+    if (addMenuRef.current) addMenuRef.current.open = false;
   }
 
   function addCue() {
@@ -1072,13 +1087,13 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
            <label>Snap <select value={timeline.snap} onChange={(event) => updateTimeline((value) => ({ ...value, snap: Number(event.target.value) }))}><option value="0">Off</option><option value="0.01">10 ms</option><option value="0.1">100 ms</option><option value="0.25">250 ms</option><option value="0.5">500 ms</option></select></label>
            <label>Zoom <input type="range" min="0.5" max="3" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
            <button className="editor-button" onClick={fitTimeline}>Fit (F)</button>
-           <details className="timeline-add-menu">
-             <summary className="editor-button">＋ Add</summary>
-             <div className="timeline-add-menu-popover">
-               <button className="editor-button" onClick={addCue}>Subtitle cue</button>
-               <button className="editor-button" onClick={() => void importAudio()}>Audio files</button>
-                <button className="editor-button" onClick={() => void importSubtitles()}>Import subtitles</button>
-                <button className="editor-button" onClick={() => setLayerPickerOpen(true)} disabled={!availableLayerDirectories.length}>Choose Spine layer…</button>
+            <details ref={addMenuRef} className="timeline-add-menu">
+              <summary className="editor-button">＋ Add</summary>
+              <div className="timeline-add-menu-popover">
+                <button className="editor-button" onClick={() => { closeAddMenu(); addCue(); }}>Subtitle cue</button>
+                <button className="editor-button" onClick={() => { closeAddMenu(); void importAudio(); }}>Audio files</button>
+                <button className="editor-button" onClick={() => { closeAddMenu(); void importSubtitles(); }}>Import subtitles</button>
+                <button className="editor-button" onClick={() => { closeAddMenu(); setLayerPickerOpen(true); }} disabled={!availableLayerDirectories.length}>Choose Spine layer…</button>
               </div>
             </details>
          </div>
