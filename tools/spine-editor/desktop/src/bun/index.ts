@@ -164,7 +164,7 @@ async function api(request: Request, url: URL): Promise<Response> {
       if (!assetRoot) throw new Error("Choose an asset root first.");
       const selected = await Utils.openFileDialog({
         startingFolder: assetRoot,
-        allowedFileTypes: "audio",
+        allowedFileTypes: "ogg,wav,mp3,m4a,flac,aac,opus",
         canChooseFiles: true,
         canChooseDirectory: false,
         allowsMultipleSelection: true,
