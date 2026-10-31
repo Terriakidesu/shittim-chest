@@ -28,6 +28,50 @@ export function talkSequenceDuration(
   )));
 }
 
+/** Find the latest authored subtitle/audio or manually-sized layer endpoint. */
+export function authoredTimelineEnd(timeline: Pick<EditorTimeline, "layers" | "subtitles" | "audio">): number {
+  return Math.max(
+    0,
+    ...timeline.layers.filter((layer) => layer.endMode === "manual").map((layer) => layer.end),
+    ...timeline.subtitles.map((cue) => cue.end),
+    ...timeline.audio.map((clip) => clip.end),
+  );
+}
+
+/** Preserve a timeline extension made by authored content without changing its mode. */
+export function extendTimelineDuration(timeline: EditorTimeline): EditorTimeline {
+  const duration = Math.max(1, timeline.duration, authoredTimelineEnd(timeline));
+  return duration === timeline.duration ? timeline : { ...timeline, duration };
+}
+
+/** Move an audio clip and its nearest subtitle cue from the same imported line together. */
+export function moveAudioClip(timeline: EditorTimeline, id: string, start: number): EditorTimeline {
+  const clip = timeline.audio.find((item) => item.id === id);
+  if (!clip) return timeline;
+  const nextStart = Math.max(0, start);
+  const delta = nextStart - clip.start;
+  const audio = timeline.audio.map((item) => item.id === id
+    ? { ...item, start: nextStart, end: Math.max(nextStart + 0.01, item.end + delta) }
+    : item);
+  if (Math.abs(delta) < 0.000001 || !clip.lineId) return extendTimelineDuration({ ...timeline, audio });
+
+  let linkedIndex = -1;
+  let linkedDistance = Number.POSITIVE_INFINITY;
+  timeline.subtitles.forEach((cue, index) => {
+    if (cue.lineId !== clip.lineId) return;
+    const distance = Math.abs(cue.start - clip.start);
+    if (distance < linkedDistance) {
+      linkedIndex = index;
+      linkedDistance = distance;
+    }
+  });
+  if (linkedIndex < 0) return extendTimelineDuration({ ...timeline, audio });
+  const subtitles = timeline.subtitles.map((cue, index) => index === linkedIndex
+    ? { ...cue, start: Math.max(0, cue.start + delta), end: Math.max(cue.start + delta + 0.01, cue.end + delta) }
+    : cue);
+  return extendTimelineDuration({ ...timeline, audio, subtitles });
+}
+
 export function openingPhaseTimings(mode: "scene-first" | "direct" | "skip", sceneDuration: number, introDuration: number, totalDuration: number, introStartOverride?: number): OpeningPhaseTiming[] {
   const phases: OpeningPhaseTiming[] = [];
   const safeScene = Math.max(0, sceneDuration);
@@ -61,7 +105,7 @@ export function switchSequence(project: EditorProject, id: string, animations: s
     const face = animations.find((name) => talkSequenceId(name) === id && /_a$/i.test(name));
     const animation = id === "opening" ? "" : main ?? animations.find((name) => talkSequenceId(name) === id) ?? `Talk_${number.padStart(2, "0")}_M`;
     next = {
-      ...structuredClone(project.timeline), sequenceId: id, duration: 12, loop: false,
+      ...structuredClone(project.timeline), sequenceId: id, duration: id === "opening" ? 12 : 1, loop: false,
       openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3, durationMode: id === "opening" ? "auto" : "manual",
       layersInitialized: false,
       subtitles: [], audio: [], selectedCueId: null,

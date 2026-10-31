@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createProject, normalizeProject } from "./editorModel";
-import { animationEndForLayer, openingPhaseTimings, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
+import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, moveAudioClip, openingPhaseTimings, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
 
 test("talk sequences pair body and face and isolate subtitle clocks", () => {
   const animations = ["Idle_01", "Talk_01_M", "Talk_01_A", "Talk_02_M", "Talk_02_A"];
@@ -87,6 +87,30 @@ test("non-looping timeline layers follow the real Spine duration unless manually
 test("talk playback duration follows character animation instead of a long audio clip", () => {
   const layer = { ...createProject("Airi_home", [], []).timeline.layers[0]!, animation: "Talk_01_M", end: 20, loop: true };
   expect(talkSequenceDuration([layer], { [`${layer.id}:Talk_01_M`]: 2.75 }, () => "Talk_01_M")).toBe(2.75);
+});
+
+test("authored timeline content can extend the saved duration", () => {
+  const timeline = createProject("Airi_home", [], []).timeline;
+  timeline.subtitles = [{ id: "cue", start: 8, end: 11, enabled: true, text: { en: "Late", ja: "", ko: "" } }];
+  timeline.audio = [{ id: "audio", name: "voice.ogg", path: "voice.ogg", start: 8, end: 12, enabled: true, volume: 1 }];
+  expect(authoredTimelineEnd(timeline)).toBe(12);
+  expect(extendTimelineDuration({ ...timeline, duration: 4 }).duration).toBe(12);
+});
+
+test("moving linked audio moves its nearest subtitle cue but not unlinked cues", () => {
+  const timeline = createProject("Airi_home", [], []).timeline;
+  timeline.audio = [
+    { id: "linked", lineId: "talk-1", name: "linked.ogg", path: "linked.ogg", start: 1, end: 3, enabled: true, volume: 1 },
+    { id: "free", name: "free.ogg", path: "free.ogg", start: 1, end: 3, enabled: true, volume: 1 },
+  ];
+  timeline.subtitles = [
+    { id: "linked-cue", lineId: "talk-1", start: 1, end: 2, enabled: true, text: { en: "Linked", ja: "", ko: "" } },
+    { id: "free-cue", start: 1, end: 2, enabled: true, text: { en: "Free", ja: "", ko: "" } },
+  ];
+  const moved = moveAudioClip(timeline, "linked", 4);
+  expect(moved.audio.find((clip) => clip.id === "linked")).toMatchObject({ start: 4, end: 6 });
+  expect(moved.subtitles.find((cue) => cue.id === "linked-cue")).toMatchObject({ start: 4, end: 5 });
+  expect(moved.subtitles.find((cue) => cue.id === "free-cue")).toMatchObject({ start: 1, end: 2 });
 });
 
 test("opening phases keep scene, intro, and idle boundaries explicit", () => {

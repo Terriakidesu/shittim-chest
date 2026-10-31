@@ -72,8 +72,11 @@ export function timelineForSequence(project: SpineTimelineProject, sequenceId: s
 }
 
 export function timelinePlaybackDuration(timeline: SpineTimeline): number {
-  const layerEnd = timeline.sequenceId === "opening" ? 0 : Math.max(0, ...timeline.layers.map((layer) => layer.end));
-  return Math.max(1, timeline.duration, layerEnd);
+  const layerEnd = timeline.sequenceId === "opening"
+    ? Math.max(0, ...timeline.layers.filter((layer) => layer.endMode === "manual").map((layer) => layer.end))
+    : Math.max(0, ...timeline.layers.map((layer) => layer.end));
+  const contentEnd = Math.max(0, ...timeline.subtitles.map((cue) => cue.end), ...timeline.audio.map((clip) => clip.end));
+  return Math.max(1, timeline.duration, layerEnd, contentEnd);
 }
 
 /** Compute the deterministic sample clock shared by the editor and viewer. */

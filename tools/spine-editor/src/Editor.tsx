@@ -36,6 +36,7 @@ import { normalizeRecentFiles, RECENT_FILES_KEY, rememberRecentFile, removeRecen
 import { AssetPickerModal } from "./AssetPickerModal";
 import { editorProjectPath } from "./editorStorage";
 import { pendingProjectForDirectory, readSavedEditorProject } from "./editorProject";
+import { isTextEditingTarget } from "./editorKeyboard";
 
 function displayName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -533,7 +534,7 @@ export function Editor() {
   // Rebound each render so keyboard actions always use current selections/history.
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if ((event.target as HTMLElement)?.closest("input, select, textarea, [contenteditable=true]")) return;
+      if (isTextEditingTarget(event.target)) return;
       const key = event.key.toLowerCase();
       const modifier = event.ctrlKey || event.metaKey;
       if (workspace === "timeline" && key !== "?" && key !== "escape" && !(modifier && ["z", "y"].includes(key))) return;

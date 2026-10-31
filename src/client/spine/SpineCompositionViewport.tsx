@@ -210,7 +210,7 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
     const time = Math.max(0, Math.min(duration, currentTimeRef.current));
     currentTimeRef.current = time;
     onProgressRef.current({ time, duration, animation: null });
-  }, [timeline.sequenceId, timeline.duration]);
+  }, [timeline]);
 
   useEffect(() => {
     if (!playing) {

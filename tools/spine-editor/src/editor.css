@@ -292,7 +292,8 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--editor-cy
 
 /* Composition timeline workspace. The canvases are independent Spine
    instances; the React clock below them is the only source of time. */
-.timeline-workspace { display: grid; grid-template-columns: minmax(420px, 1fr) 340px; gap: 6px; flex: 1; min-height: 0; padding: 6px; }
+.timeline-workspace { display: grid; grid-template-columns: minmax(420px, 1fr) 340px; gap: 6px; flex: 1; min-height: 0; padding: 6px; user-select: none; }
+.timeline-workspace input, .timeline-workspace textarea, .timeline-workspace select, .timeline-workspace [contenteditable="true"] { user-select: text; }
 .timeline-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--editor-line); background: #102131cc; overflow: hidden; }
 .timeline-stage-wrap { min-height: 320px; flex: 1 1 52%; padding: 8px; background: #08121b; }
 .timeline-stage { position: relative; width: 100%; height: 100%; min-height: 300px; overflow: hidden; background: #08121b; background-image: linear-gradient(45deg, #ffffff05 25%, transparent 25%), linear-gradient(-45deg, #ffffff05 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ffffff05 75%), linear-gradient(-45deg, transparent 75%, #ffffff05 75%); background-size: 24px 24px; background-position: 0 0, 0 12px, 12px -12px, -12px 0; }
@@ -305,7 +306,7 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--editor-cy
 .timeline-track-label { position: sticky; left: 0; z-index: 5; display: flex; align-items: center; gap: 6px; min-width: 0; padding: 5px 8px; border-right: 1px solid var(--editor-line); border-bottom: 1px solid var(--editor-line); background: #102131; color: var(--editor-muted); font-size: 10px; }
 .timeline-track-label b { flex: none; color: var(--editor-cyan); font-size: 9px; }
 .timeline-track-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.timeline-editor-scroll { min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #527489 #102131; }
+.timeline-editor-scroll { min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #527489 #102131; overscroll-behavior-x: contain; }
 .timeline-editor-scroll { flex: 0 1 310px; min-height: 130px; border-top: 1px solid var(--editor-line); }
 .timeline-track-rows { position: relative; min-height: 100%; }
 .timeline-track { position: relative; min-width: 0; height: 39px; border-bottom: 1px solid var(--editor-line); background: repeating-linear-gradient(90deg, transparent 0, transparent calc(96px - 1px), #ffffff09 96px); cursor: crosshair; }
