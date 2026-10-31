@@ -132,10 +132,14 @@ export function timelineForSequence(project: SpineTimelineProject, sequenceId: s
   return project.sequences?.[sequenceId] ?? null;
 }
 
-export function timelinePlaybackDuration(timeline: SpineTimeline, openingMinimumDuration = 0): number {
-  const allLayerEnd = Math.max(0, ...timeline.layers.map((layer) => layer.end));
+export function timelinePlaybackDuration(
+  timeline: Pick<SpineTimeline, "layers" | "subtitles" | "audio" | "duration"> & { sequenceId?: string; durationMode?: SpineTimeline["durationMode"] },
+  openingMinimumDuration = 0,
+  layerEndFor: (layer: SpineTimelineLayer) => number = (layer) => layer.end,
+): number {
+  const allLayerEnd = Math.max(0, ...timeline.layers.map(layerEndFor));
   const layerEnd = timeline.sequenceId === "opening" && timeline.durationMode !== "auto"
-    ? Math.max(0, ...timeline.layers.filter((layer) => layer.endMode === "manual").map((layer) => layer.end))
+    ? Math.max(0, ...timeline.layers.filter((layer) => layer.endMode === "manual").map(layerEndFor))
     : allLayerEnd;
   const contentEnd = Math.max(0, ...timeline.subtitles.map((cue) => cue.end), ...timeline.audio.map((clip) => clip.end));
   if (timeline.sequenceId === "opening" && timeline.durationMode === "auto" && timeline.layers.length > 0) {
@@ -145,6 +149,36 @@ export function timelinePlaybackDuration(timeline: SpineTimeline, openingMinimum
     return Math.max(1, openingMinimumDuration, layerEnd, contentEnd);
   }
   return Math.max(1, timeline.duration, layerEnd, contentEnd);
+}
+
+/** Resolve an automatic opening's meaningful endpoint for both UIs. */
+export function timelineOpeningDuration(
+  timeline: Pick<SpineTimeline, "layers" | "subtitles" | "audio"> & { openingMode?: SpineTimeline["openingMode"]; sceneDuration?: number },
+  introDuration: number,
+  layerEndFor: (layer: SpineTimelineLayer) => number = (layer) => layer.end,
+): number {
+  const character = timeline.layers.find((layer) => layer.role === "character");
+  const introStart = character
+    ? Math.max(0, character.start)
+    : timeline.openingMode === "scene-first" ? Math.max(0, timeline.sceneDuration ?? 0) : 0;
+  const introEnd = introStart + (timeline.openingMode === "skip" ? 0 : Math.max(0, introDuration));
+  const layerEnd = Math.max(0, ...timeline.layers.map(layerEndFor));
+  const contentEnd = Math.max(0, ...timeline.subtitles.map((cue) => cue.end), ...timeline.audio.map((clip) => clip.end));
+  return Math.max(1, introEnd, layerEnd, contentEnd);
+}
+
+export interface SpineTimelineAdvance {
+  time: number;
+  finished: boolean;
+}
+
+/** Advance a timeline clock identically in the editor and published viewer. */
+export function advanceSpineTimeline(currentTime: number, deltaSeconds: number, speed: number, duration: number, loop: boolean): SpineTimelineAdvance {
+  const safeDuration = Math.max(0.01, duration);
+  const next = Math.max(0, currentTime) + Math.max(0, deltaSeconds) * Math.max(0, speed);
+  if (next < safeDuration) return { time: next, finished: false };
+  if (loop) return { time: next % safeDuration, finished: false };
+  return { time: safeDuration, finished: true };
 }
 
 /** Compute the deterministic sample clock shared by the editor and viewer. */

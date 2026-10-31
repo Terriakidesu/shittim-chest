@@ -25,9 +25,11 @@ test("authored talks sample both moving body and face while preserving interacti
   renderer.sampleEditorAnimation("Talk_01_M", "Talk_01_A", 1.5, false, true, true);
   expect(skeleton.bones[0]!.x).toBeCloseTo(15);
   expect(skeleton.bones[1]!.y).toBeCloseTo(30);
+  expect(state.getCurrent(2)?.animation?.name).toBe("Talk_01_A");
   renderer.sampleEditorAnimation("Idle_01", "", 0, true, false, true);
   expect(state.getCurrent(7)).toBeNull();
   expect(state.getCurrent(8)).toBeNull();
+  expect(state.getCurrent(2)).toBeNull();
 });
 
 function playback(selection: string) {

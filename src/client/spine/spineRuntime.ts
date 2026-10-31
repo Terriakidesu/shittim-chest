@@ -541,6 +541,7 @@ export class SpineRenderer {
   private interactionFollowWorld: { x: number; y: number } | null = null;
   private touchPointerOrigin: { x: number; y: number } | null = null;
   private touchFollowOffset: { x: number; y: number } | null = null;
+  private sampledEditorFace = "";
   private interactionMotionState: SpineInteractionMotionState = createInteractionMotionState();
   private fitCameraPose: CameraPose | null = null;
   private pendingFit = false;
@@ -1190,19 +1191,33 @@ export class SpineRenderer {
     let baseEntry: TrackEntry | null = null;
     if (preserveInteractions) {
       // Keep gesture tracks 1–6, but do not drop the authored idle underlay
-      // or face. Timeline body/face use reserved tracks above the gestures.
+      // or face. The base body remains on track 0 so every interaction track
+      // keeps priority; the authored face shares the normal look-face track
+      // only while no interaction overlay is using it.
       const underlay = idleUnderlay && bundle.meta.idleAnimation ? apply(bundle.meta.idleAnimation, 0) : null;
       if (underlay) underlay.timeScale = 0;
-      baseEntry = apply(animation, underlay ? 7 : 0);
+      baseEntry = apply(animation, 0);
       if (baseEntry) baseEntry.timeScale = 0;
-      if (face) {
-        const faceEntry = apply(face, 8);
+      const faceTrack = bundle.state.getCurrent(2);
+      const authoredFaceActive = Boolean(this.sampledEditorFace && faceTrack?.animation?.name === this.sampledEditorFace);
+      const interactionFaceActive = Boolean(bundle.state.getCurrent(4) || bundle.state.getCurrent(6) || (faceTrack && !authoredFaceActive));
+      if (face && !interactionFaceActive) {
+        const faceEntry = apply(face, 2);
         if (faceEntry) faceEntry.timeScale = 0;
+        this.sampledEditorFace = face;
+      } else if (!face && authoredFaceActive) {
+        bundle.state.clearTrack(2);
+        this.sampledEditorFace = "";
       }
     } else {
       if (idleUnderlay && bundle.meta.idleAnimation) apply(bundle.meta.idleAnimation, 0);
       baseEntry = apply(animation, idleUnderlay ? 1 : 0);
-      if (face) apply(face, 2);
+      if (face) {
+        apply(face, 2);
+        this.sampledEditorFace = face;
+      } else {
+        this.sampledEditorFace = "";
+      }
     }
     if (baseEntry && introListener) {
       baseEntry.listener = introListener;

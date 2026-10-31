@@ -6,7 +6,7 @@ test("idle playback selects Idle_XX, never the opening or talk animation", () =>
   expect(timelineIdleAnimation({ idleAnimation: null, animations: ["Start_Idle_01", "Idle_02"] })).toBe("Idle_02");
   expect(timelineIdleAnimation({ idleAnimation: null, animations: ["Start_Idle_01"] })).toBe("");
 });
-import { normalizeSpineTimeline, timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineAudioPlaybackDecision, timelineForSequence, timelineLayerAnimation, timelineLayerPlaybackEnd, timelineLayerSampleTime, timelineMainAnimation, timelinePlaybackDuration, timelineSequenceIds, timelineTalkSequenceIds, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
+import { advanceSpineTimeline, normalizeSpineTimeline, timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineAudioPlaybackDecision, timelineForSequence, timelineLayerAnimation, timelineLayerPlaybackEnd, timelineLayerSampleTime, timelineMainAnimation, timelinePlaybackDuration, timelineSequenceIds, timelineTalkSequenceIds, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
 
 const character = { start: 1, animationOffset: 0.25, loop: false, role: "character" as const };
 
@@ -97,6 +97,12 @@ test("automatic openings trim stale blank time after their last layer", () => {
     language: "en",
   };
   expect(timelinePlaybackDuration(timeline, 16.267)).toBe(17.8);
+});
+
+test("shared timeline clock advances and completes the same way for editor and viewer", () => {
+  expect(advanceSpineTimeline(1, 0.5, 2, 3, false)).toEqual({ time: 2, finished: false });
+  expect(advanceSpineTimeline(2.75, 0.3, 1, 3, false)).toEqual({ time: 3, finished: true });
+  expect(advanceSpineTimeline(2.75, 0.5, 1, 3, true)).toEqual({ time: 0.25, finished: false });
 });
 
 test("background layers follow the main animation by name and clock", () => {

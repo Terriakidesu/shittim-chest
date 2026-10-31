@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
-import { SpineRenderer, type SpineCameraPose, type SpineFiles, type SpineMeta } from "../../../src/client/spine/spineRuntime";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { type SpineCameraPose, type SpineFiles, type SpineMeta } from "../../../src/client/spine/spineRuntime";
 import {
   compositionDirectories,
   createTimelineLayer,
@@ -14,8 +14,10 @@ import {
 import type { DesktopAssetSource } from "./desktopSource";
 import { manifestReferenceCandidates } from "../../../src/client/spine/spineManifest";
 import { audioPlaybackDecision, clampAudioEnd, clampAudioStart, decodedAudioTiming } from "./audioModel";
-import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
-import { timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineLayerAnimation, timelineLayerSampleTime, timelineMainAnimation } from "../../../src/client/spine/spineTimeline";
+import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
+import { advanceSpineTimeline, timelineActiveSubtitleTexts, timelineMainAnimation, timelinePlaybackDuration } from "../../../src/client/spine/spineTimeline";
+import { SpineTimelineLayerCanvas } from "../../../src/client/spine/SpineTimelineLayerCanvas";
+import { spineAudioPathCandidates } from "../../../src/client/spine/spineAudio";
 import { serializeSubtitleDocument } from "./subtitleDocument";
 import type { RecentFile } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
@@ -77,122 +79,6 @@ interface TimelineWorkspaceProps {
   onRegisterSave: (callback: ((getProject: () => EditorProject | null) => Promise<string[]>) | null) => void;
   onStatus: (value: string) => void;
   onError: (value: string | null) => void;
-}
-
-interface TimelineLayerCanvasProps {
-  layer: EditorTimelineLayer;
-  files: SpineFiles | null;
-  currentTime: number;
-  mainAnimation?: string;
-  mainAnimationTime?: number;
-  mainAnimationLoop?: boolean;
-  openingMode?: "scene-first" | "direct" | "skip";
-  sequenceId?: string;
-  onMarkers: (markers: number[]) => void;
-  sharedCameraPose: SpineCameraPose | null;
-  referenceCamera: boolean;
-  onMeta: (layerId: string, meta: SpineMeta | null) => void;
-  onCameraPose: (pose: SpineCameraPose) => void;
-  onAnimationDuration: (layerId: string, animation: string, duration: number) => void;
-  onError: (value: string | null) => void;
-}
-
-function TimelineLayerCanvas({ layer, files, currentTime, mainAnimation, mainAnimationTime, mainAnimationLoop, sharedCameraPose, referenceCamera, onMeta, onCameraPose, onAnimationDuration, onError, openingMode, sequenceId, onMarkers }: TimelineLayerCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<SpineRenderer | null>(null);
-  const [meta, setMeta] = useState<SpineMeta | null>(null);
-  const onMetaRef = useRef(onMeta);
-  const onCameraPoseRef = useRef(onCameraPose);
-  const onAnimationDurationRef = useRef(onAnimationDuration);
-  const onErrorRef = useRef(onError);
-  onMetaRef.current = onMeta;
-  onCameraPoseRef.current = onCameraPose;
-  onAnimationDurationRef.current = onAnimationDuration;
-  onErrorRef.current = onError;
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const renderer = new SpineRenderer(canvas, {
-      onMeta: (value) => {
-        setMeta(value);
-        onMetaRef.current(layer.id, value);
-        if (value) {
-          for (const animation of [value.introAnimation, value.idleAnimation]) {
-            if (!animation) continue;
-            const duration = renderer.getEditorAnimationInfo(animation).duration;
-            if (duration > 0) onAnimationDurationRef.current(layer.id, animation, duration);
-          }
-          renderer.setCameraMode("fit");
-          if (referenceCamera) requestAnimationFrame(() => {
-            const pose = renderer.getCameraPose();
-            if (pose) onCameraPoseRef.current(pose);
-          });
-        }
-      },
-      onProgress: () => {},
-      onLoading: () => {},
-      onError: (value) => onErrorRef.current(value?.message ?? null),
-    });
-    renderer.setPlaying(false);
-    renderer.setLoop(false);
-    rendererRef.current = renderer;
-    return () => {
-      renderer.dispose();
-      rendererRef.current = null;
-    };
-  }, [layer.id, referenceCamera]);
-
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-    if (files) void renderer.load(files, layer.directory);
-    else renderer.clear();
-    return () => renderer.clear();
-  }, [files, layer.directory]);
-
-  const intro = meta?.introAnimation;
-  const introLength = intro ? rendererRef.current?.getEditorAnimationInfo(intro).duration ?? 0 : 0;
-  const animation = meta ? timelineLayerAnimation(layer, meta, mainAnimation, currentTime, sequenceId ?? "legacy", openingMode ?? "direct", introLength) : "";
-  const animationDuration = rendererRef.current?.getEditorAnimationInfo(animation).duration ?? 0;
-  const talkCharacter = sequenceId?.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
-  const followMainClock = Boolean(layer.followMainAnimation && mainAnimationTime !== undefined);
-  const effectiveLoop = followMainClock && mainAnimationLoop !== undefined ? mainAnimationLoop : talkCharacter ? false : layer.loop;
-  const layerEnd = animationEndForLayer(talkCharacter ? { ...layer, loop: false } : layer, animationDuration);
-  useEffect(() => {
-    const renderer = rendererRef.current;
-    if (!renderer || !meta || !animation) return;
-    renderer.setPlaying(false);
-    renderer.setLoop(false);
-    if (meta.animations.includes(animation)) renderer.setAnimation(animation, true);
-  }, [animation, meta]);
-
-  useEffect(() => {
-    if (animationDuration > 0 && animation) onAnimationDurationRef.current(layer.id, animation, animationDuration);
-  }, [animation, animationDuration, layer.endMode, layer.id, layer.loop, layer.start, layer.animationOffset]);
-
-  useEffect(() => {
-    if (!meta) return;
-    const renderer = rendererRef.current;
-    const time = followMainClock
-      ? mainAnimationTime!
-      : timelineLayerSampleTime(layer, currentTime, sequenceId ?? "legacy", openingMode ?? "direct", introLength, animationDuration);
-    renderer?.sampleEditorAnimation(animation, layer.faceAnimation ?? "", time, effectiveLoop, timelineAnimationNeedsIdleUnderlay(animation));
-    if (referenceCamera) onMarkers(renderer?.getEditorAnimationInfo(animation).markers ?? []);
-  }, [animation, currentTime, effectiveLoop, followMainClock, layer, mainAnimationLoop, mainAnimationTime, meta, openingMode, introLength, sequenceId]);
-
-  useEffect(() => {
-    if (!referenceCamera && sharedCameraPose) rendererRef.current?.setCameraPose(sharedCameraPose);
-  }, [referenceCamera, sharedCameraPose]);
-
-  const visible = layer.enabled && currentTime >= layer.start && currentTime <= layerEnd;
-  const style: CSSProperties = {
-    zIndex: layer.order,
-    opacity: visible ? layer.opacity : 0,
-    visibility: visible ? "visible" : "hidden",
-    transform: `translate(${layer.x}px, ${layer.y}px) scale(${layer.scale})`,
-  };
-  return <canvas ref={canvasRef} className="timeline-layer-canvas" style={style} aria-label={`${layer.name} Spine layer`} />;
 }
 
 function seconds(value: number): string {
@@ -325,16 +211,8 @@ function importedSubtitleCues(value: unknown): { cues: EditorSubtitleCue[]; audi
   return { cues, audio, duration };
 }
 
-function audioPathCandidates(path: string): string[] {
-  const normalized = path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+/g, "/");
-  const withoutAudioRoot = normalized.replace(/^audios\/voicelines\//i, "");
-  const withoutAudios = normalized.replace(/^audios\//i, "");
-  const basename = normalized.split("/").at(-1) ?? normalized;
-  return [...new Set([normalized, withoutAudioRoot, withoutAudios, basename])].filter(Boolean);
-}
-
 async function findAudioFile(source: DesktopAssetSource, path: string): Promise<File | null> {
-  for (const candidate of audioPathCandidates(path)) {
+  for (const candidate of spineAudioPathCandidates(path)) {
     const file = await source.getFile(candidate);
     if (file) return file;
   }
@@ -418,17 +296,12 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const mainAnimation = mainAnimationState?.animation ?? "";
   const mainAnimationTime = mainAnimationState?.time;
   const mainAnimationLoop = mainAnimationState?.loop;
-  const authoredEnd = timeline ? authoredTimelineEnd(timeline) : 0;
   const openingAutoDuration = timeline?.sequenceId === "opening"
     ? openingTimelineDuration(timeline, introDuration, layerEnd)
     : 0;
-  const talkLayers = timeline?.sequenceId?.startsWith("talk-") ? displayLayers.filter((layer) => layer.role === "character") : [];
-  const talkNaturalDuration = talkLayers.length > 0 ? talkSequenceDuration(talkLayers, animationDurations, layerAnimation) : 0;
-  const duration = timeline?.sequenceId === "opening"
-    ? Math.max(MIN_TIMELINE_DURATION, timeline.duration ?? 12, authoredEnd, ...displayLayers.map(layerEnd))
-    : talkLayers.length > 0
-      ? Math.max(MIN_TIMELINE_DURATION, timeline?.duration ?? 1, talkNaturalDuration, authoredEnd)
-      : Math.max(MIN_TIMELINE_DURATION, timeline?.duration ?? 12, authoredEnd, ...displayLayers.map(layerEnd));
+  const duration = timeline
+    ? timelinePlaybackDuration(timeline, timeline.sequenceId === "opening" ? openingIntroStart + (openingMode === "skip" ? 0 : introDuration) : 0, layerEnd)
+    : MIN_TIMELINE_DURATION;
   const trackWidth = Math.max(640, duration * TIMELINE_SCALE * zoom + 48);
   const openingPhases = timeline?.sequenceId === "opening" ? openingPhaseTimings(openingMode, timeline.sceneDuration ?? 3, introDuration, duration, openingIntroStart) : [];
 
@@ -632,17 +505,15 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       const delta = Math.min(0.1, Math.max(0, (now - previous) / 1000));
       previous = now;
       setCurrentTime((value) => {
-        const next = value + delta * speed;
         const stopAt = previewUntil === null ? duration : Math.min(duration, previewUntil);
-        if (next < stopAt) return next;
-        if (previewUntil !== null) {
+        const advanced = advanceSpineTimeline(value, delta, speed, stopAt, previewUntil === null && Boolean(timeline?.loop));
+        if (advanced.finished && previewUntil !== null) {
           setPreviewUntil(null);
           setPlaying(false);
           return stopAt;
         }
-        if (timeline?.loop) return next % duration;
-        setPlaying(false);
-        return duration;
+        if (advanced.finished) setPlaying(false);
+        return advanced.time;
       });
       frame = requestAnimationFrame(tick);
     };
@@ -1327,7 +1198,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
              onWheel={zoomStageAtCursor}
              >
                <div className="timeline-stage-content" style={{ transform: `translate3d(${stageView.x}px, ${stageView.y}px, 0) scale(${stageView.scale})` }}>
-                 {displayLayers.map((layer) => <TimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} mainAnimation={mainAnimation} mainAnimationTime={mainAnimationTime} mainAnimationLoop={mainAnimationLoop} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
+                  {displayLayers.map((layer) => <SpineTimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} mainAnimation={mainAnimation} mainAnimationTime={mainAnimationTime} mainAnimationLoop={mainAnimationLoop} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
                  {timeline.audio.map((clip) => <audio key={clip.id} ref={(element) => { audioElementsRef.current[clip.id] = element; }} src={audioUrls[clip.id]} preload="auto" onLoadedMetadata={(event) => applyDecodedAudioDuration(clip.id, event.currentTarget.duration)} />)}
                  {!displayLayers.length && <div className="timeline-empty"><strong>No layers</strong><span>Add a Spine set from the ＋ Add menu.</span></div>}
                </div>

@@ -1,5 +1,5 @@
 import { ensureTimelineLayers, type EditorProject, type EditorTimeline, type EditorTimelineLayer } from "./editorModel";
-import { timelineLayerPlaybackEnd } from "../../../src/client/spine/spineTimeline";
+import { timelineLayerPlaybackEnd, timelineOpeningDuration } from "../../../src/client/spine/spineTimeline";
 
 export type OpeningPhaseId = "scene" | "intro" | "idle";
 
@@ -51,14 +51,7 @@ export function openingTimelineDuration(
   introDuration: number,
   layerEndFor: (layer: EditorTimelineLayer) => number = (layer) => layer.end,
 ): number {
-  const character = timeline.layers.find((layer) => layer.role === "character");
-  const introStart = character
-    ? Math.max(0, character.start)
-    : timeline.openingMode === "scene-first" ? Math.max(0, timeline.sceneDuration ?? 0) : 0;
-  const introEnd = introStart + (timeline.openingMode === "skip" ? 0 : Math.max(0, introDuration));
-  const layerEnd = Math.max(0, ...timeline.layers.map(layerEndFor));
-  const contentEnd = Math.max(0, ...timeline.subtitles.map((cue) => cue.end), ...timeline.audio.map((clip) => clip.end));
-  return Math.max(1, introEnd, layerEnd, contentEnd);
+  return timelineOpeningDuration(timeline, introDuration, layerEndFor);
 }
 
 /** Preserve a timeline extension made by authored content without changing its mode. */
