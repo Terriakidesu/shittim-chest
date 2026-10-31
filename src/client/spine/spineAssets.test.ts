@@ -95,6 +95,23 @@ describe("Spine local asset sources", () => {
     expect([...((await source.getSetFiles("Airi_home")).keys())]).toEqual(["Airi_home.atlas", "Airi_home.skel"]);
   });
 
+  test("recursively catalogs sets and keeps the root editor data readable", async () => {
+    const project = mockFile("Airi_home.spine-project.json", "project");
+    const nestedSet = mockDirectory("Airi_home", [mockFile("Airi_home.atlas"), mockFile("Airi_home.skel"), mockFile("Airi_home.png")]);
+    const ignoredSet = mockDirectory("Fake_home", [mockFile("Fake_home.atlas"), mockFile("Fake_home.skel")]);
+    const root = mockDirectory("ba-spine", [
+      mockFile(".editorignore", "sprites/"),
+      mockDirectory(".editor", [project]),
+      mockDirectory("lobbies", [nestedSet]),
+      mockDirectory("sprites", [ignoredSet]),
+    ]);
+
+    const source = sourceFromDirectory(root);
+    expect(await source.getDirectories()).toEqual(["Airi_home"]);
+    expect([...((await source.getSetFiles("Airi_home")).keys())]).toEqual(["Airi_home.atlas", "Airi_home.skel", "Airi_home.png"]);
+    expect(await source.getFile(".editor/Airi_home.spine-project.json")).toBe(await project.getFile());
+  });
+
   test("handles the directory-input fallback for a whole root and a lobby folder", async () => {
     const rootSource = sourceFromInput(fileList([
       "bundle/lobbies/Airi_home/Airi_home.atlas",
@@ -111,6 +128,50 @@ describe("Spine local asset sources", () => {
     ]));
     expect(await lobbySource.getDirectories()).toEqual(["Airi_home"]);
     expect([...((await lobbySource.getSetFiles("Airi_home")).keys())]).toEqual(["Airi_home.atlas", "Airi_home.skel"]);
+  });
+
+  test("catalogs nested input sets without requiring a lobbies directory", async () => {
+    const source = sourceFromInput(fileList([
+      "ba-spine/assets/characters/Airi_home/Airi_home.atlas",
+      "ba-spine/assets/characters/Airi_home/Airi_home.skel",
+      "ba-spine/assets/characters/Airi_home/Airi_home.png",
+      "ba-spine/.editor/Airi_home.spine-project.json",
+    ]));
+
+    expect(await source.getDirectories()).toEqual(["Airi_home"]);
+    expect([...((await source.getSetFiles("Airi_home")).keys())]).toEqual(["Airi_home.atlas", "Airi_home.skel", "Airi_home.png"]);
+    expect((await source.getFile(".editor/Airi_home.spine-project.json"))?.name).toBe("Airi_home.spine-project.json");
+  });
+
+  test("uses explicit manifest asset paths instead of scanning the lobby directory", async () => {
+    const manifest = JSON.stringify({
+      schemaVersion: 1,
+      id: "Airi_home",
+      entrySequence: null,
+      entryMode: "runtime-intro",
+      assets: {
+        Airi_home: {
+          atlas: { scope: "lobby", path: "spine/Airi_home.atlas" },
+          skeletons: [{ scope: "lobby", path: "spine/Airi_home.skel" }],
+          pages: [{ scope: "lobby", path: "spine/Airi_home.png" }],
+          files: [
+            { scope: "lobby", path: "spine/Airi_home.atlas" },
+            { scope: "lobby", path: "spine/Airi_home.skel" },
+            { scope: "lobby", path: "spine/Airi_home.png" },
+          ],
+        },
+      },
+    });
+    const root = mockDirectory("ba-spine", [
+      mockDirectory("lobbies", [mockDirectory("Airi_home", [
+        mockFile("manifest.json", manifest),
+        mockDirectory("spine", [mockFile("Airi_home.atlas"), mockFile("Airi_home.skel"), mockFile("Airi_home.png")]),
+      ])]),
+    ]);
+    const source = sourceFromDirectory(root);
+    expect(await source.getDirectories()).toEqual(["Airi_home"]);
+    expect([...((await source.getSetFiles("Airi_home")).keys())]).toEqual(["Airi_home.atlas", "Airi_home.skel", "Airi_home.png"]);
+    expect((await source.getManifest?.("Airi_home"))?.manifest.entrySequence).toBeNull();
   });
 
   test("resolves canonical voice paths when only the voice folder was selected", async () => {

@@ -2,10 +2,11 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import { ApplicationMenu, BrowserWindow, Utils } from "electrobun/main";
 import { isEditorIgnored, parseEditorIgnore, type EditorIgnoreRule } from "../../../src/editorIgnore";
+import { manifestReferenceCandidates, normalizeSpineCatalog, normalizeSpineManifest, type SpineManifestRecord } from "../../../../../src/client/spine/spineManifest";
 
 let assetRoot: string | null = null;
 
-type SpineSet = { directory: string; path: string };
+type SpineSet = { directory: string; path: string; files?: string[] };
 
 const EDITOR_DIRECTORIES = new Set([".editor", ".shittim-spine-editor"]);
 
@@ -67,8 +68,47 @@ async function spineSets(directory: string, output: SpineSet[], rules: readonly 
   await Promise.all(usableEntries.filter((entry) => entry.isDirectory()).map((entry) => spineSets(join(directory, entry.name), output, rules)));
 }
 
+async function manifestRecords(): Promise<SpineManifestRecord[]> {
+  if (!assetRoot) throw new Error("Choose an asset root first.");
+  const paths: string[] = [];
+  try {
+    const catalog = normalizeSpineCatalog(JSON.parse(await readFile(join(assetRoot, "catalog.json"), "utf8")) as unknown);
+    if (catalog) paths.push(...Object.values(catalog.lobbies).map((item) => item.manifest));
+  } catch {
+    // Fall back to the direct root manifest for a selected lobby or recursive discovery.
+  }
+  if (paths.length === 0) {
+    try { paths.push("manifest.json"); } catch { /* no-op */ }
+  }
+  const records: SpineManifestRecord[] = [];
+  for (const path of [...new Set(paths)]) {
+    try {
+      const parsed = normalizeSpineManifest(JSON.parse(await readFile(rootRelativePath(path), "utf8")) as unknown, basename(dirname(path)));
+      if (parsed) records.push({ manifest: parsed, path: path.replaceAll("\\", "/") });
+    } catch {
+      // A stale catalog entry should not prevent the legacy recursive fallback.
+    }
+  }
+  return records;
+}
+
+function manifestAssetFiles(record: SpineManifestRecord, directory: string): string[] | undefined {
+  const assets = record.manifest.assets[directory];
+  if (!assets) return undefined;
+  return assets.files.map((reference) => manifestReferenceCandidates(record, reference)[0]).filter((path): path is string => Boolean(path));
+}
+
 async function catalog(): Promise<SpineSet[]> {
   if (!assetRoot) throw new Error("Choose an asset root first.");
+  const records = await manifestRecords();
+  if (records.length > 0) {
+    const output = new Map<string, SpineSet>();
+    for (const record of records) {
+      const files = manifestAssetFiles(record, record.manifest.id);
+      if (files) output.set(record.manifest.id, { directory: record.manifest.id, path: record.path, files });
+    }
+    if (output.size > 0) return [...output.values()].sort((a, b) => a.directory.localeCompare(b.directory, undefined, { sensitivity: "base" }));
+  }
   const output: SpineSet[] = [];
   await spineSets(assetRoot, output, await ignoreRules());
   const unique = new Map<string, SpineSet>();

@@ -169,9 +169,18 @@ function CompositionLayer({ layer, files, interactionEnabled, interactionProject
     ? mainAnimationTime!
     : timelineLayerSampleTime(layer, currentTime, sequenceId, openingMode, introDuration, animationDuration);
   useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !meta || !animation || !meta.animations.some((name) => name === animation)) return;
+    // Prime the layer selection before deterministic sampling. This keeps the
+    // composition renderer's lifecycle identical to the editor preview when a
+    // followed layer switches from its fallback to the main animation.
+    renderer.setAnimation(animation, true);
+  }, [animation, meta]);
+
+  useEffect(() => {
     if (!meta || !animation) return;
     rendererRef.current?.sampleEditorAnimation(animation, layer.faceAnimation ?? "", time, effectiveLoop, timelineAnimationNeedsIdleUnderlay(animation), interactionEnabled);
-  }, [animation, effectiveLoop, interactionEnabled, layer.faceAnimation, meta, talkCharacter, time]);
+  }, [animation, effectiveLoop, followMainClock, interactionEnabled, layer.faceAnimation, mainAnimationLoop, mainAnimationTime, meta, openingMode, sequenceId, talkCharacter, time]);
 
   useEffect(() => {
     if (animationDuration > 0 && animation) onAnimationDurationRef.current(layer.id, animation, animationDuration);
@@ -247,7 +256,12 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
     ? timelineMainAnimation(characterLayer, characterMeta, currentTime, timeline.sequenceId, timeline.openingMode, introDuration, mainAnimationDuration)
     : null;
   const progressAnimation = mainAnimationState?.animation ?? null;
+  // Do not consume an opening while the saved composition is still loading.
+  // The page starts in autoplay mode, so advancing the shared playhead before
+  // every layer has a renderer/meta would skip a short editor-authored intro.
+  const compositionReady = layers.length > 0 && layers.every((layer) => Boolean(files[layer.directory] && metas[layer.id]));
   const directoriesKey = [...new Set(layers.map((layer) => layer.directory))].join("|");
+  const assetPathsKey = JSON.stringify(timeline.assetPaths ?? {});
   const audioKey = timeline.audio.map((clip) => `${clip.id}:${clip.path}`).join("|");
 
   useEffect(() => {
@@ -262,7 +276,13 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
       return () => { live = false; };
     }
     onLoadingRef.current(true);
-    void Promise.all(directories.map(async (item) => [item, await source.getSetFiles(item)] as const)).then((entries) => {
+    void Promise.all(directories.map(async (item) => {
+      const assetPath = timeline.assetPaths?.[item];
+      const files = assetPath && source.getSetFilesAtPath
+        ? await source.getSetFilesAtPath(assetPath)
+        : await source.getSetFiles(item);
+      return [item, files] as const;
+    })).then((entries) => {
       if (!live) return;
       setFiles(Object.fromEntries(entries));
       onLoadingRef.current(false);
@@ -274,7 +294,7 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
     return () => { live = false; };
   // The layer directory key keeps this request scoped to the saved composition.
   // eslint is intentionally not part of this repository; keep the dependency explicit.
-  }, [directoriesKey, layers, source]);
+  }, [assetPathsKey, directoriesKey, layers, source, timeline.assetPaths]);
 
   useEffect(() => {
     let live = true;
@@ -300,6 +320,14 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
 
   useEffect(() => {
     const duration = timelinePlaybackDuration(timeline);
+    // A composition replaces the standalone renderer. Always begin the saved
+    // sequence at zero instead of inheriting the old renderer's live clock.
+    currentTimeRef.current = 0;
+    onProgressRef.current({ time: 0, duration, animation: null });
+  }, [timeline]);
+
+  useEffect(() => {
+    const duration = timelinePlaybackDuration(timeline);
     const time = Math.max(0, Math.min(duration, currentTimeRef.current));
     currentTimeRef.current = time;
     onProgressRef.current({ time, duration, animation: progressAnimation });
@@ -315,7 +343,8 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
   }, [audioKey, timeline.sequenceId]);
 
   useEffect(() => {
-    if (!playing) Object.values(audioElementsRef.current).forEach((audio) => audio?.pause());
+    if (!compositionReady || !playing) Object.values(audioElementsRef.current).forEach((audio) => audio?.pause());
+    if (!compositionReady) return;
     for (const clip of timeline.audio) {
       const audio = audioElementsRef.current[clip.id];
       if (!audio) continue;
@@ -341,10 +370,10 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
       if (decision.play) void audio.play().catch(() => undefined);
       else audio.pause();
     }
-  }, [currentTime, playing, speed, timeline.audio]);
+  }, [compositionReady, currentTime, playing, speed, timeline.audio]);
 
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || !compositionReady) return;
     let frame = 0;
     let previous = 0;
     finishedRef.current = false;
@@ -373,7 +402,7 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, progressAnimation, speed, timeline]);
+  }, [compositionReady, playing, progressAnimation, speed, timeline]);
 
   useImperativeHandle(ref, () => ({
     resetCamera: () => setResetCameraSignal((value) => value + 1),

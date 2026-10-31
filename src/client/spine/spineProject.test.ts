@@ -72,6 +72,39 @@ test("viewer local project loading prefers .editor and falls back to the legacy 
   expect(legacy?.name).toBe("Local project");
 });
 
+test("manifest projects restore authored sequences but never promote workspace selection to entry", async () => {
+  const opening = { sequenceId: "opening", duration: 12, loop: false, layers: [], subtitles: [], audio: [] };
+  const talk = { sequenceId: "talk-5", duration: 5, loop: false, layers: [], subtitles: [], audio: [] };
+  const files: Record<string, string> = {
+    "lobbies/Airi_home/interactions.json": JSON.stringify({ interactions: [] }),
+    "lobbies/Airi_home/sequences/opening.json": JSON.stringify(opening),
+    "lobbies/Airi_home/sequences/talk-5.json": JSON.stringify(talk),
+    ".editor/Airi_home.workspace.json": JSON.stringify({ selectedSequenceId: "talk-5", name: "Airi workspace" }),
+  };
+  const project = await readLocalInteractionProject({
+    ...sourceFromFiles(files),
+    getManifest: async () => ({
+      path: "lobbies/Airi_home/manifest.json",
+      manifest: {
+        schemaVersion: 1,
+        id: "Airi_home",
+        entrySequence: "opening",
+        entryMode: "authored-sequence",
+        assets: { Airi_home: { atlas: { scope: "lobby", path: "spine/a.atlas" }, skeletons: [], pages: [], files: [] } },
+        sequences: {
+          opening: { scope: "lobby", path: "sequences/opening.json" },
+          "talk-5": { scope: "lobby", path: "sequences/talk-5.json" },
+        },
+        interactions: { scope: "lobby", path: "interactions.json" },
+        workspace: { scope: "root", path: ".editor/Airi_home.workspace.json" },
+      },
+    }),
+  }, "Airi_home");
+  expect(project?.entrySequence).toBe("opening");
+  expect(project?.timeline?.sequenceId).toBe("talk-5");
+  expect(project?.sequences?.opening?.sequenceId).toBe("opening");
+});
+
 test("normalizes per-sequence layers, timing, subtitles, and audio", () => {
   const raw = {
     ...editorProject(),

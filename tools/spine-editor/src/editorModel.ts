@@ -104,6 +104,8 @@ export interface EditorTimeline {
   layersInitialized: boolean;
   duration: number;
   loop: boolean;
+  /** Root-relative Spine set directories for every layer in this sequence. */
+  assetPaths?: Record<string, string>;
   layers: EditorTimelineLayer[];
   subtitles: EditorSubtitleCue[];
   audio: EditorAudioClip[];
@@ -118,6 +120,8 @@ export interface EditorProject {
   schemaVersion: number;
   name: string;
   assetDirectory: string;
+  /** Explicit authored entry sequence; null means the runtime intro is used. */
+  entrySequence?: string | null;
   interactions: EditorInteraction[];
   selectedInteractionId: string | null;
   selectedRegionId: string | null;
@@ -550,6 +554,9 @@ export function normalizeTimeline(value: unknown, directory: string): EditorTime
   return {
     duration,
     loop: raw.loop !== false,
+    ...(raw.assetPaths && typeof raw.assetPaths === "object" && !Array.isArray(raw.assetPaths)
+      ? { assetPaths: Object.fromEntries(Object.entries(raw.assetPaths).filter((entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string" && entry[1].trim().length > 0)) }
+      : {}),
     sequenceId: typeof raw.sequenceId === "string" ? raw.sequenceId : "legacy",
     subtitlePath: typeof raw.subtitlePath === "string" ? raw.subtitlePath : undefined,
     openingMode: raw.openingMode === "scene-first" || raw.openingMode === "skip" ? raw.openingMode : "direct",
@@ -588,6 +595,7 @@ export function normalizeProject(value: unknown, directory: string): EditorProje
     schemaVersion: EDITOR_SCHEMA_VERSION,
     name: typeof project.name === "string" ? project.name : `${directory} interactions`,
     assetDirectory: directory,
+    ...(project.entrySequence === null || typeof project.entrySequence === "string" ? { entrySequence: project.entrySequence } : {}),
     interactions,
     selectedInteractionId,
     selectedRegionId,

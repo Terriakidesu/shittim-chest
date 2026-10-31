@@ -1,7 +1,8 @@
 import type { SpineFiles } from "../../../src/client/spine/spineRuntime";
 import type { AssetSource } from "../../../src/client/spine/spineAssets";
+import { normalizeSpineManifest, type SpineManifestRecord } from "../../../src/client/spine/spineManifest";
 
-interface SpineSet { directory: string; path: string }
+interface SpineSet { directory: string; path: string; files?: string[] }
 interface Catalog { rootPath: string | null; sets: SpineSet[] }
 
 export interface DesktopTextFile {
@@ -60,7 +61,37 @@ export async function chooseDesktopProject(): Promise<{ source: DesktopAssetSour
 
 export function sourceFromDesktop(rootPath: string): DesktopAssetSource {
   let catalogPromise: Promise<Catalog> | null = null;
+  const manifestPromises = new Map<string, Promise<SpineManifestRecord | null>>();
   const loadCatalog = () => catalogPromise ??= request("/__spine/catalog").then((response) => response.json() as Promise<Catalog>);
+  const filesForSet = async (set: SpineSet): Promise<SpineFiles> => {
+    if (set.files) {
+      const entries = await Promise.all(set.files.map(async (path) => [path, await loadFile(path)] as const));
+      return new Map(entries.filter((entry): entry is [string, File] => entry[1] !== null).map(([path, file]) => [file.name || path.split("/").at(-1)!, file])) as SpineFiles;
+    }
+    const files = await request(`/__spine/files?directory=${encodeURIComponent(set.path)}`).then((response) => response.json()) as { files: string[] };
+    const entries = await Promise.all(files.files.map(async (name) => [name, await loadFile(set.path === "." ? name : `${set.path}/${name}`)] as const));
+    return new Map(entries.filter((entry): entry is [string, File] => entry[1] !== null)) as SpineFiles;
+  };
+  const loadManifest = (directory: string): Promise<SpineManifestRecord | null> => manifestPromises.get(directory) ?? (() => {
+    const promise = (async () => {
+      for (const path of [`lobbies/${directory}/manifest.json`, "manifest.json"]) {
+        const content = await (async () => {
+          const file = await loadFile(path);
+          return file ? file.text() : null;
+        })();
+        if (content === null) continue;
+        try {
+          const manifest = normalizeSpineManifest(JSON.parse(content), directory);
+          if (manifest) return { manifest, path };
+        } catch {
+          // Fall back to the legacy project loader when a manifest is malformed.
+        }
+      }
+      return null;
+    })();
+    manifestPromises.set(directory, promise);
+    return promise;
+  })();
   return {
     desktop: true,
     rootPath,
@@ -68,11 +99,16 @@ export function sourceFromDesktop(rootPath: string): DesktopAssetSource {
     getSetFiles: async (directory) => {
       const set = (await loadCatalog()).sets.find((item) => item.directory === directory);
       if (!set) throw new Error(`Spine directory not found: ${directory}`);
-      const files = await request(`/__spine/files?directory=${encodeURIComponent(set.path)}`).then((response) => response.json()) as { files: string[] };
-      const entries = await Promise.all(files.files.map(async (name) => [name, await loadFile(set.path === "." ? name : `${set.path}/${name}`)] as const));
-      return new Map(entries.filter((entry): entry is [string, File] => entry[1] !== null)) as SpineFiles;
+      return filesForSet(set);
+    },
+    getSetFilesAtPath: async (path) => {
+      const wanted = path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+$/, "").toLocaleLowerCase();
+      const set = (await loadCatalog()).sets.find((item) => item.path.toLocaleLowerCase() === wanted || item.files?.some((file) => file.toLocaleLowerCase().startsWith(`${wanted}/`)));
+      if (!set) throw new Error(`Manifest Spine path not found: ${path}`);
+      return filesForSet(set);
     },
     getFile: loadFile,
+    getManifest: loadManifest,
     openText: async () => {
       const selected = await request("/__spine/open-file", { method: "POST" }).then((response) => response.json()) as { path: string | null; content: string | null };
       return selected.path && selected.content !== null ? { path: selected.path, content: selected.content } : null;

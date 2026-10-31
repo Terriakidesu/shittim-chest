@@ -70,6 +70,8 @@ export interface SpineInteractionProject {
   schemaVersion: number;
   name?: string;
   assetDirectory: string;
+  /** Explicit authored entry; null intentionally selects the runtime intro. */
+  entrySequence?: string | null;
   interactions: SpineAuthoredInteraction[];
   timeline?: SpineTimeline;
   sequences?: Record<string, SpineTimeline>;
@@ -164,6 +166,7 @@ export function normalizeSpineInteractionProject(value: unknown, directory?: str
     schemaVersion: Math.max(1, Math.trunc(finiteNumber(project.schemaVersion, 1))),
     ...(typeof project.name === "string" ? { name: project.name } : {}),
     assetDirectory,
+    ...(project.entrySequence === null || typeof project.entrySequence === "string" ? { entrySequence: project.entrySequence } : {}),
     interactions: project.interactions
       .map((interaction, index) => normalizeAuthoredInteraction(interaction, index))
       .filter((interaction): interaction is SpineAuthoredInteraction => interaction !== null),

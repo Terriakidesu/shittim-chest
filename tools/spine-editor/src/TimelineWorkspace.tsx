@@ -12,6 +12,7 @@ import {
   type TimelineLayerRole,
 } from "./editorModel";
 import type { DesktopAssetSource } from "./desktopSource";
+import { manifestReferenceCandidates } from "../../../src/client/spine/spineManifest";
 import { audioPlaybackDecision, clampAudioEnd, clampAudioStart, decodedAudioTiming } from "./audioModel";
 import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, openingPhaseTimings, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
 import { timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineLayerAnimation, timelineLayerSampleTime, timelineMainAnimation } from "../../../src/client/spine/spineTimeline";
@@ -502,7 +503,11 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     setFiles({});
     void Promise.all(displayLayers.map(async (layer) => {
       try {
-        return [layer.directory, await source.getSetFiles(layer.directory)] as const;
+        const assetPath = project?.timeline.assetPaths?.[layer.directory];
+        const files = assetPath && source.getSetFilesAtPath
+          ? await source.getSetFilesAtPath(assetPath)
+          : await source.getSetFiles(layer.directory);
+        return [layer.directory, files] as const;
       } catch (value) {
         if (!cancelled) onError(`${layer.directory}: ${value instanceof Error ? value.message : String(value)}`);
         return [layer.directory, null] as const;
@@ -511,7 +516,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       if (!cancelled) setFiles(Object.fromEntries(entries));
     });
     return () => { cancelled = true; };
-  }, [layerDirectoriesKey, onError, source]);
+  }, [layerDirectoriesKey, onError, project?.timeline.assetPaths, source]);
 
   useEffect(() => {
     const clips = timeline?.audio ?? [];
@@ -677,7 +682,13 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           document = parsed as Record<string, unknown>;
           subtitleDocumentsRef.current[path] = structuredClone(document);
         }
-        await currentSource.saveText(path, serializeSubtitleDocument(document, current.assetDirectory, timelines));
+        const serialized = serializeSubtitleDocument(document, current.assetDirectory, timelines);
+        await currentSource.saveText(path, serialized);
+        const record = await currentSource.getManifest?.(directory);
+        const legacyPath = record?.manifest.legacySubtitles
+          ? manifestReferenceCandidates(record, record.manifest.legacySubtitles)[0]
+          : undefined;
+        if (legacyPath && legacyPath !== path) await currentSource.saveText(legacyPath, serialized);
         saved.push(path);
       }
       return saved;

@@ -1,4 +1,6 @@
 import type { SpineFiles } from "./spineRuntime";
+import { isEditorIgnored, parseEditorIgnore, type EditorIgnoreRule } from "./editorIgnore";
+import { manifestReferenceCandidates, normalizeSpineManifest, type SpineManifestAssetSet, type SpineManifestRecord } from "./spineManifest";
 
 export interface CharacterVariant {
   variant: string;
@@ -44,8 +46,11 @@ export interface CharacterIndex {
 
 export interface AssetSource {
   getSetFiles: (directory: string) => Promise<SpineFiles>;
+  /** Resolve a manifest-declared root-relative Spine set path without inferring from directory names. */
+  getSetFilesAtPath?: (path: string) => Promise<SpineFiles>;
   getDirectories: () => Promise<string[]>;
   getFile: (path: string) => Promise<File | null>;
+  getManifest?: (directory: string) => Promise<SpineManifestRecord | null>;
 }
 
 type DirectoryHandleWithEntries = FileSystemDirectoryHandle & {
@@ -55,6 +60,7 @@ type DirectoryHandleWithEntries = FileSystemDirectoryHandle & {
 type WebkitFile = File & { webkitRelativePath?: string };
 
 const SPINE_SET_FILE = /\.(?:atlas|skel)$/i;
+const EDITOR_DIRECTORIES = new Set([".editor", ".shittim-spine-editor"]);
 
 function normalizedPath(path: string): string {
   return path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/\/+/g, "/");
@@ -82,17 +88,81 @@ async function directoryEntries(handle: FileSystemDirectoryHandle): Promise<Arra
   return entries;
 }
 
-async function hasAssetFiles(handle: FileSystemDirectoryHandle): Promise<boolean> {
-  for (const [name, entry] of await directoryEntries(handle)) {
-    if (entry.kind === "file" && SPINE_SET_FILE.test(name)) return true;
-  }
-  return false;
+function joinPath(parent: string, name: string): string {
+  return parent ? `${parent}/${name}` : name;
 }
 
-async function filesInDirectory(handle: FileSystemDirectoryHandle): Promise<SpineFiles> {
+function isEditorDataPath(path: string): boolean {
+  return EDITOR_DIRECTORIES.has(path.split("/")[0]?.toLocaleLowerCase() ?? "");
+}
+
+function ignored(path: string, rules: readonly EditorIgnoreRule[], isDirectory = false): boolean {
+  return !isEditorDataPath(path) && isEditorIgnored(path, rules, isDirectory);
+}
+
+async function readIgnoreRules(root: FileSystemDirectoryHandle): Promise<EditorIgnoreRule[]> {
+  const file = await fileAtPath(root, ".editorignore");
+  if (!file) return [];
+  try {
+    return parseEditorIgnore(await file.text());
+  } catch {
+    return [];
+  }
+}
+
+interface DirectoryAssetSet {
+  directory: string;
+  path: string;
+  handle: FileSystemDirectoryHandle;
+}
+
+interface DirectoryCatalog {
+  sets: DirectoryAssetSet[];
+  manifests: Map<string, SpineManifestRecord>;
+  rules: EditorIgnoreRule[];
+}
+
+async function catalogDirectory(handle: FileSystemDirectoryHandle, path: string, rules: readonly EditorIgnoreRule[]): Promise<DirectoryAssetSet[]> {
+  if (isEditorDataPath(path) || ignored(path, rules, true)) return [];
+  const entries = await directoryEntries(handle);
+  const usableEntries = entries.filter(([name, entry]) => {
+    const childPath = joinPath(path, name);
+    return name !== "node_modules" && name !== ".git" && !isEditorDataPath(childPath) && !ignored(childPath, rules, entry.kind === "directory");
+  });
+  if (usableEntries.some(([name, entry]) => entry.kind === "file" && SPINE_SET_FILE.test(name))) {
+    return [{ directory: handle.name, path: path || ".", handle }];
+  }
+  const children = await Promise.all(
+    usableEntries
+      .filter(([, entry]) => entry.kind === "directory")
+      .map(([name, entry]) => catalogDirectory(entry as FileSystemDirectoryHandle, joinPath(path, name), rules)),
+  );
+  return children.flat();
+}
+
+async function catalogManifests(handle: FileSystemDirectoryHandle, path: string, rules: readonly EditorIgnoreRule[], output: Map<string, SpineManifestRecord>): Promise<void> {
+  if (isEditorDataPath(path) || ignored(path, rules, true)) return;
+  const entries = await directoryEntries(handle);
+  await Promise.all(entries.map(async ([name, entry]) => {
+    const childPath = joinPath(path, name);
+    if (name === "node_modules" || name === ".git" || isEditorDataPath(childPath) || ignored(childPath, rules, entry.kind === "directory")) return;
+    if (entry.kind === "file" && name.toLocaleLowerCase() === "manifest.json") {
+      try {
+        const parsed = normalizeSpineManifest(JSON.parse(await (entry as FileSystemFileHandle).getFile().then((file) => file.text())), path.split("/").at(-1));
+        if (parsed) output.set(parsed.id, { manifest: parsed, path: childPath });
+      } catch {
+        // A malformed manifest should not hide legacy asset discovery.
+      }
+      return;
+    }
+    if (entry.kind === "directory") await catalogManifests(entry as FileSystemDirectoryHandle, childPath, rules, output);
+  }));
+}
+
+async function filesInDirectory(handle: FileSystemDirectoryHandle, path: string, rules: readonly EditorIgnoreRule[]): Promise<SpineFiles> {
   const files: SpineFiles = new Map();
   for (const [name, entry] of await directoryEntries(handle)) {
-    if (entry.kind === "file") files.set(name, await (entry as FileSystemFileHandle).getFile());
+    if (entry.kind === "file" && !ignored(joinPath(path, name), rules)) files.set(name, await (entry as FileSystemFileHandle).getFile());
   }
   return files;
 }
@@ -113,33 +183,71 @@ async function fileAtPath(handle: FileSystemDirectoryHandle, path: string): Prom
   }
 }
 
-/** Resolve the selected folder's `lobbies/` child when an asset root was chosen. */
-async function lobbyHandle(root: FileSystemDirectoryHandle): Promise<FileSystemDirectoryHandle> {
-  return await childDirectory(root, "lobbies") ?? root;
-}
-
 export function sourceFromDirectory(root: FileSystemDirectoryHandle): AssetSource {
+  let catalogPromise: Promise<DirectoryCatalog> | null = null;
+  const loadCatalog = () => catalogPromise ??= (async () => {
+    const rules = await readIgnoreRules(root);
+    const manifests = new Map<string, SpineManifestRecord>();
+    await catalogManifests(root, "", rules, manifests);
+    const discovered = manifests.size > 0 ? [] : await catalogDirectory(root, "", rules);
+    const unique = new Map<string, DirectoryAssetSet>();
+    for (const set of discovered) if (!unique.has(set.directory)) unique.set(set.directory, set);
+    return {
+      sets: [...unique.values()].sort((a, b) => a.directory.localeCompare(b.directory, undefined, { sensitivity: "base" })),
+      manifests,
+      rules,
+    };
+  })();
+  const filesFromManifest = async (record: SpineManifestRecord, assets: SpineManifestAssetSet): Promise<SpineFiles> => {
+    const files: SpineFiles = new Map();
+    for (const reference of assets.files) {
+      for (const candidate of manifestReferenceCandidates(record, reference)) {
+        const file = await fileAtPath(root, candidate);
+        if (file) {
+          files.set(file.name, file);
+          break;
+        }
+      }
+    }
+    return files;
+  };
+  const filesFromManifestPath = async (path: string): Promise<SpineFiles> => {
+    const catalog = await loadCatalog();
+    const wanted = normalizedPath(path).replace(/\/+$/, "");
+    for (const record of catalog.manifests.values()) {
+      for (const assets of Object.values(record.manifest.assets)) {
+        const hasPath = assets.files.some((reference) => manifestReferenceCandidates(record, reference)
+          .some((candidate) => candidate.toLocaleLowerCase().startsWith(`${wanted.toLocaleLowerCase()}/`)));
+        if (hasPath) return filesFromManifest(record, assets);
+      }
+    }
+    throw new Error(`Manifest Spine path not found: ${path}`);
+  };
   return {
     getDirectories: async () => {
-      const lobby = await lobbyHandle(root);
-      if (await hasAssetFiles(lobby)) return [lobby === root ? root.name : lobby.name];
-      return (await directoryEntries(lobby))
-        .filter(([, entry]) => entry.kind === "directory")
-        .map(([name]) => name)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      const catalog = await loadCatalog();
+      if (catalog.manifests.size > 0) return [...catalog.manifests.keys()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      return catalog.sets.map((set) => set.directory);
     },
     getSetFiles: async (directory) => {
-      const lobby = await lobbyHandle(root);
-      const set = lobby === root && directory === root.name ? root : await lobby.getDirectoryHandle(directory);
-      return filesInDirectory(set);
+      const catalog = await loadCatalog();
+      const manifestRecord = catalog.manifests.get(directory) ?? [...catalog.manifests.values()].find((record) => record.manifest.assets[directory]);
+      const manifestAssets = manifestRecord?.manifest.assets[directory];
+      if (manifestRecord && manifestAssets) return filesFromManifest(manifestRecord, manifestAssets);
+      const set = catalog.sets.find((item) => item.directory === directory);
+      if (!set) throw new Error(`Spine directory not found: ${directory}`);
+      return filesInDirectory(set.handle, set.path === "." ? "" : set.path, catalog.rules);
     },
+    getSetFilesAtPath: filesFromManifestPath,
     getFile: async (path) => {
+      const rules = (await loadCatalog()).rules;
       for (const candidate of filePathCandidates(path)) {
         const file = await fileAtPath(root, candidate);
-        if (file) return file;
+        if (file && !ignored(candidate, rules)) return file;
       }
       return null;
     },
+    getManifest: async (directory) => (await loadCatalog()).manifests.get(directory) ?? null,
   };
 }
 
@@ -157,13 +265,48 @@ function inputFiles(fileList: FileList): { rootName: string; files: InputFile[] 
   return { rootName: files[0]?.rootName ?? "", files: files.map(({ path, file }) => ({ path, file })) };
 }
 
+interface InputAssetSet {
+  directory: string;
+  prefix: string;
+}
+
+interface InputCatalog {
+  sets: InputAssetSet[];
+  manifests: Map<string, SpineManifestRecord>;
+  rules: EditorIgnoreRule[];
+}
+
+function inputAssetSets(files: readonly InputFile[], rootName: string, rules: readonly EditorIgnoreRule[]): InputAssetSet[] {
+  const unique = new Map<string, InputAssetSet>();
+  for (const entry of files) {
+    if (!SPINE_SET_FILE.test(entry.path) || ignored(entry.path, rules)) continue;
+    const slash = entry.path.lastIndexOf("/");
+    const prefix = slash < 0 ? "" : entry.path.slice(0, slash + 1);
+    const directory = slash < 0 ? rootName : entry.path.slice(0, slash).split("/").at(-1) ?? rootName;
+    if (directory && !unique.has(directory)) unique.set(directory, { directory, prefix });
+  }
+  return [...unique.values()].sort((a, b) => a.directory.localeCompare(b.directory, undefined, { sensitivity: "base" }));
+}
+
 export function sourceFromInput(fileList: FileList): AssetSource {
   const { rootName, files } = inputFiles(fileList);
-  const hasNestedLobbyRoot = files.some(({ path }) => path.toLocaleLowerCase().startsWith("lobbies/"));
-  const lobbyPrefix = hasNestedLobbyRoot ? "lobbies/" : "";
-  const directSet = !lobbyPrefix && files.some(({ path }) => !path.includes("/") && SPINE_SET_FILE.test(path));
-  const findFiles = (prefix: string) => files
-    .filter(({ path }) => path.startsWith(prefix))
+  let catalogPromise: Promise<InputCatalog> | null = null;
+  const loadCatalog = () => catalogPromise ??= (async () => {
+    const ignoreFile = files.find((entry) => entry.path.toLocaleLowerCase() === ".editorignore");
+    const rules = ignoreFile ? parseEditorIgnore(await ignoreFile.file.text()) : [];
+    const manifests = new Map<string, SpineManifestRecord>();
+    for (const entry of files.filter((item) => item.path.toLocaleLowerCase().endsWith("/manifest.json") || item.path.toLocaleLowerCase() === "manifest.json")) {
+      try {
+        const parsed = normalizeSpineManifest(JSON.parse(await entry.file.text()), entry.path.split("/").at(-2) ?? rootName);
+        if (parsed) manifests.set(parsed.id, { manifest: parsed, path: entry.path });
+      } catch {
+        // Ignore malformed manifests and retain the legacy input fallback.
+      }
+    }
+    return { sets: inputAssetSets(files, rootName, rules), manifests, rules };
+  })();
+  const findFiles = (prefix: string, rules: readonly EditorIgnoreRule[]) => files
+    .filter(({ path }) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/") && !ignored(path, rules))
     .map(({ path, file }) => [path.slice(prefix.length), file] as const);
   const findFile = (path: string): File | null => {
     const requested = normalizedPath(path);
@@ -175,23 +318,58 @@ export function sourceFromInput(fileList: FileList): AssetSource {
     const matches = files.filter((entry) => entry.path.split("/").at(-1)?.toLocaleLowerCase() === basename);
     return matches.length === 1 ? matches[0]!.file : null;
   };
+  const filesFromManifest = (record: SpineManifestRecord, assets: SpineManifestAssetSet): SpineFiles => {
+    const entries: Array<[string, File]> = [];
+    for (const reference of assets.files) {
+      for (const candidate of manifestReferenceCandidates(record, reference)) {
+        const file = findFile(candidate);
+        if (file) {
+          entries.push([file.name, file]);
+          break;
+        }
+      }
+    }
+    return new Map(entries);
+  };
+  const filesFromManifestPath = async (path: string): Promise<SpineFiles> => {
+    const catalog = await loadCatalog();
+    const wanted = normalizedPath(path).replace(/\/+$/, "").toLocaleLowerCase();
+    for (const record of catalog.manifests.values()) {
+      for (const assets of Object.values(record.manifest.assets)) {
+        const hasPath = assets.files.some((reference) => manifestReferenceCandidates(record, reference)
+          .some((candidate) => candidate.toLocaleLowerCase().startsWith(`${wanted}/`)));
+        if (hasPath) return filesFromManifest(record, assets);
+      }
+    }
+    throw new Error(`Manifest Spine path not found: ${path}`);
+  };
 
   return {
     getDirectories: async () => {
-      if (directSet) return [rootName];
-      const names = new Set<string>();
-      for (const { path } of files) {
-        if (!path.startsWith(lobbyPrefix)) continue;
-        const remainder = path.slice(lobbyPrefix.length);
-        const slash = remainder.indexOf("/");
-        if (slash > 0) names.add(remainder.slice(0, slash));
-      }
-      return [...names].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      const catalog = await loadCatalog();
+      if (catalog.manifests.size > 0) return [...catalog.manifests.keys()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      return catalog.sets.map((set) => set.directory);
     },
     getSetFiles: async (directory) => {
-      const prefix = directSet && directory === rootName ? "" : `${lobbyPrefix}${directory}/`;
-      return new Map(findFiles(prefix));
+      const catalog = await loadCatalog();
+      const manifestRecord = catalog.manifests.get(directory) ?? [...catalog.manifests.values()].find((record) => record.manifest.assets[directory]);
+      const manifestAssets = manifestRecord?.manifest.assets[directory];
+      if (manifestRecord && manifestAssets) {
+        return filesFromManifest(manifestRecord, manifestAssets);
+      }
+      const set = catalog.sets.find((item) => item.directory === directory);
+      if (!set) throw new Error(`Spine directory not found: ${directory}`);
+      return new Map(findFiles(set.prefix, catalog.rules));
     },
-    getFile: async (path) => findFile(path),
+    getSetFilesAtPath: filesFromManifestPath,
+    getFile: async (path) => {
+      const rules = (await loadCatalog()).rules;
+      for (const candidate of filePathCandidates(path)) {
+        const file = findFile(candidate);
+        if (file && !ignored(candidate, rules)) return file;
+      }
+      return null;
+    },
+    getManifest: async (directory) => (await loadCatalog()).manifests.get(directory) ?? null,
   };
 }

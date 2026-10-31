@@ -27,10 +27,28 @@ bridge and does not upload assets or make network requests.
 The selected root may contain an `.editorignore` file. It uses root-relative
 gitignore-style patterns (`*`, `?`, `**`, directory patterns, and `!`
 negation) to keep generated or unrelated files out of the imported catalog.
-Editor-owned projects are saved under `.editor/`; the older
-`.shittim-spine-editor/` location is still read for migration. Opening a root
-or switching sets automatically restores the saved interaction/timeline
-project, including its subtitle cues and audio clips.
+The asset root may use the manifest layout emitted by
+`bun run migrate:spine -- --root=<asset-root>`:
+
+```text
+catalog.json
+lobbies/<id>/manifest.json
+lobbies/<id>/spine/*
+lobbies/<id>/sequences/*.json
+lobbies/<id>/interactions.json
+lobbies/<id>/subtitles.json
+lobbies/<id>/.editor/workspace.json
+.editor/<id>.workspace.json       # compatibility mirror
+```
+
+The manifest is the shared contract for the viewer and editor. It explicitly
+names the Spine files, authored sequences, interactions, and `entrySequence`.
+The workspace stores only editor selection/view state; it is never used as the
+viewer intro. A null `entrySequence` deliberately uses the asset's runtime
+intro. New saves update the manifest files above and the lobby-local
+`.editor/workspace.json`; the root `.editor/<id>.workspace.json` remains a
+compatibility mirror. Older `.editor/*.spine-project.json` and
+`.shittim-spine-editor/` projects remain readable for migration.
 
 ## Workflow
 
@@ -83,14 +101,16 @@ all layers together rather than flattening them into images.
   timestamps, volume, and enabled state in the Audio track.
 - In the native desktop host, switch character sets from the shared header picker;
   decoded voice duration expands each imported audio block and the linked
-  subtitle JSON is saved back in place. **Save files** writes the companion
-  project JSON under `.editor/` in the selected asset root. When that project
-  is found again, subtitle cues and referenced audio are loaded automatically.
+  subtitle JSON is saved back in place. **Save files** writes authored
+  interactions, sequence, and subtitle files beside the lobby manifest, plus
+  editor-only workspace state under the lobby's `.editor/`. The original
+  shared subtitle source is retained as a migration mirror. When that root is
+  found again, subtitle cues and referenced audio are loaded automatically.
 - Change the shared duration, snap interval, playback speed, and layer order.
 
-Timeline edits are part of the same local, versioned project JSON as the
-interaction edits. They are non-destructive: the source `.atlas`, `.skel`, and
-texture files are never rewritten.
+Timeline edits are stored as explicit per-sequence JSON beside the lobby
+manifest, alongside the interaction JSON. They are non-destructive: the source
+`.atlas`, `.skel`, and texture files are never rewritten.
 
 The workspace fits the desktop window. Each side panel scrolls independently;
 drag its divider to resize, double-click the divider to reset, or use the canvas
@@ -124,9 +144,9 @@ Shortcuts are ignored while typing in a field.
 | Delete / Backspace | Delete selected region (Edit mode) |
 | ? | Show/hide quick help |
 
-Existing version-1 projects remain compatible. Project companions are kept
-under the selected asset root; the local Spine viewer consumes the same
-interaction and timeline playback fields when that root is selected, while
-published assets still use the committed fallback bundle. Use `.editorignore`
-when a root contains asset-like folders that should not be imported.
+Existing version-1 projects remain compatible. The local Spine viewer consumes
+the same manifest, interaction, and timeline files when that root is selected,
+while published assets still use the committed fallback bundle. Use
+`.editorignore` when a root contains asset-like folders that should not be
+imported.
 Neither this editor nor its assets are included in the root Pages build.

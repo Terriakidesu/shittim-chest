@@ -25,10 +25,11 @@ The desktop host serves the embedded editor through a local Bun process, so the
 native folder picker and asset reads do not depend on browser folder
 permissions. The local webview is an implementation detail; this tool has no
 browser launch mode.
-`Ctrl+S`/**Save files** writes the current non-destructive project companion to
-`.editor/<character>.spine-project.json` inside the selected root. Imported
-subtitle JSON is linked to its source path and is saved back through the same
-native channel after edits (or immediately with Ctrl+S). Reopening the root
+`Ctrl+S`/**Save files** writes the manifest-declared interactions and sequence
+files beside the selected lobby, plus `.editor/workspace.json` for editor-only
+state. Imported subtitle JSON is saved to the lobby-local `subtitles.json` and
+the retained shared source through the same native channel. Reopening the root
 restores the interaction/timeline project and automatically loads its subtitle
-cues and referenced audio. The older `.shittim-spine-editor/` directory is
-read for migration. The published site remains unaware of this API.
+cues and referenced audio. Older root `.editor/*.spine-project.json` and
+`.shittim-spine-editor/` projects remain readable for migration. The published
+site remains unaware of this API.

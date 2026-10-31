@@ -77,6 +77,8 @@ export interface SpineTimeline {
   duration: number;
   loop: boolean;
   layersInitialized?: boolean;
+  /** Root-relative Spine set directories for every layer in this sequence. */
+  assetPaths?: Record<string, string>;
   layers: SpineTimelineLayer[];
   subtitles: SpineTimelineSubtitle[];
   audio: SpineTimelineAudio[];
@@ -279,6 +281,9 @@ export function normalizeSpineTimeline(value: unknown): SpineTimeline | null {
     duration,
     loop: timeline.loop !== false,
     ...(typeof timeline.layersInitialized === "boolean" ? { layersInitialized: timeline.layersInitialized } : {}),
+    ...(timeline.assetPaths && typeof timeline.assetPaths === "object" && !Array.isArray(timeline.assetPaths)
+      ? { assetPaths: Object.fromEntries(Object.entries(timeline.assetPaths).filter((entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string" && entry[1].trim().length > 0)) }
+      : {}),
     layers: (Array.isArray(timeline.layers) ? timeline.layers : [])
       .map((layer, index) => normalizeLayer(layer, index, duration))
       .filter((layer): layer is SpineTimelineLayer => layer !== null),

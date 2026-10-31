@@ -240,6 +240,7 @@ function interactionProjectMap(value: unknown): Map<string, SpineInteractionProj
     bundle.projects
       .map((project) => normalizeSpineInteractionProject(project))
       .filter((project): project is SpineInteractionProject => project !== null)
+      .map((project) => ({ ...project, entrySequence: project.entrySequence !== undefined ? project.entrySequence : (project.sequences?.opening ? "opening" : null) }))
       .map((project) => [project.assetDirectory, project]),
   );
 }
@@ -379,9 +380,9 @@ export function Spine() {
   const selectedDirectoryName = selectedVariant?.directory ?? "";
   const selectedInteractionProject = localInteractionProject ?? interactionProjects.get(selectedDirectoryName) ?? null;
   const compositionSequenceIds = selectedInteractionProject ? timelineSequenceIds(selectedInteractionProject) : [];
-  const compositionSequenceId = compositionSequenceIds.includes(selectedSequenceId)
+  const compositionSequenceId = selectedSequenceId && compositionSequenceIds.includes(selectedSequenceId)
     ? selectedSequenceId
-    : compositionSequenceIds[0] ?? "";
+    : "";
   const compositionTimeline = selectedInteractionProject ? timelineForSequence(selectedInteractionProject, compositionSequenceId) : null;
   const compositionActive = Boolean(compositionTimeline);
   const activeViewport = () => compositionActive ? compositionRef.current : viewportRef.current;
@@ -397,7 +398,16 @@ export function Spine() {
   }, [selectedDirectoryName, source]);
 
   useEffect(() => {
-    setSelectedSequenceId(selectedInteractionProject?.timeline?.sequenceId ?? "");
+    const entrySequence = selectedInteractionProject?.entrySequence;
+    const sequenceIds = selectedInteractionProject ? timelineSequenceIds(selectedInteractionProject) : [];
+    const initialSequence = entrySequence && sequenceIds.includes(entrySequence) ? entrySequence : "";
+    setSelectedSequenceId(initialSequence);
+    const initialTimeline = selectedInteractionProject && initialSequence ? timelineForSequence(selectedInteractionProject, initialSequence) : null;
+    setProgress({
+      time: 0,
+      duration: initialTimeline ? timelinePlaybackDuration(initialTimeline) : 0,
+      animation: null,
+    });
   }, [selectedInteractionProject]);
 
   const legacyVoiceCharacter = voiceCharacterForDirectory(voiceManifest, selectedDirectoryName);
@@ -854,7 +864,7 @@ export function Spine() {
     setMeta(next);
     setAnimation(skipIntro && next?.idleAnimation ? next.idleAnimation : next?.defaultAnimation ?? "");
     setCameraMode(interactionMode === "interaction" ? "game" : next?.hasGameCamera ? "game" : "fill");
-    if (!next) setProgress({ time: 0, duration: 0, animation: null });
+    if (!next && !compositionActive) setProgress({ time: 0, duration: 0, animation: null });
   };
 
   useEffect(() => {
@@ -1041,7 +1051,7 @@ export function Spine() {
               showInteractionPoints={showInteractionPoints}
               effectsStrength={effectsStrength}
               onMeta={handleViewportMeta}
-              onProgress={setProgress}
+              onProgress={(next) => { if (!compositionActive) setProgress(next); }}
               onLoading={setRendererLoading}
               onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
               onCameraMode={(mode) => setCameraMode(interactionMode === "interaction" ? "game" : mode)}
@@ -1122,9 +1132,10 @@ export function Spine() {
                 </select></label>
                 {!compositionActive && <label className="spine-check"><input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>}
                  </>}
-                 {compositionActive && compositionSequenceIds.length > 0 && <label className="spine-setting-field"><span>{t("spine.sequence")}</span><select value={compositionSequenceId} onChange={(event) => { setProgress({ time: 0, duration: compositionTimeline ? timelinePlaybackDuration(compositionTimeline) : 0, animation: null }); setSelectedSequenceId(event.target.value); }} aria-label={t("spine.sequenceAria")}>
-                   {compositionSequenceIds.map((id) => <option key={id} value={id}>{id === "opening" ? t("spine.sequenceOpening") : id.match(/^talk-(\d+)$/)?.[1] ? t("spine.sequenceTalk", { n: id.match(/^talk-(\d+)$/)![1]! }) : id}</option>)}
-                 </select></label>}
+                  {selectedInteractionProject && compositionSequenceIds.length > 0 && <label className="spine-setting-field"><span>{t("spine.sequence")}</span><select value={compositionSequenceId || "__runtime-intro__"} onChange={(event) => { const next = event.target.value === "__runtime-intro__" ? "" : event.target.value; const nextTimeline = next ? timelineForSequence(selectedInteractionProject, next) : null; setProgress({ time: 0, duration: nextTimeline ? timelinePlaybackDuration(nextTimeline) : 0, animation: null }); setSelectedSequenceId(next); }} aria-label={t("spine.sequenceAria")}>
+                    {!compositionSequenceId && <option value="__runtime-intro__">Runtime intro</option>}
+                    {compositionSequenceIds.map((id) => <option key={id} value={id}>{id === "opening" ? t("spine.sequenceOpening") : id.match(/^talk-(\d+)$/)?.[1] ? t("spine.sequenceTalk", { n: id.match(/^talk-(\d+)$/)![1]! }) : id}</option>)}
+                  </select></label>}
                  {!compositionActive && <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={skipIntro} onChange={(event) => toggleSkipIntro(event.target.checked)} />{t("spine.skipIntro")}</label>}
                 {voiceLines.length > 0 && <>
                   <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={voiceEnabled} onChange={(event) => setVoiceEnabled(event.target.checked)} />{t("spine.voice")}{voicePlaying && <small>●</small>}</label>

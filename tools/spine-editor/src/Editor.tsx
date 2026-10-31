@@ -36,7 +36,7 @@ import { normalizeRecentFiles, RECENT_FILES_KEY, rememberRecentFile, removeRecen
 import { AssetPickerModal } from "./AssetPickerModal";
 import { characterDirectoryLabel, parseCharacterDirectoryLabels, type CharacterDirectoryLabels } from "./characterCatalog";
 import { editorProjectPath } from "./editorStorage";
-import { pendingProjectForDirectory, readSavedEditorProject } from "./editorProject";
+import { pendingProjectForDirectory, readSavedEditorProject, saveManifestEditorProject } from "./editorProject";
 import { isTextEditingTarget } from "./editorKeyboard";
 
 function displayName(path: string): string {
@@ -621,7 +621,7 @@ export function Editor() {
     const [found, characterLabels] = await Promise.all([
       next.getDirectories(),
       (async () => {
-        for (const path of ["characters.json", "character.json"]) {
+        for (const path of ["catalog.json", "characters.json", "character.json"]) {
           const content = await next.readText(path).catch(() => null);
           if (!content) continue;
           try { return parseCharacterDirectoryLabels(JSON.parse(content) as unknown); }
@@ -817,15 +817,16 @@ export function Editor() {
         const subtitlePaths = await timelineSaveRef.current?.(getCurrentProject) ?? [];
         const latest = getCurrentProject();
         if (sourceRef.current !== saveSource || directoryRef.current !== saveDirectory || latest.assetDirectory !== saveDirectory) return;
-        const projectPath = editorProjectPath(saveDirectory);
-        await saveSource.saveText(projectPath, `${JSON.stringify(latest, null, 2)}\n`);
+        const manifestSave = await saveManifestEditorProject(saveSource, latest);
+        const projectPath = manifestSave?.manifestPath ?? editorProjectPath(saveDirectory);
+        if (!manifestSave) await saveSource.saveText(projectPath, `${JSON.stringify(latest, null, 2)}\n`);
         recordRecentFile({ kind: "project", path: projectPath, rootPath: saveSource.rootPath, label: displayName(projectPath), directory: saveDirectory });
         setSaveState("saved");
         setSavedAt(Date.now());
         const subtitleMessage = subtitlePaths.length > 0
           ? ` · Linked subtitles: ${subtitlePaths.map((path) => nativePath(saveSource.rootPath, path)).join(", ")}`
           : " · No linked subtitle files";
-        setStatus(`Saved project: ${nativePath(saveSource.rootPath, projectPath)}${subtitleMessage}`);
+        setStatus(`${manifestSave ? "Saved manifest project" : "Saved project"}: ${nativePath(saveSource.rootPath, projectPath)}${subtitleMessage}`);
       } catch (value) {
         setSaveState("error");
         setError(value instanceof Error ? value.message : String(value));
