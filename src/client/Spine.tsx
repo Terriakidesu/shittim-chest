@@ -383,7 +383,7 @@ export function Spine() {
     ? selectedSequenceId
     : compositionSequenceIds[0] ?? "";
   const compositionTimeline = selectedInteractionProject ? timelineForSequence(selectedInteractionProject, compositionSequenceId) : null;
-  const compositionActive = interactionMode === "free" && Boolean(compositionTimeline);
+  const compositionActive = Boolean(compositionTimeline);
   const activeViewport = () => compositionActive ? compositionRef.current : viewportRef.current;
 
   useEffect(() => {
@@ -471,7 +471,8 @@ export function Spine() {
         setTalkAutoplay(false);
         return;
       }
-      viewportRef.current?.triggerTalk(voiceAnimationForLine(line));
+      if (compositionActive) compositionRef.current?.triggerTalk(voiceAnimationForLine(line));
+      else viewportRef.current?.triggerTalk(voiceAnimationForLine(line));
       // A talk animation may still be finishing its authored fade when the
       // last audio clip ends. Retry briefly rather than dropping the sequence.
       if (voiceSessionRef.current?.lineIndex !== lineIndex) queueNextAutoTalk(lineIndex, run, attempt + 1);
@@ -482,7 +483,10 @@ export function Spine() {
     if (run !== voiceRunRef.current) return;
     const session = voiceSessionRef.current;
     voiceSessionRef.current = null;
-    if (session?.kind === "talk") viewportRef.current?.setTalkAudioPending(false);
+    if (session?.kind === "talk") {
+      if (compositionActive) compositionRef.current?.setTalkAudioPending(false);
+      else viewportRef.current?.setTalkAudioPending(false);
+    }
     setVoicePlaying(false);
     setVoiceLineIndex(null);
     setVoiceClipIndex(0);
@@ -504,7 +508,8 @@ export function Spine() {
     clearAutoPlayTimer();
     if (cancelAutoPlay) talkAutoplayRef.current = false;
     clearVoiceAudio();
-    viewportRef.current?.setTalkAudioPending(false);
+    if (compositionActive) compositionRef.current?.setTalkAudioPending(false);
+    else viewportRef.current?.setTalkAudioPending(false);
     if (updateState) {
       setVoicePlaying(false);
       setVoiceLineIndex(null);
@@ -643,8 +648,11 @@ export function Spine() {
   }, [meta?.introAnimation, progress.animation]);
 
   useEffect(() => {
-    if (progress.animation === meta?.introAnimation && introVoiceLine) viewportRef.current?.startIntroAudio();
-  }, [introVoiceLine, meta?.introAnimation, progress.animation, voiceEnabled]);
+    if (progress.animation === meta?.introAnimation && introVoiceLine) {
+      if (compositionActive) compositionRef.current?.startIntroAudio();
+      else viewportRef.current?.startIntroAudio();
+    }
+  }, [compositionActive, introVoiceLine, meta?.introAnimation, progress.animation, voiceEnabled]);
 
   useEffect(() => {
     if (!source) {
@@ -807,7 +815,8 @@ export function Spine() {
   const playTalk = (line?: SpineVoiceLine, preserveAutoplay = false) => {
     if (!interactionReady) return;
     stopVoice(true, !preserveAutoplay);
-    viewportRef.current?.triggerTalk(line ? voiceAnimationForLine(line) : undefined);
+    if (compositionActive) compositionRef.current?.triggerTalk(line ? voiceAnimationForLine(line) : undefined);
+    else viewportRef.current?.triggerTalk(line ? voiceAnimationForLine(line) : undefined);
   };
 
   const selectDialogue = (value: string) => {
@@ -997,19 +1006,26 @@ export function Spine() {
         }} onPointerCancel={() => { stagePointer.current = null; }}>
           {compositionActive && compositionTimeline && source
             ? <SpineCompositionViewport
-              ref={compositionRef}
-              source={source}
-              timeline={compositionTimeline}
-              currentTime={progress.time}
+               ref={compositionRef}
+               source={source}
+               timeline={compositionTimeline}
+               interactionMode={interactionMode}
+               interactionProject={selectedInteractionProject}
+               showInteractionPoints={showInteractionPoints}
+               currentTime={progress.time}
               playing={playing}
               speed={speed}
               effectsStrength={effectsStrength}
               onMeta={handleViewportMeta}
               onProgress={setProgress}
               onLoading={setRendererLoading}
-              onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
-              onFinished={() => setPlaying(false)}
-            />
+               onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
+               onFinished={() => setPlaying(false)}
+               onTalk={(index, talkAnimation, eventCount) => beginVoiceSession(index, talkAnimation, eventCount)}
+               onTalkClip={playVoiceEvent}
+               onIntro={(intro, eventCount) => beginIntroVoiceSession(intro, eventCount)}
+               onIntroClip={playIntroVoiceEvent}
+             />
             : <SpineViewport
               ref={viewportRef}
               files={setFiles}
@@ -1105,11 +1121,11 @@ export function Spine() {
                   {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}
                 </select></label>
                 {!compositionActive && <label className="spine-check"><input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>}
-                {compositionActive && compositionSequenceIds.length > 0 && <label className="spine-setting-field"><span>{t("spine.sequence")}</span><select value={compositionSequenceId} onChange={(event) => { setProgress({ time: 0, duration: compositionTimeline ? timelinePlaybackDuration(compositionTimeline) : 0, animation: null }); setSelectedSequenceId(event.target.value); }} aria-label={t("spine.sequenceAria")}>
-                  {compositionSequenceIds.map((id) => <option key={id} value={id}>{id === "opening" ? t("spine.sequenceOpening") : id.match(/^talk-(\d+)$/)?.[1] ? t("spine.sequenceTalk", { n: id.match(/^talk-(\d+)$/)![1]! }) : id}</option>)}
-                </select></label>}
-                </>}
-                {!compositionActive && <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={skipIntro} onChange={(event) => toggleSkipIntro(event.target.checked)} />{t("spine.skipIntro")}</label>}
+                 </>}
+                 {compositionActive && compositionSequenceIds.length > 0 && <label className="spine-setting-field"><span>{t("spine.sequence")}</span><select value={compositionSequenceId} onChange={(event) => { setProgress({ time: 0, duration: compositionTimeline ? timelinePlaybackDuration(compositionTimeline) : 0, animation: null }); setSelectedSequenceId(event.target.value); }} aria-label={t("spine.sequenceAria")}>
+                   {compositionSequenceIds.map((id) => <option key={id} value={id}>{id === "opening" ? t("spine.sequenceOpening") : id.match(/^talk-(\d+)$/)?.[1] ? t("spine.sequenceTalk", { n: id.match(/^talk-(\d+)$/)![1]! }) : id}</option>)}
+                 </select></label>}
+                 {!compositionActive && <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={skipIntro} onChange={(event) => toggleSkipIntro(event.target.checked)} />{t("spine.skipIntro")}</label>}
                 {voiceLines.length > 0 && <>
                   <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={voiceEnabled} onChange={(event) => setVoiceEnabled(event.target.checked)} />{t("spine.voice")}{voicePlaying && <small>●</small>}</label>
                   <label className="spine-check spine-toggle-setting"><input type="checkbox" checked={showDialogue} onChange={(event) => setShowDialogue(event.target.checked)} />{t("spine.dialogue")}</label>

@@ -21,12 +21,13 @@ import {
 } from "@esotericsoftware/spine-webgl";
 import { authoredViewport, fitScene, interactionKindAtPoint, interactionZonesForDisplay, sceneBounds, type InteractionHitKind, type SceneBounds } from "./spineCamera";
 import { DEFAULT_EFFECTS_STRENGTH, drawWithEffectsStrength } from "./spineEffects";
-import { authoredInteraction, authoredRegions, clearInteractionTrack, profileFromProject, queueInteractionFadeOut, setInteractionTrack, type SpineAnimationPair, type SpineInteractionAction, type SpineInteractionProfile, type SpineInteractionProject, type SpineAuthoredRegion } from "./spineInteraction";
+import { authoredInteraction, authoredRegions, clearInteractionTrack, interactionPhaseAfterStart, interactionPressReady, profileFromProject, queueInteractionFadeOut, setInteractionTrack, type SpineAnimationPair, type SpineInteractionAction, type SpineInteractionProfile, type SpineInteractionProject, type SpineAuthoredInteraction, type SpineAuthoredRegion } from "./spineInteraction";
 import {
   applyInteractionMotion,
   beforeInteractionMotion,
   beginInteractionMotion,
   createInteractionMotionState,
+  rebaseInteractionMotion,
   resetInteractionMotion,
   type SpineInteractionMotionState,
   type SpineMotionInteraction,
@@ -523,6 +524,8 @@ export class SpineRenderer {
   private interactionPointerId: number | null = null;
   private interactionPointerHeld = false;
   private interactionPressedKind: InteractionHitKind | null = null;
+  private interactionPressedTrigger: SpineAuthoredInteraction["trigger"] = "hold";
+  private interactionPressOrigin: { x: number; y: number } | null = null;
   private pointerInside = false;
   private interactionState: SpineInteractionState = "idle";
   private interactionTrackName: string | null = null;
@@ -625,6 +628,8 @@ export class SpineRenderer {
     this.interactionPointerId = null;
     this.interactionPointerHeld = false;
     this.interactionPressedKind = null;
+    this.interactionPressedTrigger = "hold";
+    this.interactionPressOrigin = null;
     this.pointerInside = false;
     this.interactionState = "idle";
     this.interactionTrackName = null;
@@ -709,6 +714,8 @@ export class SpineRenderer {
     this.interactionPointerId = null;
     this.interactionPointerHeld = false;
     this.interactionPressedKind = null;
+    this.interactionPressedTrigger = "hold";
+    this.interactionPressOrigin = null;
     this.pointerInside = false;
     this.interactionState = "idle";
     this.interactionTrackName = null;
@@ -891,6 +898,8 @@ export class SpineRenderer {
     this.eyeFollowHold = 0;
     this.interactionFollowWorld = null;
     this.interactionPressedKind = null;
+    this.interactionPressedTrigger = "hold";
+    this.interactionPressOrigin = null;
     this.interactionReady = this.skipIntro || !(bundle.meta.introAnimation && bundle.meta.idleAnimation);
     const selection = !this.skipIntro && bundle.meta.introAnimation && bundle.meta.idleAnimation
       ? INTRO_ANIMATION
@@ -1068,7 +1077,9 @@ export class SpineRenderer {
     const kind = this.gestureKind();
     if (kind && this.interactionState === `${kind}Start`) {
       if (!this.interactionAnimationFinished(3)) return;
-      if (this.interactionPointerHeld && this.interactionPressedKind === kind) {
+      if (interactionPhaseAfterStart(this.interactionPressedTrigger, this.interactionPointerHeld) === "releasing") {
+        this.playGestureRelease(kind);
+      } else if (this.interactionPointerHeld && this.interactionPressedKind === kind) {
         const action = this.gestureAction(kind);
         if (!action) return;
         this.interactionState = kind;
@@ -1143,23 +1154,53 @@ export class SpineRenderer {
   }
 
   /** Deterministic authoring sample: idle under body/face tracks, with no event playback. */
-  sampleEditorAnimation(animation: string, face: string, time: number, loop: boolean, idleUnderlay = false) {
+  sampleEditorAnimation(animation: string, face: string, time: number, loop: boolean, idleUnderlay = false, preserveInteractions = false) {
     const bundle = this.bundle;
     if (!bundle) return;
-    this.playing = false;
+    if (!preserveInteractions) this.playing = false;
+    if (preserveInteractions) this.restoreInteractionPose();
+    const previousBase = bundle.state.getCurrent(0);
+    const previousAnimation = previousBase?.animation?.name ?? null;
+    const sameAnimation = previousAnimation === animation;
+    const previousTime = sameAnimation ? previousBase?.trackTime ?? null : null;
+    const introListener = animation === bundle.meta.introAnimation && sameAnimation ? previousBase?.listener ?? null : null;
+    if (previousAnimation === bundle.meta.introAnimation && !sameAnimation) this.introAudioEntry = null;
     bundle.skeleton.setToSetupPose();
-    bundle.state.clearTracks();
-    const apply = (name: string, track: number) => {
+    if (preserveInteractions) bundle.state.clearTrack(0);
+    else bundle.state.clearTracks();
+    const apply = (name: string, track: number): TrackEntry | null => {
       const data = bundle.skeleton.data.findAnimation(name);
-      if (!data) return;
+      if (!data) return null;
       const entry = bundle.state.setAnimation(track, name, false);
+      entry.trackEnd = Number.POSITIVE_INFINITY;
       entry.trackTime = loop && data.duration > 0 ? time % data.duration : Math.min(time, data.duration);
+      if (track === 0) {
+        const last = previousTime !== null && previousTime <= entry.trackTime ? previousTime : entry.trackTime;
+        entry.animationLast = last;
+        entry.trackLast = last;
+        entry.nextAnimationLast = last;
+        entry.nextTrackLast = last;
+      }
+      return entry;
     };
-    if (idleUnderlay && bundle.meta.idleAnimation) apply(bundle.meta.idleAnimation, 0);
-    apply(animation, idleUnderlay ? 1 : 0);
-    if (face) apply(face, 2);
+    let baseEntry: TrackEntry | null = null;
+    if (preserveInteractions) {
+      // Interaction overlays own tracks 1–6 (look, gestures and talk). Keep
+      // those tracks intact and replace only the timeline's base animation.
+      baseEntry = apply(animation, 0);
+      if (baseEntry) baseEntry.timeScale = 0;
+    } else {
+      if (idleUnderlay && bundle.meta.idleAnimation) apply(bundle.meta.idleAnimation, 0);
+      baseEntry = apply(animation, idleUnderlay ? 1 : 0);
+      if (face) apply(face, 2);
+    }
+    if (baseEntry && introListener) {
+      baseEntry.listener = introListener;
+      this.introAudioEntry = baseEntry;
+    }
     bundle.state.apply(bundle.skeleton);
     bundle.skeleton.updateWorldTransform(Physics.reset);
+    if (preserveInteractions) rebaseInteractionMotion(this.motionState());
   }
 
   /** Play an authored interaction phase over the idle pose in the private editor. */
@@ -1513,7 +1554,11 @@ export class SpineRenderer {
       this.interactionPointerHeld = true;
       this.pointerInside = true;
       this.updateInteractionPointer(event);
+      this.interactionPressOrigin = this.interactionPointer ? { ...this.interactionPointer } : null;
       this.interactionPressedKind = this.interactionKindAtEvent(event);
+      this.interactionPressedTrigger = this.interactionPressedKind
+        ? authoredInteraction(this.bundle?.project, this.interactionPressedKind)?.trigger ?? "hold"
+        : "hold";
       this.canvas.setPointerCapture(event.pointerId);
       if (this.interactionReady) this.beginPressedGesture();
       return;
@@ -1529,6 +1574,7 @@ export class SpineRenderer {
     if (this.interactionMode === "interaction") {
       if (!this.interactionPointerHeld || this.interactionPointerId !== event.pointerId) return;
       this.updateInteractionPointer(event);
+      if (this.interactionReady) this.beginPressedGesture();
       return;
     }
     if (!this.dragging || !this.bundle) return;
@@ -1554,6 +1600,8 @@ export class SpineRenderer {
       this.interactionPointerHeld = false;
       this.interactionPointerId = null;
       this.interactionPressedKind = null;
+      this.interactionPressedTrigger = "hold";
+      this.interactionPressOrigin = null;
       this.endGesture();
       this.endLook();
       if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
@@ -1610,6 +1658,10 @@ export class SpineRenderer {
 
   private beginPressedGesture() {
     if (this.interactionState !== "idle") return;
+    const origin = this.interactionPressOrigin;
+    const pointer = this.interactionPointer;
+    const distance = origin && pointer ? Math.hypot(pointer.x - origin.x, pointer.y - origin.y) : 0;
+    if (!interactionPressReady(this.interactionPressedTrigger, this.interactionPointerHeld, distance)) return;
     if (this.interactionPressedKind === "pinch") this.beginPinch();
     else if (this.interactionPressedKind === "touch") this.beginTouch();
     else if (this.interactionPressedKind === "pat") this.beginPat();

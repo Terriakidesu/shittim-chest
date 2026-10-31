@@ -12,6 +12,18 @@ export interface SpineInteractionAction {
 }
 
 export type SpineInteractionKind = "pat" | "pinch" | "touch";
+export type SpineInteractionTrigger = "press" | "hold" | "drag";
+
+/** Shared trigger gate used by the native preview and the published renderer. */
+export function interactionPressReady(trigger: SpineInteractionTrigger, held: boolean, distance: number, threshold = 4): boolean {
+  if (!held) return false;
+  return trigger !== "drag" || distance >= threshold;
+}
+
+/** Resolve the phase entered after the authored start animation completes. */
+export function interactionPhaseAfterStart(trigger: SpineInteractionTrigger, held: boolean): "holding" | "releasing" {
+  return trigger !== "press" && held ? "holding" : "releasing";
+}
 
 export interface SpineInteractionRegion {
   id: string;

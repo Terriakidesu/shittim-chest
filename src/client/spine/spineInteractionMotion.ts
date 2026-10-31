@@ -141,6 +141,18 @@ export function resetInteractionMotion(state: SpineInteractionMotionState): void
   state.rotation = 0;
 }
 
+/** Re-anchor an active gesture after an external timeline sample changes the base pose. */
+export function rebaseInteractionMotion(state: SpineInteractionMotionState): void {
+  const target = state.target;
+  if (!target) return;
+  target.baseX = target.bone.x;
+  target.baseY = target.bone.y;
+  target.baseRotation = target.bone.rotation;
+  target.restoreX = target.baseX;
+  target.restoreY = target.baseY;
+  target.restoreRotation = target.baseRotation;
+}
+
 /** Begin a gesture. The actual bone is resolved after the start animation is applied. */
 export function beginInteractionMotion(
   state: SpineInteractionMotionState,

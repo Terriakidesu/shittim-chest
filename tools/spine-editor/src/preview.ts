@@ -1,6 +1,6 @@
 import { Physics, type AnimationState, type Skeleton } from "@esotericsoftware/spine-core";
 import type { EditorInteraction } from "./editorModel";
-import { clearInteractionTrack, interactionKind, setInteractionTrack } from "../../../src/client/spine/spineInteraction";
+import { clearInteractionTrack, interactionKind, interactionPhaseAfterStart, interactionPressReady, setInteractionTrack } from "../../../src/client/spine/spineInteraction";
 import {
   applyInteractionMotion,
   beforeInteractionMotion,
@@ -115,14 +115,14 @@ export class InteractionPreview {
     if (this.pending && this.interaction?.trigger === "drag") {
       if (!this.held) { this.reset(state); return; }
       const origin = this.motion.origin ?? this.pointer;
-      if (Math.hypot(this.pointer.x - origin.x, this.pointer.y - origin.y) < 4) return;
+      if (!interactionPressReady(this.interaction.trigger, this.held, Math.hypot(this.pointer.x - origin.x, this.pointer.y - origin.y))) return;
     }
     if (this.pending) { this.pending = false; this.enter("starting", state); }
     else this.elapsed += delta;
     const item = this.interaction;
     if (!item) return;
     if (this.phase === "starting" && (this.elapsed >= this.duration || (this.released && item.trigger !== "press"))) {
-      this.enter(this.held && item.trigger !== "press" ? "holding" : "releasing", state);
+      this.enter(interactionPhaseAfterStart(item.trigger, this.held), state);
     }
     if (this.phase === "holding" && !this.held) this.enter("releasing", state);
     if (this.phase === "releasing" && this.elapsed >= this.duration) {

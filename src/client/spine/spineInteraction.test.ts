@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Animation, AnimationState, AnimationStateData, BoneData, Skeleton, SkeletonData } from "@esotericsoftware/spine-core";
-import { findInteractionProfile, INTERACTION_PHASE_MIX, profileFromProject, setInteractionTrack } from "./spineInteraction";
+import { authoredRegions, findInteractionProfile, interactionPhaseAfterStart, interactionPressReady, INTERACTION_PHASE_MIX, normalizeSpineInteractionProject, profileFromProject, setInteractionTrack } from "./spineInteraction";
 
 describe("Spine lobby interaction data", () => {
   test("pairs the game start, follow and release tracks", () => {
@@ -92,6 +92,35 @@ describe("Spine lobby interaction data", () => {
     const next = setInteractionTrack(state, 3, "follow", true)!;
     expect(next.mixDuration).toBe(INTERACTION_PHASE_MIX);
     expect(next.mixingFrom?.animation?.name).toBe("start");
+  });
+
+  test("uses authored trigger gates and phase transitions for both previews", () => {
+    expect(interactionPressReady("hold", true, 0)).toBe(true);
+    expect(interactionPressReady("press", true, 0)).toBe(true);
+    expect(interactionPressReady("drag", true, 3.99)).toBe(false);
+    expect(interactionPressReady("drag", true, 4)).toBe(true);
+    expect(interactionPressReady("drag", false, 100)).toBe(false);
+    expect(interactionPhaseAfterStart("press", true)).toBe("releasing");
+    expect(interactionPhaseAfterStart("hold", true)).toBe("holding");
+    expect(interactionPhaseAfterStart("drag", false)).toBe("releasing");
+  });
+
+  test("normalizes authored regions and keeps them attached to their interaction kind", () => {
+    const project = normalizeSpineInteractionProject({
+      schemaVersion: 2,
+      assetDirectory: "Airi_home",
+      interactions: [{
+        id: "pat",
+        name: "Head pat",
+        trigger: "hold",
+        startAnimation: "Pat_01_M",
+        followAnimation: "Pat_01_M",
+        endAnimation: "PatEnd_01_M",
+        regions: [{ id: "head", name: "Head", shape: "rectangle", anchorBone: "root/head", offsetX: 2, offsetY: -3, radiusX: 100, radiusY: 80, rotation: 5 }],
+      }],
+    });
+    expect(project?.interactions[0]?.regions[0]).toMatchObject({ shape: "rectangle", anchorBone: "root/head", offsetX: 2 });
+    expect(authoredRegions(project)).toMatchObject([{ kind: "pat", id: "head", enabled: true }]);
   });
 
   test("ignores developer and nested duplicate talk tracks when root tracks exist", () => {
