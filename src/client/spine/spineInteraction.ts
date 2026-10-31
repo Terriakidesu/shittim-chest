@@ -27,6 +27,7 @@ export interface SpineInteractionRegion {
 export interface SpineAuthoredInteraction {
   id: string;
   name: string;
+  color?: string;
   enabled: boolean;
   trigger: "press" | "hold" | "drag";
   startAnimation: string;
@@ -61,6 +62,90 @@ export interface SpineInteractionProject {
 export interface SpineInteractionBundle {
   schemaVersion: number;
   projects: SpineInteractionProject[];
+}
+
+function stringValue(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function finiteNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function positiveNumber(value: unknown, fallback: number): number {
+  const result = finiteNumber(value, fallback);
+  return result > 0 ? result : fallback;
+}
+
+function normalizeInteractionRegion(value: unknown, index: number): SpineInteractionRegion | null {
+  if (!value || typeof value !== "object") return null;
+  const region = value as Partial<SpineInteractionRegion>;
+  return {
+    id: stringValue(region.id, `region-${index + 1}`),
+    name: stringValue(region.name, `Region ${index + 1}`),
+    enabled: region.enabled !== false,
+    shape: region.shape === "rectangle" ? "rectangle" : "ellipse",
+    anchorBone: nullableString(region.anchorBone),
+    offsetX: finiteNumber(region.offsetX, 0),
+    offsetY: finiteNumber(region.offsetY, 0),
+    radiusX: positiveNumber(region.radiusX, 100),
+    radiusY: positiveNumber(region.radiusY, 75),
+    rotation: finiteNumber(region.rotation, 0),
+  };
+}
+
+function normalizeAuthoredInteraction(value: unknown, index: number): SpineAuthoredInteraction | null {
+  if (!value || typeof value !== "object") return null;
+  const interaction = value as Partial<SpineAuthoredInteraction>;
+  const trigger = interaction.trigger === "press" || interaction.trigger === "drag" ? interaction.trigger : "hold";
+  const normalized: SpineAuthoredInteraction = {
+    id: stringValue(interaction.id, `interaction-${index + 1}`),
+    name: stringValue(interaction.name, `Interaction ${index + 1}`),
+    enabled: interaction.enabled !== false,
+    trigger,
+    startAnimation: stringValue(interaction.startAnimation),
+    followAnimation: stringValue(interaction.followAnimation),
+    endAnimation: stringValue(interaction.endAnimation),
+    faceStartAnimation: stringValue(interaction.faceStartAnimation),
+    faceFollowAnimation: stringValue(interaction.faceFollowAnimation),
+    faceEndAnimation: stringValue(interaction.faceEndAnimation),
+    followTargetBone: nullableString(interaction.followTargetBone),
+    sensitivity: positiveNumber(interaction.sensitivity, 0.25),
+    limitX: positiveNumber(interaction.limitX, 90),
+    limitY: positiveNumber(interaction.limitY, 65),
+    smoothing: positiveNumber(interaction.smoothing, 8),
+    regions: (Array.isArray(interaction.regions) ? interaction.regions : [])
+      .map((region, regionIndex) => normalizeInteractionRegion(region, regionIndex))
+      .filter((region): region is SpineInteractionRegion => region !== null),
+  };
+  if (typeof interaction.color === "string") normalized.color = interaction.color;
+  if (typeof interaction.allowX === "boolean") normalized.allowX = interaction.allowX;
+  if (typeof interaction.allowY === "boolean") normalized.allowY = interaction.allowY;
+  if (typeof interaction.rotationEnabled === "boolean") normalized.rotationEnabled = interaction.rotationEnabled;
+  if (interaction.rotationAxis === "x" || interaction.rotationAxis === "y") normalized.rotationAxis = interaction.rotationAxis;
+  if (typeof interaction.rotationMin === "number" && Number.isFinite(interaction.rotationMin)) normalized.rotationMin = interaction.rotationMin;
+  if (typeof interaction.rotationMax === "number" && Number.isFinite(interaction.rotationMax)) normalized.rotationMax = interaction.rotationMax;
+  return normalized;
+}
+
+/** Normalize either a published interaction project or a private editor project for playback. */
+export function normalizeSpineInteractionProject(value: unknown, directory?: string): SpineInteractionProject | null {
+  if (!value || typeof value !== "object") return null;
+  const project = value as Partial<SpineInteractionProject>;
+  const assetDirectory = directory ?? stringValue(project.assetDirectory);
+  if (!assetDirectory || !Array.isArray(project.interactions)) return null;
+  return {
+    schemaVersion: Math.max(1, Math.trunc(finiteNumber(project.schemaVersion, 1))),
+    ...(typeof project.name === "string" ? { name: project.name } : {}),
+    assetDirectory,
+    interactions: project.interactions
+      .map((interaction, index) => normalizeAuthoredInteraction(interaction, index))
+      .filter((interaction): interaction is SpineAuthoredInteraction => interaction !== null),
+  };
 }
 
 export interface SpineAuthoredRegion extends SpineInteractionRegion {

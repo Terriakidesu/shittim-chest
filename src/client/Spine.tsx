@@ -15,7 +15,8 @@ import {
   type SpineMeta,
   type SpineProgress,
 } from "./spine/spineRuntime";
-import type { SpineInteractionBundle, SpineInteractionProject } from "./spine/spineInteraction";
+import { normalizeSpineInteractionProject, type SpineInteractionBundle, type SpineInteractionProject } from "./spine/spineInteraction";
+import { readLocalInteractionProject } from "./spine/spineProject";
 import characterIndexJson from "./spine/characters.json";
 import {
   sourceFromDirectory,
@@ -235,7 +236,8 @@ function interactionProjectMap(value: unknown): Map<string, SpineInteractionProj
   if (!Array.isArray(bundle.projects)) return new Map();
   return new Map(
     bundle.projects
-      .filter((project): project is SpineInteractionProject => Boolean(project && typeof project === "object" && typeof project.assetDirectory === "string" && Array.isArray(project.interactions)))
+      .map((project) => normalizeSpineInteractionProject(project))
+      .filter((project): project is SpineInteractionProject => project !== null)
       .map((project) => [project.assetDirectory, project]),
   );
 }
@@ -267,6 +269,7 @@ export function Spine() {
   const [availableDirectories, setAvailableDirectories] = useState<Set<string> | null>(null);
   const [setFiles, setSetFiles] = useState<SpineFiles | null>(null);
   const [interactionProjects, setInteractionProjects] = useState<Map<string, SpineInteractionProject>>(() => new Map());
+  const [localInteractionProject, setLocalInteractionProject] = useState<SpineInteractionProject | null>(null);
   const [setLoading, setSetLoading] = useState(false);
   const [rendererLoading, setRendererLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -370,7 +373,18 @@ export function Spine() {
   }, [characterSearch, loadedCharacters]);
   const selectedVariant = variants.find((variant) => variant.directory === selectedDirectory) ?? variants[0];
   const selectedDirectoryName = selectedVariant?.directory ?? "";
-  const selectedInteractionProject = interactionProjects.get(selectedDirectoryName) ?? null;
+  const selectedInteractionProject = localInteractionProject ?? interactionProjects.get(selectedDirectoryName) ?? null;
+
+  useEffect(() => {
+    let live = true;
+    setLocalInteractionProject(null);
+    if (!source || !selectedDirectoryName) return () => { live = false; };
+    void readLocalInteractionProject(source, selectedDirectoryName).then((project) => {
+      if (live) setLocalInteractionProject(project);
+    });
+    return () => { live = false; };
+  }, [selectedDirectoryName, source]);
+
   const legacyVoiceCharacter = voiceCharacterForDirectory(voiceManifest, selectedDirectoryName);
   const selectedVoiceCharacter = voiceCharacter ?? legacyVoiceCharacter;
   const voiceLines = useMemo(
