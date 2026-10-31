@@ -71,6 +71,9 @@ all layers together rather than flattening them into images.
   INTRO and IDLE sections. Non-looping layers use the actual Spine animation
   end by default; enter a manual end time when a deliberate hold or early cut
   is needed.
+- Each sequence stores its own layer list. Removing a discovered scene or
+  background layer is intentional and remains removed when switching sequences
+  or reopening the project; use **＋ Add** to restore it manually.
 - Add subtitle cues, drag their body to move them, drag either edge to resize
   them, or enter exact timestamps. English, Japanese, and Korean text are kept
   independently in the project.

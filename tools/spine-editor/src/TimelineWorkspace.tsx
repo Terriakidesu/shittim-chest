@@ -352,7 +352,6 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
   const [missingAudio, setMissingAudio] = useState<string[]>([]);
   const dragRef = useRef<{ kind: TimelineDragKind; id: string; x: number; start: number; end: number } | null>(null);
-  const initializedLayersRef = useRef("");
   const subtitleDocumentsRef = useRef<Record<string, Record<string, unknown>>>({});
   const projectRef = useRef<EditorProject | null>(project);
   const sourceRef = useRef<DesktopAssetSource | null>(source);
@@ -455,16 +454,10 @@ export function TimelineWorkspace({ source, directory, directories, project, ini
   }
 
   useEffect(() => {
-    if (!project || !directory) return;
+    if (!project || !directory || project.timeline.layersInitialized) return;
     const ensured = ensureTimelineLayers(project.timeline, directory, directories);
-    const before = project.timeline.layers.map((layer) => layer.directory).join("|");
-    const after = ensured.layers.map((layer) => layer.directory).join("|");
-    const key = `${directory}:${after}`;
-    if (before !== after && initializedLayersRef.current !== key) {
-      initializedLayersRef.current = key;
-      onLive((current) => ({ ...current, timeline: ensureTimelineLayers(current.timeline, directory, directories) }));
-      onStatus(`Discovered ${ensured.layers.length} synchronized Spine layers.`);
-    }
+    onLive((current) => ({ ...current, timeline: ensureTimelineLayers(current.timeline, directory, directories) }));
+    onStatus(`Initialized ${ensured.layers.length} synchronized Spine layers.`);
   }, [directories, directory, onLive, onStatus, project]);
 
   useEffect(() => {

@@ -99,6 +99,8 @@ export interface EditorTimeline {
   sceneDuration?: number;
   openingIdleDuration?: number;
   durationMode?: "auto" | "manual";
+  /** Once true, a missing discovered layer is an intentional deletion. */
+  layersInitialized: boolean;
   duration: number;
   loop: boolean;
   layers: EditorTimelineLayer[];
@@ -354,13 +356,14 @@ export function compositionDirectories(directory: string, directories: string[])
 }
 
 export function ensureTimelineLayers(timeline: EditorTimeline, directory: string, directories: string[]): EditorTimeline {
+  if (timeline.layersInitialized) return timeline;
   const discovered = compositionDirectories(directory, directories);
   const layers = [...timeline.layers];
   for (const item of discovered) {
     if (layers.some((layer) => layer.directory === item.directory)) continue;
     layers.push(createTimelineLayer(item.directory, item.role, defaultLayerOrder(item.role), timeline.duration));
   }
-  return { ...timeline, layers };
+  return { ...timeline, layers, layersInitialized: true };
 }
 
 function createTimeline(directory: string): EditorTimeline {
@@ -369,6 +372,7 @@ function createTimeline(directory: string): EditorTimeline {
   return {
     duration,
     durationMode: "manual",
+    layersInitialized: false,
     loop: true,
     layers: [character],
     subtitles: [],
@@ -548,6 +552,7 @@ export function normalizeTimeline(value: unknown, directory: string): EditorTime
     sceneDuration: finiteNumber(raw.sceneDuration, 3, 0),
     openingIdleDuration: finiteNumber(raw.openingIdleDuration, 3, 0),
     durationMode: raw.durationMode === "auto" ? "auto" : "manual",
+    layersInitialized: raw.layersInitialized === true,
     layers,
     subtitles,
     audio,

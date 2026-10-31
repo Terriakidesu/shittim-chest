@@ -63,6 +63,7 @@ export function switchSequence(project: EditorProject, id: string, animations: s
     next = {
       ...structuredClone(project.timeline), sequenceId: id, duration: 12, loop: false,
       openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3, durationMode: id === "opening" ? "auto" : "manual",
+      layersInitialized: false,
       subtitles: [], audio: [], selectedCueId: null,
       layers: project.timeline.layers.map((layer) => ({ ...layer, start: 0, end: 12, animation: layer.role === "character" ? animation : "", faceAnimation: layer.role === "character" ? face ?? "" : "", loop: id === "opening" })),
     };

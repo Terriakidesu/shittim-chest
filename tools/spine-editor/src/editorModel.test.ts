@@ -164,6 +164,15 @@ describe("Spine editor project model", () => {
     ]);
   });
 
+  test("does not rediscover a layer after an initialized timeline intentionally removes it", () => {
+    const project = createProject("Airi_home", [], []);
+    const initialized = ensureTimelineLayers(project.timeline, "Airi_home", ["Airi_home", "Airi_scene"]);
+    const withoutScene = { ...initialized, layers: initialized.layers.filter((layer) => layer.role !== "scene") };
+    const restored = ensureTimelineLayers(withoutScene, "Airi_home", ["Airi_home", "Airi_scene"]);
+    expect(restored.layers.map((layer) => layer.directory)).toEqual(["Airi_home"]);
+    expect(restored.layersInitialized).toBe(true);
+  });
+
   test("normalizes timeline cues and keeps old projects importable", () => {
     const project = normalizeProject({
       schemaVersion: 1,

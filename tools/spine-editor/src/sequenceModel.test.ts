@@ -28,6 +28,29 @@ test("reselecting a talk sequence keeps its current imported edits", () => {
   expect(project.timeline.layers[0]?.loop).toBe(false);
 });
 
+test("each sequence preserves intentional layer deletions while new sequences initialize discovered layers", () => {
+  const directories = ["Momoi_home", "Momoi_scene"];
+  let project = switchSequence(createProject("Momoi_home", [], []), "opening", [], directories);
+  project = switchSequence(project, "talk-1", [], directories);
+  const scene = project.timeline.layers.find((layer) => layer.role === "scene");
+  expect(scene).toBeDefined();
+  project = {
+    ...project,
+    timeline: {
+      ...project.timeline,
+      layers: project.timeline.layers.filter((layer) => layer.id !== scene?.id),
+    },
+  };
+
+  project = switchSequence(project, "talk-2", [], directories);
+  expect(project.timeline.layers.some((layer) => layer.role === "scene")).toBe(true);
+  project = switchSequence(project, "talk-1", [], directories);
+  expect(project.timeline.layers.some((layer) => layer.role === "scene")).toBe(false);
+  const reloaded = normalizeProject(JSON.parse(JSON.stringify(project)), "Momoi_home")!;
+  expect(reloaded.timeline.layersInitialized).toBe(true);
+  expect(reloaded.timeline.layers.some((layer) => layer.role === "scene")).toBe(false);
+});
+
 test("opening choices persist and old compositions remain recoverable", () => {
   const old = createProject("Akari_home", [], []);
   old.timeline.duration = 33;
