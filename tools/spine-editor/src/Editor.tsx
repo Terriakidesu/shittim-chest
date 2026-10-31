@@ -34,7 +34,8 @@ import { LEGACY_PROJECT_STORAGE_PREFIX } from "./editorModel";
 import { chooseDesktopProject, chooseDesktopSource, chooseDesktopSourceAt, type DesktopAssetSource } from "./desktopSource";
 import { normalizeRecentFiles, RECENT_FILES_KEY, rememberRecentFile, removeRecentFile, type RecentFile, type RecentFileKind } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
-import { editorProjectPath, editorProjectPaths } from "./editorStorage";
+import { editorProjectPath } from "./editorStorage";
+import { pendingProjectForDirectory, readSavedEditorProject } from "./editorProject";
 
 function displayName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
@@ -43,21 +44,6 @@ function displayName(path: string): string {
 function nativePath(root: string, relativePath: string): string {
   const separator = root.includes("\\") ? "\\" : "/";
   return `${root.replace(/[\\/]+$/, "")}${separator}${relativePath.replaceAll("/", separator)}`;
-}
-
-async function readSavedEditorProject(source: DesktopAssetSource, directory: string, onError: (message: string) => void): Promise<EditorProject | null> {
-  for (const path of editorProjectPaths(directory)) {
-    const content = await source.readText(path);
-    if (!content) continue;
-    try {
-      const project = normalizeProject(JSON.parse(content) as unknown, directory);
-      if (project) return project;
-      onError(`Saved editor project is not compatible: ${path}`);
-    } catch (value) {
-      onError(`Could not read saved editor project ${path}: ${value instanceof Error ? value.message : String(value)}`);
-    }
-  }
-  return null;
 }
 
 function readStoredViewSettings(): EditorViewSettings {
@@ -432,7 +418,7 @@ export function Editor() {
         restored = null;
       }
        const original = restored ?? createProject(directoryRef.current, loadedMeta.animations, value.bones);
-       const pending = pendingProjectRef.current?.assetDirectory === directoryRef.current ? pendingProjectRef.current : null;
+        const pending = pendingProjectForDirectory(pendingProjectRef.current, directoryRef.current);
        if (pending) pendingProjectRef.current = null;
        const loadedProject = pending ?? original;
        const repair = repairPatRegions(loadedProject, headRegionRef.current);
@@ -730,7 +716,6 @@ export function Editor() {
     setSaveState("idle");
     setSavedAt(null);
     setError(null);
-    pendingProjectRef.current = null;
     setPendingSubtitlePath(null);
     setPendingAudioPaths(null);
     setStatus(`Loading ${displayName(next)}…`);
