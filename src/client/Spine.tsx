@@ -1,5 +1,5 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { IconAlert, IconClose, IconCompress, IconDot, IconExpand, IconEye, IconEyeOff, IconFolder, IconHand, IconMessage, IconPause, IconPlay, IconRotate, IconSearch, IconSliders, IconTarget, IconUsers } from "./components/icons";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { IconAlert, IconChevronDown, IconChevronUp, IconClose, IconCompress, IconDot, IconExpand, IconEye, IconEyeOff, IconFolder, IconHand, IconMessage, IconPause, IconPlay, IconRotate, IconSearch, IconSliders, IconTarget, IconUsers } from "./components/icons";
 import { LanguageSwitch } from "./components/LanguageSwitch";
 import { SiteNav } from "./components/SiteNav";
 import { ThemeSwitch } from "./components/ThemeSwitch";
@@ -232,6 +232,11 @@ function formatSeconds(value: number) {
   return value.toFixed(2);
 }
 
+const FULLSCREEN_EDGE_ZONE = 112;
+const FULLSCREEN_EDGE_DWELL = 260;
+const FULLSCREEN_EDGE_DISMISS = 180;
+const FULLSCREEN_EDGE_MAX_SPEED = 0.9;
+
 function interactionProjectMap(value: unknown): Map<string, SpineInteractionProject> {
   if (!value || typeof value !== "object") return new Map();
   const bundle = value as Partial<SpineInteractionBundle>;
@@ -287,6 +292,7 @@ export function Spine() {
   const [showInteractionPoints, setShowInteractionPoints] = useState(false);
   const [showFullscreenControls, setShowFullscreenControls] = useState(true);
   const [fullscreenClean, setFullscreenClean] = useState(false);
+  const [showFullscreenEdgeTrigger, setShowFullscreenEdgeTrigger] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [effectsStrength, setEffectsStrength] = useState(DEFAULT_EFFECTS_STRENGTH);
   const [progress, setProgress] = useState<SpineProgress>({ time: 0, duration: 0, animation: null });
@@ -313,6 +319,9 @@ export function Spine() {
   const voiceSessionRef = useRef<VoiceSession | null>(null);
   const autoPlayTimerRef = useRef<number | null>(null);
   const fullscreenHideTimerRef = useRef<number | null>(null);
+  const fullscreenEdgeRevealTimerRef = useRef<number | null>(null);
+  const fullscreenEdgeDismissTimerRef = useRef<number | null>(null);
+  const fullscreenEdgePointerRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const talkAutoplayRef = useRef(false);
   const authoredTalkIndexRef = useRef(0);
   const stagePointer = useRef<{ x: number; y: number } | null>(null);
@@ -750,24 +759,100 @@ export function Spine() {
     fullscreenHideTimerRef.current = null;
   };
 
+  const clearFullscreenEdgeRevealTimer = () => {
+    if (fullscreenEdgeRevealTimerRef.current !== null) window.clearTimeout(fullscreenEdgeRevealTimerRef.current);
+    fullscreenEdgeRevealTimerRef.current = null;
+  };
+
+  const clearFullscreenEdgeDismissTimer = () => {
+    if (fullscreenEdgeDismissTimerRef.current !== null) window.clearTimeout(fullscreenEdgeDismissTimerRef.current);
+    fullscreenEdgeDismissTimerRef.current = null;
+  };
+
+  const clearFullscreenEdgeTimers = () => {
+    clearFullscreenEdgeRevealTimer();
+    clearFullscreenEdgeDismissTimer();
+  };
+
   const scheduleFullscreenHide = () => {
     clearFullscreenHideTimer();
     if (!fullscreen || fullscreenClean || showOptions) return;
     fullscreenHideTimerRef.current = window.setTimeout(() => {
       fullscreenHideTimerRef.current = null;
-      if (document.fullscreenElement) setShowFullscreenControls(false);
+      if (document.fullscreenElement) {
+        setShowFullscreenControls(false);
+        setShowFullscreenEdgeTrigger(false);
+      }
     }, 3600);
   };
 
-  const handleFullscreenActivity = () => {
+  const revealFullscreenControls = () => {
     if (!fullscreen || fullscreenClean) return;
+    clearFullscreenEdgeTimers();
+    setShowFullscreenEdgeTrigger(false);
     setShowFullscreenControls(true);
     scheduleFullscreenHide();
+  };
+
+  const hideFullscreenControls = () => {
+    if (!fullscreen || fullscreenClean) return;
+    clearFullscreenHideTimer();
+    clearFullscreenEdgeTimers();
+    setShowFullscreenEdgeTrigger(false);
+    setShowFullscreenControls(false);
+  };
+
+  const scheduleFullscreenEdgeDismiss = () => {
+    clearFullscreenEdgeDismissTimer();
+    fullscreenEdgeDismissTimerRef.current = window.setTimeout(() => {
+      fullscreenEdgeDismissTimerRef.current = null;
+      setShowFullscreenEdgeTrigger(false);
+    }, FULLSCREEN_EDGE_DISMISS);
+  };
+
+  const handleFullscreenPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    if (!fullscreen || fullscreenClean || event.pointerType !== "mouse") return;
+
+    const now = performance.now();
+    const previous = fullscreenEdgePointerRef.current;
+    const elapsed = previous ? now - previous.time : Number.POSITIVE_INFINITY;
+    const distance = previous ? Math.hypot(event.clientX - previous.x, event.clientY - previous.y) : Number.POSITIVE_INFINITY;
+    const speed = elapsed > 0 && elapsed <= 180 ? distance / elapsed : Number.POSITIVE_INFINITY;
+    fullscreenEdgePointerRef.current = { x: event.clientX, y: event.clientY, time: now };
+
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    const nearBottom = viewportHeight - event.clientY <= FULLSCREEN_EDGE_ZONE;
+    if (!nearBottom || showFullscreenControls) {
+      clearFullscreenEdgeRevealTimer();
+      if (showFullscreenEdgeTrigger && !showFullscreenControls) scheduleFullscreenEdgeDismiss();
+      return;
+    }
+
+    clearFullscreenEdgeDismissTimer();
+    const movingAwayFromBottom = previous && event.clientY < previous.y && event.clientY !== previous.y;
+    if (speed > FULLSCREEN_EDGE_MAX_SPEED || movingAwayFromBottom) {
+      clearFullscreenEdgeRevealTimer();
+      return;
+    }
+    if (showFullscreenEdgeTrigger || fullscreenEdgeRevealTimerRef.current !== null) return;
+
+    fullscreenEdgeRevealTimerRef.current = window.setTimeout(() => {
+      fullscreenEdgeRevealTimerRef.current = null;
+      if (document.fullscreenElement && !fullscreenClean && !showFullscreenControls) setShowFullscreenEdgeTrigger(true);
+    }, FULLSCREEN_EDGE_DWELL);
+  };
+
+  const handleFullscreenPointerLeave = () => {
+    fullscreenEdgePointerRef.current = null;
+    clearFullscreenEdgeRevealTimer();
+    if (!showFullscreenControls && showFullscreenEdgeTrigger) scheduleFullscreenEdgeDismiss();
   };
 
   const enterCleanFullscreen = () => {
     if (!fullscreen) return;
     clearFullscreenHideTimer();
+    clearFullscreenEdgeTimers();
+    setShowFullscreenEdgeTrigger(false);
     setShowOptions(false);
     setShowSidebar(false);
     setShowFullscreenControls(false);
@@ -776,6 +861,8 @@ export function Spine() {
 
   const exitCleanFullscreen = () => {
     setFullscreenClean(false);
+    clearFullscreenEdgeTimers();
+    setShowFullscreenEdgeTrigger(false);
     setShowFullscreenControls(true);
     scheduleFullscreenHide();
   };
@@ -783,10 +870,14 @@ export function Spine() {
   useEffect(() => {
     const onFullscreen = () => {
       const active = Boolean(document.fullscreenElement);
+      clearFullscreenHideTimer();
+      clearFullscreenEdgeTimers();
+      fullscreenEdgePointerRef.current = null;
       setFullscreen(active);
       setShowSidebar(!active);
       setShowOptions(false);
-      setShowFullscreenControls(true);
+      setShowFullscreenControls(!active);
+      setShowFullscreenEdgeTrigger(false);
       setFullscreenClean(false);
     };
     document.addEventListener("fullscreenchange", onFullscreen);
@@ -798,7 +889,10 @@ export function Spine() {
     return clearFullscreenHideTimer;
   }, [fullscreen, fullscreenClean, showOptions]);
 
-  useEffect(() => () => clearFullscreenHideTimer(), []);
+  useEffect(() => () => {
+    clearFullscreenHideTimer();
+    clearFullscreenEdgeTimers();
+  }, []);
 
   useEffect(() => {
     if (window.matchMedia("(max-width: 900px)").matches) setShowSidebar(false);
@@ -1061,10 +1155,8 @@ export function Spine() {
       } else if (key === "h" && fullscreen) {
         event.preventDefault();
         if (fullscreenClean) exitCleanFullscreen();
-        else if (showFullscreenControls) {
-          clearFullscreenHideTimer();
-          setShowFullscreenControls(false);
-        } else handleFullscreenActivity();
+        else if (showFullscreenControls) hideFullscreenControls();
+        else revealFullscreenControls();
       }
     };
     document.addEventListener("keydown", onKey);
@@ -1159,7 +1251,7 @@ export function Spine() {
         </section>
       </aside>
 
-       <section className={`spine-workspace${showFullscreenControls && !fullscreenClean ? "" : " spine-controls-hidden"}`} aria-label={t("spine.viewerAria")} onPointerMove={handleFullscreenActivity} onPointerDown={handleFullscreenActivity}>
+        <section className={`spine-workspace${showFullscreenControls && !fullscreenClean ? "" : " spine-controls-hidden"}`} aria-label={t("spine.viewerAria")} onPointerMove={handleFullscreenPointerMove} onPointerLeave={handleFullscreenPointerLeave}>
         <div className="spine-workspace-heading">
            <div className="spine-workspace-identity"><strong>{selectedCharacter}</strong><span>{selectedVariant?.extraType ? extraLabel(selectedVariant.extraType) : selectedVariant?.variant}</span></div>
           <div className="spine-workspace-status">
@@ -1176,9 +1268,10 @@ export function Spine() {
           stagePointer.current = null;
            if (fullscreen && start && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 5) {
              if (fullscreenClean) exitCleanFullscreen();
-             else if (interactionMode === "free") setShowFullscreenControls((shown) => !shown);
-           }
-        }} onPointerCancel={() => { stagePointer.current = null; }}>
+              else if (!showFullscreenControls) revealFullscreenControls();
+              else if (interactionMode === "free") hideFullscreenControls();
+            }
+          }} onPointerCancel={() => { stagePointer.current = null; }}>
           {compositionActive && compositionTimeline && source
              ? <SpineCompositionViewport
                 key={selectedDirectoryName}
@@ -1234,7 +1327,7 @@ export function Spine() {
           {isLoading && setFiles && <div className="spine-loading" aria-live="polite">{t("spine.loading")}</div>}
           <div className="spine-stage-hint">{t(interactionMode === "interaction" ? "spine.interactionHint" : "spine.stageHint")}</div>
         </div>
-         {fullscreen && !fullscreenClean && !showFullscreenControls && <button className="spine-show-controls-floating" type="button" onClick={handleFullscreenActivity}><IconSliders /><span>{t("spine.controls.show")}</span></button>}
+          {fullscreen && !fullscreenClean && !showFullscreenControls && showFullscreenEdgeTrigger && <button className="spine-show-controls-edge" type="button" aria-controls="spine-playback-controls" aria-label={t("spine.controls.show")} title={t("spine.controls.show")} onClick={revealFullscreenControls}><IconChevronUp /></button>}
 
         <div id="spine-playback-controls" className={`spine-controls${showOptions ? " spine-options-open" : ""}`} aria-label={t("spine.controlsAria")}>
           <div className="spine-toolbar-row">
@@ -1249,7 +1342,7 @@ export function Spine() {
               <button className={`spine-tool-button${showOptions ? " is-active" : ""}`} type="button" aria-expanded={showOptions} aria-controls="spine-options" onClick={() => setShowOptions((shown) => !shown)}><IconSliders /><span>{t("spine.options")}</span></button>
               <button className="spine-tool-button spine-sidebar-toggle" type="button" aria-expanded={showSidebar} aria-controls="spine-sidebar" onClick={() => setShowSidebar((shown) => !shown)} title={t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}><IconUsers /><span>{t(showSidebar ? "spine.sidebar.hide" : "spine.sidebar.show")}</span></button>
                {fullscreen && <button className="spine-tool-button spine-clean-mode-toggle" type="button" aria-pressed={fullscreenClean} onClick={fullscreenClean ? exitCleanFullscreen : enterCleanFullscreen} title={t(fullscreenClean ? "spine.cleanMode.exit" : "spine.cleanMode.enter")}><span>{fullscreenClean ? <IconEye /> : <IconEyeOff />}</span><span>{t("spine.cleanMode")}</span></button>}
-               {fullscreen && <button className="spine-tool-button spine-fullscreen-controls-toggle" type="button" aria-expanded={showFullscreenControls} onClick={() => setShowFullscreenControls((shown) => !shown)} title={t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}><IconSliders /><span>{t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}</span></button>}
+                {fullscreen && <button className="spine-tool-button spine-fullscreen-controls-toggle" type="button" aria-expanded={showFullscreenControls} onClick={showFullscreenControls ? hideFullscreenControls : revealFullscreenControls} title={t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}><IconChevronDown /><span>{t(showFullscreenControls ? "spine.controls.hide" : "spine.controls.show")}</span></button>}
                <button className="spine-tool-button" type="button" onClick={() => void activeViewport()?.toggleFullscreen()} aria-label={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")} title={t(fullscreen ? "a11y.fullscreenExit" : "a11y.fullscreenEnter")}><span>{fullscreen ? <IconCompress /> : <IconExpand />}</span><span className="spine-button-label">{t("spine.fullscreen")}</span></button>
             </div>
            </div>
