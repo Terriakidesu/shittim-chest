@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   SpineRenderer,
   type SpineEditorFrame,
@@ -34,6 +34,8 @@ import { LEGACY_PROJECT_STORAGE_PREFIX } from "./editorModel";
 import { chooseDesktopProject, chooseDesktopSource, chooseDesktopSourceAt, type DesktopAssetSource } from "./desktopSource";
 import { normalizeRecentFiles, RECENT_FILES_KEY, rememberRecentFile, removeRecentFile, type RecentFile, type RecentFileKind } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
+import { BonePicker } from "./BonePicker";
+import { buildBoneTreeRows } from "./boneTree";
 import { characterDirectoryLabel, parseCharacterDirectoryLabels, type CharacterDirectoryLabels } from "./characterCatalog";
 import { editorProjectPath } from "./editorStorage";
 import { pendingProjectForDirectory, readSavedEditorProject, saveManifestEditorProject } from "./editorProject";
@@ -42,6 +44,14 @@ import { IconCheck, IconChevronDown, IconChevronRight, IconClose, IconDot, IconE
 
 function displayName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
+}
+
+function highlightedBoneName(name: string, search: string) {
+  const query = search.trim();
+  const start = query ? name.toLocaleLowerCase().indexOf(query.toLocaleLowerCase()) : -1;
+  if (start < 0) return name;
+  const end = start + query.length;
+  return <>{name.slice(0, start)}<mark>{name.slice(start, end)}</mark>{name.slice(end)}</>;
 }
 
 function nativePath(root: string, relativePath: string): string {
@@ -398,8 +408,8 @@ export function Editor() {
   const [undo, setUndo] = useState<EditorProject[]>([]);
   const [redo, setRedo] = useState<EditorProject[]>([]);
   const [boneSearch, setBoneSearch] = useState("");
-  const [targetBoneSearch, setTargetBoneSearch] = useState("");
   const [collapsedBones, setCollapsedBones] = useState<Set<string>>(() => new Set());
+  const boneRowRefs = useRef(new Map<string, HTMLButtonElement>());
   const [interactionSearch, setInteractionSearch] = useState("");
   const [status, setStatus] = useState("Open a Spine asset folder to begin.");
   const [error, setError] = useState<string | null>(null);
@@ -891,27 +901,24 @@ export function Editor() {
   const selectedInteraction = project?.interactions.find((item) => item.id === project.selectedInteractionId) ?? null;
   const selectedRegion = selectedInteraction?.regions.find((item) => item.id === project?.selectedRegionId) ?? null;
   const displaySettings = viewSettings;
-  const visibleBones = useMemo(() => {
-    const query = boneSearch.trim().toLocaleLowerCase();
-    const bones = frame?.bones.filter((bone) => displaySettings.showInactiveBones || bone.active) ?? [];
-    if (!query) {
-      return bones.filter((bone) => !bone.path.split("/").slice(0, -1).some((_, index, parts) => collapsedBones.has(parts.slice(0, index + 1).join("/"))));
+  const boneTreeRows = useMemo(
+    () => buildBoneTreeRows(frame?.bones ?? [], collapsedBones, boneSearch, displaySettings.showInactiveBones),
+    [boneSearch, collapsedBones, displaySettings.showInactiveBones, frame],
+  );
+  const selectedBoneAncestors = useMemo(() => {
+    const result = new Set<string>();
+    const byPath = new Map((frame?.bones ?? []).map((bone) => [bone.path, bone]));
+    let current = project?.selectedBonePath ? byPath.get(project.selectedBonePath) : undefined;
+    while (current?.parentPath) {
+      result.add(current.parentPath);
+      current = byPath.get(current.parentPath);
     }
-    const matches = new Set<string>();
-    for (const bone of bones) {
-      if (!`${bone.name} ${bone.path}`.toLocaleLowerCase().includes(query)) continue;
-      const parts = bone.path.split("/");
-      parts.forEach((_, index) => matches.add(parts.slice(0, index + 1).join("/")));
-    }
-    return bones.filter((bone) => matches.has(bone.path));
-  }, [boneSearch, collapsedBones, displaySettings.showInactiveBones, frame]);
+    return result;
+  }, [frame, project?.selectedBonePath]);
+  const rovingBonePath = boneTreeRows.some((row) => row.bone.path === project?.selectedBonePath)
+    ? project?.selectedBonePath ?? null
+    : boneTreeRows[0]?.bone.path ?? null;
   const visibleInteractions = project?.interactions.filter((item) => !interactionSearch.trim() || item.name.toLocaleLowerCase().includes(interactionSearch.trim().toLocaleLowerCase())) ?? [];
-  const targetBoneOptions = useMemo(() => {
-    const bones = frame?.bones ?? [];
-    const query = targetBoneSearch.trim().toLocaleLowerCase();
-    if (!query) return selectedInteraction?.followTargetBone ? bones.filter((bone) => bone.path === selectedInteraction.followTargetBone) : [];
-    return bones.filter((bone) => `${bone.name} ${bone.path}`.toLocaleLowerCase().includes(query)).slice(0, 80);
-  }, [frame, selectedInteraction?.followTargetBone, targetBoneSearch]);
   const validationWarnings = useMemo(() => project && meta && frame ? validateProject(project, meta.animations, frame.bones) : [], [frame, meta, project]);
   const renderedViewSettings = testing ? { ...displaySettings, showBones: false, showConstraints: false } : displaySettings;
 
@@ -925,13 +932,71 @@ export function Editor() {
 
   function revealSelectedBone() {
     const path = project?.selectedBonePath;
-    if (!path) return;
-    const parts = path.split("/");
+    if (path) revealBonePath(path, false);
+  }
+
+  function revealBonePath(path: string, select = true) {
+    const byPath = new Map((frame?.bones ?? []).map((bone) => [bone.path, bone]));
     setCollapsedBones((value) => {
       const next = new Set(value);
-      parts.forEach((_, index) => next.delete(parts.slice(0, index + 1).join("/")));
+      let current = byPath.get(path);
+      while (current) {
+        next.delete(current.path);
+        current = current.parentPath ? byPath.get(current.parentPath) : undefined;
+      }
       return next;
     });
+    setBoneSearch("");
+    if (select) live((current) => ({ ...current, selectedBonePath: path }));
+    requestAnimationFrame(() => {
+      const button = boneRowRefs.current.get(path);
+      button?.scrollIntoView({ block: "nearest" });
+      button?.focus();
+    });
+  }
+
+  function selectHierarchyBone(path: string, focus = false) {
+    live((current) => ({ ...current, selectedBonePath: path }));
+    if (focus) requestAnimationFrame(() => boneRowRefs.current.get(path)?.focus());
+  }
+
+  function handleBoneTreeKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, path: string) {
+    const index = boneTreeRows.findIndex((row) => row.bone.path === path);
+    const row = boneTreeRows[index];
+    if (!row) return;
+    const moveTo = (next: number) => {
+      const target = boneTreeRows[next];
+      if (!target) return;
+      event.preventDefault();
+      selectHierarchyBone(target.bone.path, true);
+    };
+
+    if (event.key === "ArrowDown") moveTo(Math.min(boneTreeRows.length - 1, index + 1));
+    else if (event.key === "ArrowUp") moveTo(Math.max(0, index - 1));
+    else if (event.key === "ArrowRight" && row.hasChildren) {
+      event.preventDefault();
+      const collapsed = !boneSearch.trim() && collapsedBones.has(path);
+      if (collapsed) toggleBone(path);
+      else {
+        const childIndex = boneTreeRows.findIndex((candidate) => candidate.bone.parentPath === path);
+        if (childIndex >= 0) moveTo(childIndex);
+      }
+    } else if (event.key === "ArrowLeft") {
+      const collapsed = !boneSearch.trim() && collapsedBones.has(path);
+      if (row.hasChildren && !collapsed) {
+        event.preventDefault();
+        setBoneSearch("");
+        setCollapsedBones((value) => new Set(value).add(path));
+      } else if (row.bone.parentPath) {
+        const parentIndex = boneTreeRows.findIndex((candidate) => candidate.bone.path === row.bone.parentPath);
+        if (parentIndex >= 0) moveTo(parentIndex);
+      }
+    }
+  }
+
+  function collapseAllBones() {
+    const parents = new Set((frame?.bones ?? []).map((bone) => bone.parentPath).filter((path): path is string => Boolean(path)));
+    setCollapsedBones(parents);
   }
 
   function updateInteraction(field: keyof EditorInteraction, value: string | number | boolean | null) {
@@ -1253,20 +1318,32 @@ export function Editor() {
         }} onPointerUp={() => { panelDragRef.current = null; }} onPointerCancel={() => { panelDragRef.current = null; }} />)}
         <aside className="editor-panel editor-left-panel" hidden={!assetLoaded || leftHidden}>
           <section className="editor-section editor-bone-section">
-            <div className="editor-section-title"><strong>Rig hierarchy</strong><span>{visibleBones.length}/{frame?.bones.length ?? 0}</span></div>
-            <input className="editor-search" value={boneSearch} onChange={(event) => setBoneSearch(event.target.value)} placeholder="Search bones…" />
-            <div className="editor-bone-list">
-              {visibleBones.map((bone) => {
-                const depth = bone.path.split("/").length - 1;
-                const hasChildren = frame?.bones.some((candidate) => candidate.path.startsWith(`${bone.path}/`)) ?? false;
-                const collapsed = collapsedBones.has(bone.path);
-                return <div key={bone.path} className="editor-bone-row" style={{ paddingLeft: `${Math.min(32, depth * 12)}px` }}>
-                   <button className="editor-bone-toggle" disabled={!hasChildren} aria-label={`${collapsed ? "Expand" : "Collapse"} ${bone.name}`} aria-expanded={hasChildren ? !collapsed : undefined} onClick={() => toggleBone(bone.path)}>{hasChildren ? collapsed ? <IconChevronRight /> : <IconChevronDown /> : <IconDot />}</button>
-                  <button className={`editor-bone-item${project?.selectedBonePath === bone.path ? " is-selected" : ""}`} title={bone.path} onClick={() => live((current) => ({ ...current, selectedBonePath: bone.path }))}>
-                    <span className="editor-bone-dot" />{bone.name}
+            <div className="editor-section-title"><strong>Rig hierarchy</strong><span>{boneSearch.trim() ? `${boneTreeRows.filter((row) => row.matches).length} matches` : `${boneTreeRows.filter((row) => !row.contextOnly).length} bones`}</span></div>
+            <div className="editor-bone-actions" aria-label="Hierarchy actions">
+              <button type="button" title="Expand every branch" onClick={() => setCollapsedBones(new Set())}>Expand all</button>
+              <button type="button" title="Collapse every branch" onClick={collapseAllBones}>Collapse all</button>
+              <button type="button" title="Reveal the selected bone" disabled={!project?.selectedBonePath} onClick={revealSelectedBone}>Reveal selected</button>
+            </div>
+            <label className="editor-bone-search"><span className="sr-only">Search bones by name or path</span><input className="editor-search" value={boneSearch} onChange={(event) => setBoneSearch(event.target.value)} placeholder="Search bones…" /></label>
+            {boneSearch.trim() && boneTreeRows.length > 0 && <div className="editor-bone-search-hint">Matches highlighted · ancestors shown</div>}
+            <div className="editor-bone-list" role="tree" aria-label="Rig hierarchy">
+              {boneTreeRows.map((row) => {
+                const { bone } = row;
+                const collapsed = !boneSearch.trim() && collapsedBones.has(bone.path);
+                const selected = project?.selectedBonePath === bone.path;
+                const ancestor = selectedBoneAncestors.has(bone.path);
+                return <div key={bone.path} className={`editor-bone-row${selected ? " is-selected" : ""}${ancestor ? " is-selected-ancestor" : ""}${row.matches ? " is-match" : ""}${row.contextOnly ? " is-context-only" : ""}`} role="treeitem" aria-level={row.depth + 1} aria-expanded={row.hasChildren ? !collapsed : undefined} aria-selected={selected}>
+                  {row.depth > 0 && <span className="editor-bone-guides" aria-hidden="true">
+                    {row.ancestorContinues.map((continues, index) => <i key={`${bone.path}-guide-${index}`} className={`editor-bone-guide${continues ? " is-continuing" : ""}`} />)}
+                    <i className={`editor-bone-guide is-branch${row.isLastSibling ? " is-last" : ""}`} />
+                  </span>}
+                  <button className="editor-bone-toggle" tabIndex={-1} disabled={!row.hasChildren} aria-label={`${collapsed ? "Expand" : "Collapse"} ${bone.name}`} aria-expanded={row.hasChildren ? !collapsed : undefined} onClick={() => toggleBone(bone.path)}>{row.hasChildren ? collapsed ? <IconChevronRight /> : <IconChevronDown /> : <IconDot />}</button>
+                  <button ref={(element) => { if (element) boneRowRefs.current.set(bone.path, element); else boneRowRefs.current.delete(bone.path); }} className="editor-bone-item" tabIndex={rovingBonePath === bone.path ? 0 : -1} title={bone.path} onClick={() => selectHierarchyBone(bone.path)} onKeyDown={(event) => handleBoneTreeKeyDown(event, bone.path)}>
+                    <span className="editor-bone-name">{highlightedBoneName(bone.name, row.matches ? boneSearch : "")}</span>
                   </button>
                 </div>;
               })}
+              {boneTreeRows.length === 0 && <p className="editor-muted editor-bone-empty">No bones match this search.</p>}
             </div>
           </section>
            <details className="editor-section editor-constraints">
@@ -1433,17 +1510,17 @@ export function Editor() {
              <div className="editor-two-fields"><button className="editor-preview-button" disabled={testing} onClick={() => playAnimation(selectedInteraction.startAnimation)}>Preview press</button><button className="editor-preview-button" onClick={toggleTest}>{testing ? "Exit test" : "Test full interaction"}</button></div>
               </div>
               <div className="editor-movement-fields">
-              <div className="editor-subheading">Drag response</div>
-              <p className="editor-muted">Movement is relative to the initial press. Limits are in the target bone's parent space.</p>
-             <div className="editor-bone-picker">
-               <label>Target bone search<input value={targetBoneSearch} onChange={(event) => setTargetBoneSearch(event.target.value)} placeholder="Search name or path…" /></label>
-               <div className="editor-bone-picker-list">
-                 <button type="button" className={!selectedInteraction.followTargetBone ? "is-selected" : ""} onClick={() => updateInteraction("followTargetBone", null)}>None</button>
-                 {targetBoneOptions.map((bone) => <button type="button" key={bone.path} className={selectedInteraction.followTargetBone === bone.path ? "is-selected" : ""} title={bone.path} onClick={() => updateInteraction("followTargetBone", bone.path)}><span>{bone.name}</span><small>{bone.path}</small></button>)}
-                 {targetBoneSearch.trim() && targetBoneOptions.length === 0 && <p className="editor-muted">No matching bones.</p>}
-                 {!targetBoneSearch.trim() && <p className="editor-field-hint">{selectedInteraction.followTargetBone ? `Type to search the ${frame?.bones.length ?? 0}-bone rig.` : "Type to choose a target bone."}</p>}
-               </div>
-             </div>
+               <div className="editor-subheading">Drag response</div>
+               <p className="editor-muted">Movement is relative to the initial press. Limits are in the target bone's parent space.</p>
+              <BonePicker
+                label="Movement target"
+                bones={frame?.bones ?? []}
+                value={selectedInteraction.followTargetBone}
+                noneLabel="No target bone"
+                selectedPath={project?.selectedBonePath ?? null}
+                onChange={(path) => updateInteraction("followTargetBone", path)}
+                onReveal={(path) => revealBonePath(path)}
+              />
                <div className="editor-three-fields"><label>Sensitivity<input type="number" min="0" max="2" step="0.05" value={selectedInteraction.sensitivity} onChange={(event) => updateInteraction("sensitivity", Number(event.target.value))} /></label><label>Limit X<input type="number" min="0" step="1" value={selectedInteraction.limitX} onChange={(event) => updateInteraction("limitX", Number(event.target.value))} /></label><label>Limit Y<input type="number" min="0" step="1" value={selectedInteraction.limitY} onChange={(event) => updateInteraction("limitY", Number(event.target.value))} /></label></div>
               <div className="editor-subheading">Local bone constraints</div>
               <p className="editor-muted">Translation uses the target parent’s local axes. Rotation is relative to the animated bone pose.</p>
@@ -1460,9 +1537,8 @@ export function Editor() {
                <label>Follow smoothing · {selectedInteraction.smoothing.toFixed(1)} (higher = faster response)<input type="range" min="1" max="24" step="0.5" value={selectedInteraction.smoothing} onChange={(event) => updateInteraction("smoothing", Number(event.target.value))} /></label>
                <div className="editor-subheading">Release return</div>
                <p className="editor-muted">When released, the target eases from its current offset back to the animated bone pose while the End phase plays.</p>
-               <div className="editor-two-fields"><label>Return duration (s)<input aria-label="Return duration in seconds" type="number" min="0.05" max="2" step="0.05" value={selectedInteraction.returnDuration} onChange={(event) => updateInteraction("returnDuration", Number(event.target.value))} /></label><label>Return easing<select aria-label="Return easing" value={selectedInteraction.returnEasing} onChange={(event) => updateInteraction("returnEasing", event.target.value as EditorInteraction["returnEasing"])}><option value="linear">Linear</option><option value="ease-out">Ease out</option><option value="ease-in-out">Ease in / out</option></select></label></div>
-               <button className="editor-preview-button" disabled={!project?.selectedBonePath} onClick={() => updateInteraction("followTargetBone", project?.selectedBonePath ?? null)}>Use selected bone as movement target</button>
-              </div>
+                <div className="editor-two-fields"><label>Return duration (s)<input aria-label="Return duration in seconds" type="number" min="0.05" max="2" step="0.05" value={selectedInteraction.returnDuration} onChange={(event) => updateInteraction("returnDuration", Number(event.target.value))} /></label><label>Return easing<select aria-label="Return easing" value={selectedInteraction.returnEasing} onChange={(event) => updateInteraction("returnEasing", event.target.value as EditorInteraction["returnEasing"])}><option value="linear">Linear</option><option value="ease-out">Ease out</option><option value="ease-in-out">Ease in / out</option></select></label></div>
+               </div>
                </div>
              </details>
               <div className="editor-region-fields">
@@ -1476,14 +1552,26 @@ export function Editor() {
            {inspectorTab === "region" && selectedRegion && selectedInteraction && <section className="editor-section editor-inspector">
              <div className="editor-section-title"><strong>Region</strong><span><button onClick={duplicateRegion}>Duplicate</button> <button className="danger" onClick={deleteRegion}>Delete</button></span></div>
             <label>Name<input value={selectedRegion.name} onChange={(event) => updateRegion("name", event.target.value)} /></label>
-            <div className="editor-two-fields"><label>Shape<select value={selectedRegion.shape} onChange={(event) => updateRegion("shape", event.target.value)}><option value="ellipse">Ellipse</option><option value="rectangle">Rectangle</option></select></label><label>Anchor<select value={selectedRegion.anchorBone ?? ""} onChange={(event) => updateRegion("anchorBone", event.target.value || null)}><option value="">World</option>{frame?.bones.map((bone) => <option key={bone.path} value={bone.path}>{bone.name}</option>)}</select></label></div>
+             <div className="editor-two-fields">
+               <label>Shape<select value={selectedRegion.shape} onChange={(event) => updateRegion("shape", event.target.value)}><option value="ellipse">Ellipse</option><option value="rectangle">Rectangle</option></select></label>
+               <BonePicker
+                 label="Anchor"
+                 bones={frame?.bones ?? []}
+                 value={selectedRegion.anchorBone}
+                 noneLabel="World (canvas)"
+                 selectedPath={project?.selectedBonePath ?? null}
+                 useSelectedLabel="Anchor selected · keep position"
+                 onChange={(path) => updateRegion("anchorBone", path)}
+                 onUseSelected={anchorToSelected}
+                 onReveal={(path) => revealBonePath(path)}
+               />
+             </div>
              <details><summary>Position & size (advanced)</summary><div className="editor-three-fields"><label>Offset X<input type="number" step="1" value={Number(selectedRegion.offsetX.toFixed(2))} onChange={(event) => updateRegion("offsetX", Number(event.target.value))} /></label><label>Offset Y<input type="number" step="1" value={Number(selectedRegion.offsetY.toFixed(2))} onChange={(event) => updateRegion("offsetY", Number(event.target.value))} /></label><label>Rotate °<input type="number" step="1" value={Number(selectedRegion.rotation.toFixed(1))} onChange={(event) => updateRegion("rotation", Number(event.target.value))} /></label></div>
              <div className="editor-two-fields"><label>Radius X<input type="number" min="1" step="1" value={Number(selectedRegion.radiusX.toFixed(2))} onChange={(event) => updateRegion("radiusX", Math.max(1, Number(event.target.value)))} /></label><label>Radius Y<input type="number" min="1" step="1" value={Number(selectedRegion.radiusY.toFixed(2))} onChange={(event) => updateRegion("radiusY", Math.max(1, Number(event.target.value)))} /></label></div></details>
             <label><input type="checkbox" checked={selectedRegion.enabled} onChange={(event) => updateRegion("enabled", event.target.checked)} /> Enabled</label>
-             <button className="editor-preview-button" disabled={!project?.selectedBonePath} onClick={anchorToSelected}>Anchor to selected bone (keep position)</button>
-             <button className="editor-preview-button" disabled={!headRegionRef.current} onClick={snapRegionToHead}>Fit region to detected head</button>
+              <button className="editor-preview-button" disabled={!headRegionRef.current} onClick={snapRegionToHead}>Fit region to detected head</button>
              <button className="editor-preview-button" onClick={() => mutate((current) => ({ ...current, interactions: current.interactions.map((item) => item.id === selectedInteraction.id ? { ...item, regions: item.regions.map((region) => region.id === selectedRegion.id ? { ...region, offsetX: 0, offsetY: 0 } : region) } : item) }))}>Center on anchor</button>
-             <p className="editor-muted">Select a bone on the canvas or in the left panel, then anchor here. Resize and rotate using canvas handles.</p>
+              <p className="editor-muted">Choose an anchor, or use the selected bone to preserve the region’s canvas position. Resize and rotate using canvas handles.</p>
           </section>}
         </aside>
       </main>
