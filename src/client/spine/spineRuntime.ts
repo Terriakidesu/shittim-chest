@@ -549,6 +549,7 @@ export class SpineRenderer {
   private previousFrame = 0;
   private loadSerial = 0;
   private destroyed = false;
+  private renderEnabled = true;
   private dragging = false;
   private lastPointerX = 0;
   private lastPointerY = 0;
@@ -650,6 +651,16 @@ export class SpineRenderer {
 
   setPlaying(playing: boolean) {
     this.playing = playing;
+  }
+
+  /** Disable only WebGL painting while another workspace owns the preview. */
+  setRenderEnabled(enabled: boolean) {
+    if (this.renderEnabled === enabled) return;
+    this.renderEnabled = enabled;
+    if (enabled) {
+      this.previousFrame = 0;
+      this.pendingFit = true;
+    }
   }
 
   setSpeed(speed: number) {
@@ -1442,7 +1453,7 @@ export class SpineRenderer {
   }
 
   private resize() {
-    if (this.destroyed) return;
+    if (this.destroyed || this.renderEnabled === false) return;
     const oldWidth = this.renderer.camera.viewportWidth;
     const oldHeight = this.renderer.camera.viewportHeight;
     const oldFit = this.fitCameraPose;
@@ -1527,22 +1538,24 @@ export class SpineRenderer {
         if (this.showInteractionPoints) this.callbacks.onInteractionPoints?.(this.interactionOverlay());
       }
 
-      const gl = this.context.gl;
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      if (bundle) {
-        this.renderer.begin();
-        // Match the premultiplied atlas pixels and preserve Spine slot blend
-        // modes, including the VFX layers used by lobby animations.
-        drawWithEffectsStrength(bundle.skeleton, this.effectsStrength, () => this.renderer.drawSkeleton(bundle.skeleton, true));
-        this.renderer.end();
-        const entry = bundle.state.getCurrent(0);
-        const duration = entry?.animation?.duration ?? bundle.meta.duration;
-        this.callbacks.onProgress({
-          time: Math.min(entry?.trackTime ?? 0, duration),
-          duration,
-          animation: entry?.animation?.name ?? null,
-        });
+      if (this.renderEnabled !== false) {
+        const gl = this.context.gl;
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        if (bundle) {
+          this.renderer.begin();
+          // Match the premultiplied atlas pixels and preserve Spine slot blend
+          // modes, including the VFX layers used by lobby animations.
+          drawWithEffectsStrength(bundle.skeleton, this.effectsStrength, () => this.renderer.drawSkeleton(bundle.skeleton, true));
+          this.renderer.end();
+          const entry = bundle.state.getCurrent(0);
+          const duration = entry?.animation?.duration ?? bundle.meta.duration;
+          this.callbacks.onProgress({
+            time: Math.min(entry?.trackTime ?? 0, duration),
+            duration,
+            animation: entry?.animation?.name ?? null,
+          });
+        }
       }
     } catch (error) {
       // A malformed local asset should report an error instead of throwing from

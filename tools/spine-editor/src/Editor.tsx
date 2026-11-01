@@ -355,6 +355,7 @@ export function Editor() {
   const [selectedAnimation, setSelectedAnimation] = useState("");
   const [project, setProject] = useState<EditorProject | null>(null);
   const timelineSaveRef = useRef<((getProject: () => EditorProject | null) => Promise<string[]>) | null>(null);
+  const workspaceRef = useRef<"interaction" | "timeline">(workspace);
   const sourceRef = useRef<DesktopAssetSource | null>(source);
   const projectSaveQueueRef = useRef(Promise.resolve());
   const pendingProjectRef = useRef<EditorProject | null>(null);
@@ -380,6 +381,7 @@ export function Editor() {
   directoryRef.current = directory;
   metaRef.current = meta;
   sourceRef.current = source;
+  workspaceRef.current = workspace;
   recentFilesRef.current = recentFiles;
   const viewSettingsRef = useRef<EditorViewSettings>(viewSettings);
   viewSettingsRef.current = viewSettings;
@@ -408,12 +410,14 @@ export function Editor() {
     if (initialAnimation) rendererRef.current?.setAnimation(initialAnimation, true);
   };
   callbacksRef.current.onFrame = (value) => {
-    setFrame(value);
+    const timelineMode = workspaceRef.current === "timeline";
+    if (!timelineMode) setFrame(value);
     const preview = previewRef.current;
-    setProgress(preview.phase !== "idle" ? { ...preview.progress, animation: preview.phase } : { time: value.duration > 0 ? value.time % value.duration : 0, duration: value.duration, animation: value.animation });
+    if (!timelineMode) setProgress(preview.phase !== "idle" ? { ...preview.progress, animation: preview.phase } : { time: value.duration > 0 ? value.time % value.duration : 0, duration: value.duration, animation: value.animation });
     if (loadedAssetRef.current.source !== sourceRef.current || loadedAssetRef.current.directory !== directoryRef.current) return;
     const loadedMeta = metaRef.current;
     const key = `${directoryRef.current}:${loadedMeta?.animations.join("|") ?? ""}`;
+    if (timelineMode && (!projectRef.current || projectRef.current.assetDirectory !== directoryRef.current || initializedAssetRef.current !== key)) setFrame(value);
     if (loadedMeta && key !== initializedAssetRef.current) {
       initializedAssetRef.current = key;
       let restored: EditorProject | null = null;
@@ -440,15 +444,20 @@ export function Editor() {
   };
 
   useEffect(() => {
+    // The interaction canvas stays mounted so it can continue loading the
+    // selected asset and rebuilding the editor project while the timeline is
+    // open. Its WebGL draw path is disabled separately in timeline mode, so
+    // only the timeline layer renderers paint the visible preview.
     const canvas = canvasRef.current;
     if (!canvas) return;
     const renderer = new SpineRenderer(canvas, {
-      onBeforeEditorUpdate: () => previewRef.current.beforeUpdate(),
+      onBeforeEditorUpdate: () => { if (workspaceRef.current !== "timeline") previewRef.current.beforeUpdate(); },
       onEditorUpdate: (delta, skeleton, state) => {
         if (!headDetectionDone.current) {
           headRegionRef.current = detectHeadRegion(skeleton);
           headDetectionDone.current = true;
         }
+        if (workspaceRef.current === "timeline") return;
         previewRef.current.update(delta, skeleton, state);
         const preview = previewRef.current;
         const debug = preview.debug;
@@ -474,6 +483,10 @@ export function Editor() {
       rendererRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    rendererRef.current?.setRenderEnabled(workspace !== "timeline");
+  }, [workspace]);
 
   useEffect(() => {
     loadedAssetRef.current = { source: null, directory: "" };
