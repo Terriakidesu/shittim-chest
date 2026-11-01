@@ -1352,13 +1352,13 @@ export function Editor() {
              {(testing || tool !== "select") && <div className="editor-stage-hint">{testing ? `${previewStatus} · Press a region, hold/drag, release` : tool === "draw" ? "Drag to draw a new region" : "Drag to pan · Wheel to zoom · F to fit"}</div>}
           </div>
            {testing && <div className="editor-testbar">
-             <div className="editor-debug-status"><strong aria-live="polite">{previewStatus}</strong><span>{previewDebug.held ? "Held" : previewDebug.phase === "idle" ? "Ready" : "Released"}</span></div>
-             <div className="editor-debug-grid" aria-label="Interaction debugger">
-               <span>Interaction <b>{previewDebug.interactionName || "—"}</b></span>
-               <span>Region <b>{previewDebug.regionName || "—"}</b></span>
-                <span>Phase <b>{previewDebug.phase}{previewDebug.returning ? ` · return ${Math.round(previewDebug.returnProgress * 100)}%` : ""}</b></span>
-               <span>Body <b>{previewDebug.bodyAnimation || "—"}</b></span>
-               <span>Face <b>{previewDebug.faceAnimation || "—"}</b></span>
+              <div className="editor-debug-status"><strong aria-live="polite" title={previewStatus}>{previewStatus}</strong><span>{previewDebug.held ? "Held" : previewDebug.phase === "idle" ? "Ready" : "Released"}</span></div>
+              <div className="editor-debug-grid" aria-label="Interaction debugger">
+                <span>Interaction <b title={previewDebug.interactionName || undefined}>{previewDebug.interactionName || "—"}</b></span>
+                <span>Region <b title={previewDebug.regionName || undefined}>{previewDebug.regionName || "—"}</b></span>
+                <span title={previewDebug.returning ? `Phase ${previewDebug.phase}, return ${Math.round(previewDebug.returnProgress * 100)}%` : `Phase ${previewDebug.phase}`}>Phase <b>{previewDebug.phase}{previewDebug.returning ? ` · return ${Math.round(previewDebug.returnProgress * 100)}%` : ""}</b></span>
+                <span>Body <b title={previewDebug.bodyAnimation || undefined}>{previewDebug.bodyAnimation || "—"}</b></span>
+                <span>Face <b title={previewDebug.faceAnimation || undefined}>{previewDebug.faceAnimation || "—"}</b></span>
                <span>Target <b title={previewDebug.targetBonePath ?? ""}>{previewDebug.targetBonePath?.split("/").pop() ?? "—"}</b></span>
                <span>Offset <b>{previewDebug.offsetX.toFixed(1)}, {previewDebug.offsetY.toFixed(1)}</b></span>
                <span>Rotation <b>{previewDebug.rotation.toFixed(1)}°</b></span>

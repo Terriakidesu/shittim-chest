@@ -135,7 +135,7 @@ input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid
 .editor-validation-list b { color: var(--editor-yellow); font-size: 9px; text-transform: uppercase; }
 .editor-validation-list span { overflow-wrap: anywhere; }
 
-.editor-center { position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.editor-center { position: relative; display: flex; flex-direction: column; overflow: hidden; container-type: inline-size; }
 .editor-layout.is-loading { grid-template-columns: 1fr !important; }
 .editor-layout.is-loading .editor-panel-resizer { display: none; }
 .editor-layout.is-loading .editor-toolbar, .editor-layout.is-loading .editor-timeline { display: none; }
@@ -284,15 +284,18 @@ input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid
 .editor-overlay.tool-pan *, .editor-overlay.tool-draw * { pointer-events: none !important; }
 .editor-handle { pointer-events: auto; fill: #fff; stroke: #132c3a; stroke-width: 2; cursor: nwse-resize; }
 .editor-handle.rotate { fill: var(--editor-yellow); cursor: crosshair; }
-.editor-testbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 7px 10px; background: #173d33; color: #b9f5dc; font-size: 10px; }
+.editor-testbar { display: grid; grid-template-columns: minmax(100px, .75fr) minmax(0, 4fr) auto auto; grid-template-rows: 36px; align-items: center; gap: 0 10px; width: 100%; height: 52px; min-height: 52px; padding: 6px 10px; overflow: hidden; background: #173d33; color: #b9f5dc; font-size: 10px; }
 .editor-testbar strong { text-transform: capitalize; }
-.editor-testbar label { margin-left: auto; }
-.editor-debug-status { display: grid; gap: 1px; min-width: 90px; }
+.editor-testbar label { display: flex; align-items: center; gap: 4px; min-width: 0; margin: 0; white-space: nowrap; }
+.editor-testbar label input { flex: none; }
+.editor-debug-status { display: grid; gap: 1px; min-width: 0; overflow: hidden; }
+.editor-debug-status strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editor-debug-status span { color: #8bd7b8; font-size: 9px; text-transform: uppercase; }
-.editor-debug-grid { display: grid; grid-template-columns: repeat(4, minmax(90px, auto)); gap: 2px 10px; min-width: 0; }
-.editor-debug-grid span { color: #8bd7b8; white-space: nowrap; }
+.editor-debug-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); align-content: center; gap: 2px 8px; min-width: 0; min-height: 0; overflow: hidden; }
+.editor-debug-grid span { min-width: 0; overflow: hidden; color: #8bd7b8; text-overflow: ellipsis; white-space: nowrap; }
 .editor-debug-grid b { color: #e2fff1; font-weight: 700; }
-.editor-test-controls { display: flex; flex-wrap: wrap; gap: 5px; }
+.editor-test-controls { display: flex; flex-wrap: nowrap; gap: 5px; min-width: 0; white-space: nowrap; }
+.editor-test-controls .editor-preview-button { min-height: 28px; padding: 4px 7px; white-space: nowrap; }
 .editor-help { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 14px; background: #173347; font-size: 11px; }
 .editor-validation summary { cursor: pointer; color: var(--editor-muted); font-size: 11px; }
 .editor-validation summary { display: inline-flex; align-items: center; gap: 4px; }
@@ -475,4 +478,11 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--editor-cy
   .timeline-workspace { grid-template-columns: 125px minmax(260px, 1fr) 240px; overflow: auto; }
   .timeline-inspector { min-height: 260px; }
   .timeline-stage-wrap { min-height: 220px; }
+}
+@container (max-width: 760px) {
+  .editor-testbar { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 2px 8px; height: 70px; min-height: 70px; }
+  .editor-debug-status { grid-area: 1 / 1; }
+  .editor-debug-grid { grid-area: 2 / 1; }
+  .editor-test-controls { grid-area: 1 / 2; }
+  .editor-testbar > label { grid-area: 2 / 2; }
 }
