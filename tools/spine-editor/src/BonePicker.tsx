@@ -1,6 +1,13 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { SpineEditorBone } from "../../../src/client/spine/spineRuntime";
-import { buildBoneTreeRows, rankBoneMatches } from "./boneTree";
+import { rankBoneMatches } from "./boneTree";
+
+function shortParentBreadcrumb(bone: SpineEditorBone): string {
+  const parents = bone.parentPath?.split("/").filter(Boolean) ?? [];
+  if (parents.length === 0) return "Root bone";
+  const visible = parents.slice(-2);
+  return `${parents.length > visible.length ? "… / " : ""}${visible.join(" / ")}`;
+}
 
 interface BonePickerProps {
   label: string;
@@ -24,8 +31,6 @@ export function BonePicker({ label, bones, value, noneLabel, selectedPath, useSe
   const [search, setSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const results = useMemo(() => rankBoneMatches(bones, search), [bones, search]);
-  const browseRows = useMemo(() => buildBoneTreeRows(bones, new Set(), "", true), [bones]);
-  const browseRowsByPath = useMemo(() => new Map(browseRows.map((row) => [row.bone.path, row])), [browseRows]);
   const selectedBone = bones.find((bone) => bone.path === value) ?? null;
   const selectedBoneIndex = bones.findIndex((bone) => bone.path === value);
   const activeOptionIndex = Math.min(Math.max(0, activeIndex), results.length);
@@ -49,7 +54,7 @@ export function BonePicker({ label, bones, value, noneLabel, selectedPath, useSe
 
   useEffect(() => {
     optionRefs.current[activeIndex]?.scrollIntoView?.({ block: "nearest" });
-  }, [activeIndex]);
+  }, [activeIndex, open, results.length, search]);
 
   function openPicker() {
     setSearch("");
@@ -129,17 +134,9 @@ export function BonePicker({ label, bones, value, noneLabel, selectedPath, useSe
           const optionIndex = index + 1;
           const path = bone.path;
           const active = activeOptionIndex === optionIndex;
-          const treeRow = search.trim() ? null : browseRowsByPath.get(path);
           return <button ref={(element) => { optionRefs.current[optionIndex] = element; }} id={`${pickerId}-option-${optionIndex}`} type="button" role="option" key={path} aria-selected={value === path} className={`editor-bone-option${active ? " is-active" : ""}${value === path ? " is-selected" : ""}`} title={path} onMouseEnter={() => setActiveIndex(optionIndex)} onClick={() => choose(path)}>
-            <span className="editor-bone-option-main">
-              {treeRow && treeRow.depth > 0 && <span className="editor-bone-option-guides" aria-hidden="true">
-                {treeRow.ancestorContinues.map((continues, guideIndex) => <i key={`${path}-option-guide-${guideIndex}`} className={`editor-bone-guide${continues ? " is-continuing" : ""}`} />)}
-                <i className={`editor-bone-guide is-branch${treeRow.isLastSibling ? " is-last" : ""}`} />
-              </span>}
-              <span className="editor-bone-option-dot" aria-hidden="true" />
-              <strong>{bone.name}</strong>
-            </span>
-            <small>{path}</small>
+            <strong>{bone.name}</strong>
+            <small>{shortParentBreadcrumb(bone)}</small>
           </button>;
         })}
         {results.length === 0 && <p className="editor-muted editor-bone-picker-empty">No matching bones.</p>}

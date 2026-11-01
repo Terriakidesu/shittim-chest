@@ -24,6 +24,34 @@ function ancestorsOf(bone: SpineEditorBone, byPath: Map<string, SpineEditorBone>
   return ancestors;
 }
 
+/** Spine's bone array is not guaranteed to keep each sibling subtree contiguous. */
+export function depthFirstBones(bones: SpineEditorBone[]): SpineEditorBone[] {
+  const byPath = new Map(bones.map((bone) => [bone.path, bone]));
+  const children = new Map<string, SpineEditorBone[]>();
+  for (const bone of bones) {
+    if (!bone.parentPath || !byPath.has(bone.parentPath)) continue;
+    const siblings = children.get(bone.parentPath) ?? [];
+    siblings.push(bone);
+    children.set(bone.parentPath, siblings);
+  }
+
+  const ordered: SpineEditorBone[] = [];
+  const visited = new Set<string>();
+  const visit = (bone: SpineEditorBone) => {
+    if (visited.has(bone.path)) return;
+    visited.add(bone.path);
+    ordered.push(bone);
+    for (const child of children.get(bone.path) ?? []) visit(child);
+  };
+
+  for (const bone of bones) {
+    if (!bone.parentPath || !byPath.has(bone.parentPath)) visit(bone);
+  }
+  // Keep malformed or cyclic rigs visible rather than dropping their bones.
+  for (const bone of bones) visit(bone);
+  return ordered;
+}
+
 /** Build the visible rows for the rig tree while retaining ancestors as context. */
 export function buildBoneTreeRows(
   bones: SpineEditorBone[],
@@ -31,9 +59,10 @@ export function buildBoneTreeRows(
   search: string,
   showInactive = false,
 ): BoneTreeRow[] {
-  const byPath = new Map(bones.map((bone) => [bone.path, bone]));
-  const ancestorMap = new Map(bones.map((bone) => [bone.path, ancestorsOf(bone, byPath)]));
-  const eligible = bones.filter((bone) => showInactive || bone.active);
+  const orderedBones = depthFirstBones(bones);
+  const byPath = new Map(orderedBones.map((bone) => [bone.path, bone]));
+  const ancestorMap = new Map(orderedBones.map((bone) => [bone.path, ancestorsOf(bone, byPath)]));
+  const eligible = orderedBones.filter((bone) => showInactive || bone.active);
   const eligiblePaths = new Set(eligible.map((bone) => bone.path));
   const query = search.trim().toLocaleLowerCase();
   const matches = new Set<string>();
@@ -53,7 +82,7 @@ export function buildBoneTreeRows(
     }
   }
 
-  const candidates = bones.filter((bone) => included.has(bone.path));
+  const candidates = orderedBones.filter((bone) => included.has(bone.path));
   const children = new Map<string, SpineEditorBone[]>();
   for (const bone of candidates) {
     const parent = bone.parentPath ?? "";

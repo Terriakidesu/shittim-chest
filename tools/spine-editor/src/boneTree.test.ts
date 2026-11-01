@@ -9,14 +9,14 @@ function bone(path: string, name: string, parentPath: string | null, active = tr
 const rig = [
   bone("root", "root", null),
   bone("root/A", "A", "root"),
+  bone("root/B", "B", "root"),
   bone("root/A/A1", "A1", "root/A"),
   bone("root/A/A2", "needle", "root/A"),
-  bone("root/B", "B", "root"),
   bone("root/B/B1", "B1", "root/B"),
 ];
 
 describe("Spine bone hierarchy", () => {
-  test("builds uncapped depths and sibling branch continuations", () => {
+  test("depth-first orders subtrees and builds sibling branch continuations", () => {
     const rows = buildBoneTreeRows(rig, new Set(), "");
     expect(rows.map((row) => [row.bone.name, row.depth])).toEqual([
       ["root", 0], ["A", 1], ["A1", 2], ["needle", 2], ["B", 1], ["B1", 2],

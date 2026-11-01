@@ -123,11 +123,11 @@ input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid
 .editor-bone-list { flex: 1 1 auto; min-height: 100px; max-height: none; overflow: auto; overscroll-behavior: contain; border-top: 1px solid var(--editor-line); border-bottom: 1px solid var(--editor-line); scrollbar-width: thin; scrollbar-color: #527489 #102131; }
 .editor-bone-row { display: flex; align-items: stretch; width: max-content; min-width: 100%; min-height: 30px; border-bottom: 1px solid #2b465a; }
 .editor-bone-guides { display: flex; flex: none; }
-.editor-bone-guide { position: relative; flex: 0 0 12px; width: 12px; min-height: 29px; }
-.editor-bone-guide.is-continuing::before, .editor-bone-guide.is-branch::before { position: absolute; left: 5px; top: 0; bottom: 0; border-left: 1px solid #476477; content: ""; }
+.editor-bone-guide { position: relative; flex: 0 0 8px; width: 8px; min-height: 29px; }
+.editor-bone-guide.is-continuing::before, .editor-bone-guide.is-branch::before { position: absolute; left: 3px; top: 0; bottom: 0; border-left: 1px solid #476477; content: ""; }
 .editor-bone-guide.is-branch.is-last::before { bottom: 50%; }
-.editor-bone-guide.is-branch::after { position: absolute; top: 50%; left: 5px; right: 0; border-top: 1px solid #476477; content: ""; }
-.editor-bone-row .editor-bone-toggle { position: relative; z-index: 1; display: grid; place-items: center; flex: 0 0 20px; width: 20px; min-height: 29px; padding: 0; border: 0; background: transparent; color: var(--editor-muted); font-size: 12px; }
+.editor-bone-guide.is-branch::after { position: absolute; top: 50%; left: 3px; right: 0; border-top: 1px solid #476477; content: ""; }
+.editor-bone-row .editor-bone-toggle { position: relative; z-index: 1; display: grid; place-items: center; flex: 0 0 18px; width: 18px; min-height: 29px; padding: 0; border: 0; background: transparent; color: var(--editor-muted); font-size: 12px; }
 .editor-bone-row .editor-bone-toggle svg { width: 13px; height: 13px; }
 .editor-bone-row .editor-bone-toggle:hover:not(:disabled) { color: var(--editor-cyan); background: #17384c; }
 .editor-bone-row .editor-bone-toggle:disabled { opacity: .35; }
@@ -270,16 +270,12 @@ input[type="color"] { width: 100%; height: 32px; padding: 2px; border: 1px solid
 .editor-bone-picker-search input { width: 100%; min-width: 0; height: 31px; padding: 5px 7px; border: 1px solid var(--editor-line); border-radius: 3px; background: #08141f; color: var(--editor-text); font-size: 11px; }
 .editor-bone-picker-count { color: var(--editor-muted); font-size: 9px; }
 .editor-bone-picker-list { display: grid; max-height: min(340px, 45dvh); overflow: auto; border: 1px solid var(--editor-line); border-radius: 3px; background: #0c1a27; overscroll-behavior: contain; }
-.editor-bone-picker-list button { display: grid; gap: 2px; width: 100%; min-height: 43px; padding: 5px 7px; border: 0; border-bottom: 1px solid #213b4d; background: transparent; color: var(--editor-text); text-align: left; }
+.editor-bone-picker-list button { display: grid; gap: 2px; width: 100%; min-height: 43px; padding: 6px 8px; border: 0; border-bottom: 1px solid #213b4d; background: transparent; color: var(--editor-text); text-align: left; }
 .editor-bone-picker-list button:hover, .editor-bone-picker-list button.is-active { background: #16374a; }
 .editor-bone-picker-list button.is-selected { box-shadow: inset 2px 0 var(--editor-yellow); background: #1d455c; }
-.editor-bone-option-main { display: flex; align-items: center; gap: 5px; min-width: 0; min-height: 18px; }
-.editor-bone-option-guides { display: flex; align-self: stretch; flex: none; }
-.editor-bone-option-guides .editor-bone-guide { min-height: 18px; }
-.editor-bone-option-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--editor-cyan); }
-.editor-bone-picker-list button strong, .editor-bone-picker-list button small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.editor-bone-picker-list button strong { font-size: 11px; font-weight: 650; }
-.editor-bone-picker-list button small { color: var(--editor-muted); font-size: 9px; }
+.editor-bone-picker-list button strong, .editor-bone-picker-list button small { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.editor-bone-picker-list button strong { color: var(--editor-text); font-size: 11px; font-weight: 650; overflow-wrap: anywhere; white-space: normal; }
+.editor-bone-picker-list button small { color: var(--editor-muted); font-size: 9px; white-space: nowrap; }
 .editor-bone-picker-list button.editor-bone-option-none strong { color: var(--editor-cyan); }
 .editor-bone-picker-list .editor-bone-picker-empty { margin: 0; padding: 12px 8px; }
 .editor-right-panel:not(.tab-animation) .editor-animation-fields, .editor-right-panel:not(.tab-movement) .editor-movement-fields, .editor-right-panel:not(.tab-region) .editor-region-fields { display: none; }
