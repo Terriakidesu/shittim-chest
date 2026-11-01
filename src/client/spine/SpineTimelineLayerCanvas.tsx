@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { SpineRenderer, type SpineCameraPose, type SpineFiles, type SpineInteractionOverlay, type SpineMeta } from "./spineRuntime";
+import { SpineRenderer, type SpineCameraPose, type SpineFiles, type SpineInteractionOverlay, type SpineLoadProgress, type SpineMeta } from "./spineRuntime";
 import type { SpineInteractionProject } from "./spineInteraction";
 import { timelineIdleAnimation, timelineTalkIdleStart, timelineAnimationNeedsIdleUnderlay, timelineLayerAnimation, timelineLayerPlaybackEnd, timelineLayerSampleTime, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
 
@@ -30,6 +30,8 @@ export interface SpineTimelineLayerCanvasProps {
   onTalkClip?: (index: number, clipIndex: number) => void;
   onIntro?: (animation: string, eventCount: number) => boolean;
   onIntroClip?: (clipIndex: number) => void;
+  onRendererLoading?: (layerId: string, loading: boolean) => void;
+  onLoadProgress?: (layerId: string, progress: SpineLoadProgress) => void;
   onError: (value: string | null) => void;
 }
 
@@ -40,7 +42,7 @@ export interface SpineTimelineLayerCanvasProps {
  * interaction preservation, and visibility in this component. The two UIs
  * should provide state and callbacks, not fork playback rules.
  */
-export function SpineTimelineLayerCanvas({ layer, files, currentTime, mainAnimation, mainAnimationTime, mainAnimationLoop, openingMode = "direct", sequenceId = "legacy", idleMode = "none", interactionEnabled = false, interactionProject = null, showInteractionPoints = false, effectsStrength, resetCameraSignal = 0, sharedCameraPose, referenceCamera, onMeta, onCameraPose, onAnimationDuration, onMarkers, onInteractionPoints, onRenderer, onTalk, onTalkClip, onIntro, onIntroClip, onError }: SpineTimelineLayerCanvasProps) {
+export function SpineTimelineLayerCanvas({ layer, files, currentTime, mainAnimation, mainAnimationTime, mainAnimationLoop, openingMode = "direct", sequenceId = "legacy", idleMode = "none", interactionEnabled = false, interactionProject = null, showInteractionPoints = false, effectsStrength, resetCameraSignal = 0, sharedCameraPose, referenceCamera, onMeta, onCameraPose, onAnimationDuration, onMarkers, onInteractionPoints, onRenderer, onTalk, onTalkClip, onIntro, onIntroClip, onRendererLoading, onLoadProgress, onError }: SpineTimelineLayerCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<SpineRenderer | null>(null);
   const [meta, setMeta] = useState<SpineMeta | null>(null);
@@ -54,6 +56,8 @@ export function SpineTimelineLayerCanvas({ layer, files, currentTime, mainAnimat
   const onTalkClipRef = useRef(onTalkClip);
   const onIntroRef = useRef(onIntro);
   const onIntroClipRef = useRef(onIntroClip);
+  const onRendererLoadingRef = useRef(onRendererLoading);
+  const onLoadProgressRef = useRef(onLoadProgress);
   const onErrorRef = useRef(onError);
   onMetaRef.current = onMeta;
   onCameraPoseRef.current = onCameraPose;
@@ -65,6 +69,8 @@ export function SpineTimelineLayerCanvas({ layer, files, currentTime, mainAnimat
   onTalkClipRef.current = onTalkClip;
   onIntroRef.current = onIntro;
   onIntroClipRef.current = onIntroClip;
+  onRendererLoadingRef.current = onRendererLoading;
+  onLoadProgressRef.current = onLoadProgress;
   onErrorRef.current = onError;
 
   useEffect(() => {
@@ -89,7 +95,8 @@ export function SpineTimelineLayerCanvas({ layer, files, currentTime, mainAnimat
           });
         },
         onProgress: () => {},
-        onLoading: () => {},
+        onLoading: (loading) => onRendererLoadingRef.current?.(layer.id, loading),
+        onLoadProgress: (progress) => onLoadProgressRef.current?.(layer.id, progress),
         onError: (value) => onErrorRef.current(value?.message ?? null),
         onInteractionPoints: (value) => onInteractionPointsRef.current?.(layer.id, value),
         onTalk: (index, animation, eventCount) => onTalkRef.current?.(index, animation, eventCount) ?? false,

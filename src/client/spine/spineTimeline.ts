@@ -43,6 +43,16 @@ export interface SpineTimelineAudio {
   volume: number;
 }
 
+export type SpineTimelineAudioPreloadState = "loading" | "ready" | "missing";
+
+/** Do not advance playback until enabled audio is ready or known to be unavailable. */
+export function timelineAudioPreloadsReady(
+  clips: readonly Pick<SpineTimelineAudio, "id" | "enabled">[],
+  states: Readonly<Record<string, SpineTimelineAudioPreloadState>>,
+): boolean {
+  return clips.every((clip) => !clip.enabled || states[clip.id] === "ready" || states[clip.id] === "missing");
+}
+
 export interface SpineTimelineAudioPlaybackDecision {
   seek: boolean;
   play: boolean;

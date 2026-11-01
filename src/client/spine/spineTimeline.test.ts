@@ -6,7 +6,7 @@ test("idle playback selects Idle_XX, never the opening or talk animation", () =>
   expect(timelineIdleAnimation({ idleAnimation: null, animations: ["Start_Idle_01", "Idle_02"] })).toBe("Idle_02");
   expect(timelineIdleAnimation({ idleAnimation: null, animations: ["Start_Idle_01"] })).toBe("");
 });
-import { advanceSpineTimeline, normalizeSpineTimeline, timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineAudioPlaybackDecision, timelineForSequence, timelineLayerAnimation, timelineLayerPlaybackEnd, timelineLayerSampleTime, timelineMainAnimation, timelinePlaybackDuration, timelineSequenceIds, timelineTalkSequenceIds, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
+import { advanceSpineTimeline, normalizeSpineTimeline, timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineAudioPlaybackDecision, timelineAudioPreloadsReady, timelineForSequence, timelineLayerAnimation, timelineLayerPlaybackEnd, timelineLayerSampleTime, timelineMainAnimation, timelinePlaybackDuration, timelineSequenceIds, timelineTalkSequenceIds, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
 
 const character = { start: 1, animationOffset: 0.25, loop: false, role: "character" as const };
 
@@ -146,6 +146,17 @@ test("timeline audio playback only seeks when entering or rewinding", () => {
   expect(timelineAudioPlaybackDecision({ active: true, playing: true, currentTime: 2, previousTime: 1.9, started: true, ended: false })).toEqual({ seek: false, play: true, started: true });
   expect(timelineAudioPlaybackDecision({ active: true, playing: true, currentTime: 1, previousTime: 2, started: true, ended: true })).toEqual({ seek: true, play: true, started: true });
   expect(timelineAudioPlaybackDecision({ active: false, playing: true, currentTime: 3, previousTime: 2, started: true, ended: false })).toEqual({ seek: false, play: false, started: false });
+});
+
+test("timeline playback waits for enabled audio preloads but tolerates missing clips", () => {
+  const clips = [
+    { id: "ready", enabled: true },
+    { id: "missing", enabled: true },
+    { id: "disabled", enabled: false },
+  ];
+  expect(timelineAudioPreloadsReady(clips, { ready: "ready", missing: "missing", disabled: "loading" })).toBe(true);
+  expect(timelineAudioPreloadsReady(clips, { ready: "loading", missing: "missing", disabled: "loading" })).toBe(false);
+  expect(timelineAudioPreloadsReady([], {})).toBe(true);
 });
 
 test("talk animation underlay behavior is shared by both previews", () => {

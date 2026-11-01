@@ -15,7 +15,7 @@ import type { DesktopAssetSource } from "./desktopSource";
 import { manifestReferenceCandidates } from "../../../src/client/spine/spineManifest";
 import { audioPlaybackDecision, clampAudioEnd, clampAudioStart, decodedAudioTiming } from "./audioModel";
 import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
-import { advanceSpineTimeline, timelineActiveSubtitleTexts, timelineMainAnimation, timelinePlaybackDuration } from "../../../src/client/spine/spineTimeline";
+import { advanceSpineTimeline, timelineActiveSubtitleTexts, timelineAudioPreloadsReady, timelineMainAnimation, timelinePlaybackDuration, type SpineTimelineAudioPreloadState } from "../../../src/client/spine/spineTimeline";
 import { SpineTimelineLayerCanvas } from "../../../src/client/spine/SpineTimelineLayerCanvas";
 import { spineAudioPathCandidates } from "../../../src/client/spine/spineAudio";
 import { serializeSubtitleDocument } from "./subtitleDocument";
@@ -24,6 +24,7 @@ import { AssetPickerModal } from "./AssetPickerModal";
 import { characterDirectoryLabel, type CharacterDirectoryLabels } from "./characterCatalog";
 import { isTextEditingTarget } from "./editorKeyboard";
 import { panStageView, resetStageView, zoomStageView, type StageView } from "./stageView";
+import { zoomTimelineAtCursor } from "./timelineView";
 import { IconChevronDown, IconChevronLeft, IconChevronRight, IconExpand, IconLink, IconMinus, IconPause, IconPlay, IconPlus, IconSkipBack, IconSkipForward, IconSound, IconSync, IconUnlink } from "../../../src/client/components/icons";
 
 const TIMELINE_SCALE = 96;
@@ -261,6 +262,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const audioPreviousTimeRef = useRef<Record<string, number | undefined>>({});
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
   const [audioDurations, setAudioDurations] = useState<Record<string, number>>({});
+  const [audioPreloadStates, setAudioPreloadStates] = useState<Record<string, SpineTimelineAudioPreloadState>>({});
   const [missingAudio, setMissingAudio] = useState<string[]>([]);
   const dragRef = useRef<TimelineDragState | null>(null);
   const subtitleDocumentsRef = useRef<Record<string, Record<string, unknown>>>({});
@@ -285,6 +287,10 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     audio.currentTime = 0;
   }
 
+  function setAudioPreloadState(id: string, state: SpineTimelineAudioPreloadState) {
+    setAudioPreloadStates((value) => value[id] === state ? value : { ...value, [id]: state });
+  }
+
   function clearAudioUrl(id: string) {
     const record = audioUrlRecordsRef.current[id];
     if (record) {
@@ -298,6 +304,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     delete audioStartedRef.current[id];
     delete audioPreviousTimeRef.current[id];
     delete pendingAudioLoadsRef.current[id];
+    setAudioPreloadState(id, "loading");
     pauseAudioElement(id);
     setAudioUrls((value) => {
       if (!(id in value)) return value;
@@ -317,10 +324,16 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     audioUrlsRef.current[id] = url;
     audioStartedRef.current[id] = false;
     audioPreviousTimeRef.current[id] = undefined;
+    setAudioPreloadState(id, "loading");
     setAudioUrls((value) => value[id] === url ? value : { ...value, [id]: url });
   }
 
   const timeline = project?.timeline ?? null;
+  const audioLoadKey = (timeline?.audio ?? []).map((clip) => `${clip.id}:${clip.path}`).join("|");
+  const audioPreloadIdentityRef = useRef({ source, key: audioLoadKey });
+  const audioPreloadsReady = audioPreloadIdentityRef.current.source === source
+    && audioPreloadIdentityRef.current.key === audioLoadKey
+    && timelineAudioPreloadsReady(timeline?.audio ?? [], audioPreloadStates);
   const discovered = useMemo(() => directory ? compositionDirectories(directory, directories) : [], [directory, directories]);
   const displayLayers = useMemo(() => [...(timeline?.layers ?? [])].sort((a, b) => a.order - b.order || a.id.localeCompare(b.id)), [timeline?.layers]);
   const selectedLayer = timeline?.layers.find((layer) => layer.id === timeline.selectedLayerId) ?? null;
@@ -453,6 +466,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
 
   useEffect(() => {
     const clips = timeline?.audio ?? [];
+    audioPreloadIdentityRef.current = { source, key: audioLoadKey };
     const wanted = new Set(clips.map((clip) => clip.id));
     for (const id of Object.keys(audioUrlRecordsRef.current)) {
       if (wanted.has(id)) continue;
@@ -465,13 +479,30 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       const next = value.filter((path) => clips.some((clip) => clip.path === path));
       return next.length === value.length ? value : next;
     });
-    let cancelled = false;
+    setAudioPreloadStates((value) => {
+      const next: Record<string, SpineTimelineAudioPreloadState> = {};
+      for (const clip of clips) {
+        const record = audioUrlRecordsRef.current[clip.id];
+        const resourceMatches = record?.path === clip.path && record.source === source;
+        next[clip.id] = resourceMatches
+          ? value[clip.id] ?? (audioElementsRef.current[clip.id]?.readyState && audioElementsRef.current[clip.id]!.readyState >= 3 ? "ready" : "loading")
+          : "loading";
+      }
+      return Object.keys(next).length === Object.keys(value).length && Object.keys(next).every((id) => next[id] === value[id]) ? value : next;
+    });
     for (const clip of clips) {
       const record = audioUrlRecordsRef.current[clip.id];
-      if (record && record.path === clip.path && record.source === source) continue;
+      if (record && record.path === clip.path && record.source === source) {
+        const audio = audioElementsRef.current[clip.id];
+        const readiness = audio?.readyState !== undefined && audio.readyState >= 3 ? "ready" : "loading";
+        if (audioPreloadStates[clip.id] !== "missing") setAudioPreloadState(clip.id, readiness);
+        continue;
+      }
       if (record) clearAudioUrl(clip.id);
+      else if (audioPreloadStates[clip.id] === "missing") setAudioPreloadState(clip.id, "loading");
       if (!source) {
         delete pendingAudioLoadsRef.current[clip.id];
+        setAudioPreloadState(clip.id, "missing");
         continue;
       }
       const pending = pendingAudioLoadsRef.current[clip.id];
@@ -482,16 +513,24 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
         if (pendingAudioLoadsRef.current[clip.id] !== request) return;
         delete pendingAudioLoadsRef.current[clip.id];
         const currentClip = projectRef.current?.timeline.audio.find((item) => item.id === clip.id);
-        if (cancelled || sourceRef.current !== source || currentClip?.path !== clip.path) return;
-        if (!file) { setMissingAudio((value) => value.includes(clip.path) ? value : [...value, clip.path]); return; }
+        if (sourceRef.current !== source || currentClip?.path !== clip.path) return;
+        if (!file) {
+          setMissingAudio((value) => value.includes(clip.path) ? value : [...value, clip.path]);
+          setAudioPreloadState(clip.id, "missing");
+          return;
+        }
         setMissingAudio((value) => value.filter((path) => path !== clip.path));
         storeAudioUrl(clip.id, clip.path, URL.createObjectURL(file), source);
       }).catch(() => {
-        if (pendingAudioLoadsRef.current[clip.id] === request) delete pendingAudioLoadsRef.current[clip.id];
+        if (pendingAudioLoadsRef.current[clip.id] !== request) return;
+        delete pendingAudioLoadsRef.current[clip.id];
+        if (sourceRef.current === source && projectRef.current?.timeline.audio.some((item) => item.id === clip.id && item.path === clip.path)) {
+          setMissingAudio((value) => value.includes(clip.path) ? value : [...value, clip.path]);
+          setAudioPreloadState(clip.id, "missing");
+        }
       });
     }
-    return () => { cancelled = true; };
-  }, [source, timeline?.audio]);
+  }, [audioLoadKey, source, timeline?.audio]);
 
   useEffect(() => () => {
     for (const record of Object.values(audioUrlRecordsRef.current)) URL.revokeObjectURL(record.url);
@@ -546,9 +585,19 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   }
 
   useEffect(() => {
+    if (!audioPreloadsReady) {
+      Object.values(audioElementsRef.current).forEach((audio) => audio?.pause());
+      return;
+    }
     for (const clip of timeline?.audio ?? []) {
       const audio = audioElementsRef.current[clip.id];
       if (!audio) continue;
+      if (audioPreloadStates[clip.id] === "missing") {
+        audio.pause();
+        audioStartedRef.current[clip.id] = false;
+        audioPreviousTimeRef.current[clip.id] = undefined;
+        continue;
+      }
       audio.volume = clip.volume;
       audio.playbackRate = speed;
       const active = clip.enabled && currentTime >= clip.start && currentTime <= clip.end;
@@ -568,10 +617,10 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       if (decision.play) void audio.play().catch(() => undefined);
       else audio.pause();
     }
-  }, [currentTime, playing, speed, timeline?.audio, audioUrls]);
+  }, [audioPreloadsReady, audioUrls, currentTime, playing, speed, timeline?.audio]);
 
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || !audioPreloadsReady) return;
     let previous = performance.now();
     let frame = 0;
     const tick = (now: number) => {
@@ -592,7 +641,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [duration, playing, previewUntil, speed, timeline?.loop]);
+  }, [audioPreloadsReady, duration, playing, previewUntil, speed, timeline?.audio, timeline?.loop]);
 
   useEffect(() => {
     if (!timeline) return;
@@ -1127,6 +1176,17 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   }
 
   function scrollTimeline(event: ReactWheelEvent<HTMLDivElement>) {
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      const scroller = event.currentTarget;
+      const rect = scroller.getBoundingClientRect();
+      if (!rect.width) return;
+      const next = zoomTimelineAtCursor(zoom, scroller.scrollLeft, event.clientX - rect.left, event.deltaY, event.deltaMode, scroller.clientHeight);
+      if (next.zoom === zoom) return;
+      scroller.scrollLeft = next.scrollLeft;
+      setZoom(next.zoom);
+      return;
+    }
     const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
     if (!delta) return;
     event.currentTarget.scrollLeft += delta;
@@ -1297,7 +1357,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
              >
                <div className="timeline-stage-content" style={{ transform: `translate3d(${stageView.x}px, ${stageView.y}px, 0) scale(${stageView.scale})` }}>
                   {displayLayers.map((layer) => <SpineTimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} mainAnimation={mainAnimation} mainAnimationTime={mainAnimationTime} mainAnimationLoop={mainAnimationLoop} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
-                 {timeline.audio.map((clip) => <audio key={clip.id} ref={(element) => { audioElementsRef.current[clip.id] = element; }} src={audioUrls[clip.id]} preload="auto" onLoadedMetadata={(event) => applyDecodedAudioDuration(clip.id, event.currentTarget.duration)} />)}
+                  {timeline.audio.map((clip) => <audio key={clip.id} ref={(element) => { audioElementsRef.current[clip.id] = element; }} src={audioUrls[clip.id]} preload="auto" onLoadedMetadata={(event) => applyDecodedAudioDuration(clip.id, event.currentTarget.duration)} onCanPlay={() => setAudioPreloadState(clip.id, "ready")} onError={() => { setMissingAudio((value) => value.includes(clip.path) ? value : [...value, clip.path]); setAudioPreloadState(clip.id, "missing"); }} />)}
                   {!displayLayers.length && <div className="timeline-empty"><strong>No layers</strong><span>Add a Spine set from the Add menu.</span></div>}
                </div>
                {activeSubtitleTexts.length > 0 && <div className="timeline-subtitle-preview" aria-live="polite">
@@ -1371,7 +1431,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
          </div>
          <div className="timeline-bottom-tools">
            <label>Snap <select value={timeline.snap} onChange={(event) => updateTimeline((value) => ({ ...value, snap: Number(event.target.value) }))}><option value="0">Off</option><option value="0.01">10 ms</option><option value="0.1">100 ms</option><option value="0.25">250 ms</option><option value="0.5">500 ms</option></select></label>
-           <label>Zoom <input type="range" min="0.5" max="3" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
+           <label>Zoom <input type="range" min="0.1" max="3" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
             <button className="editor-button" onClick={fitTimeline}><IconExpand /> Fit (F)</button>
              <details ref={addMenuRef} className="timeline-add-menu">
                <summary className="editor-button"><IconPlus /> Add <IconChevronDown /></summary>

@@ -313,6 +313,32 @@ function BoneOverlay({ frame, project, viewSettings, motionLimits, tool, onSelec
 }
 
 export function Editor() {
+  useEffect(() => {
+    const preventWheelZoom = (event: WheelEvent) => {
+      if (event.ctrlKey || event.metaKey) event.preventDefault();
+    };
+    const preventGestureZoom = (event: Event) => event.preventDefault();
+    const preventTouchPinchZoom = (event: TouchEvent) => {
+      if (event.touches.length > 1) event.preventDefault();
+    };
+    const preventKeyboardZoom = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && ["+", "=", "-", "_", "0"].includes(event.key)) event.preventDefault();
+    };
+    const nonPassiveCapture: AddEventListenerOptions = { capture: true, passive: false };
+    document.addEventListener("wheel", preventWheelZoom, nonPassiveCapture);
+    document.addEventListener("gesturestart", preventGestureZoom, nonPassiveCapture);
+    document.addEventListener("gesturechange", preventGestureZoom, nonPassiveCapture);
+    document.addEventListener("touchmove", preventTouchPinchZoom, nonPassiveCapture);
+    document.addEventListener("keydown", preventKeyboardZoom, true);
+    return () => {
+      document.removeEventListener("wheel", preventWheelZoom, true);
+      document.removeEventListener("gesturestart", preventGestureZoom, true);
+      document.removeEventListener("gesturechange", preventGestureZoom, true);
+      document.removeEventListener("touchmove", preventTouchPinchZoom, true);
+      document.removeEventListener("keydown", preventKeyboardZoom, true);
+    };
+  }, []);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<SpineRenderer | null>(null);
   const metaRef = useRef<SpineMeta | null>(null);
@@ -369,7 +395,7 @@ export function Editor() {
   const [status, setStatus] = useState("Open a Spine asset folder to begin.");
   const [error, setError] = useState<string | null>(null);
   const [assetLoading, setAssetLoading] = useState(false);
-  const [loadProgress, setLoadProgress] = useState<SpineLoadProgress>({ loaded: 0, total: 1, label: "Preparing asset set" });
+  const [loadProgress, setLoadProgress] = useState<SpineLoadProgress>({ stage: "files", loaded: 0, total: 0 });
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [recentFiles, setRecentFiles] = useState<RecentFile[]>(() => readRecentFiles());
@@ -498,7 +524,7 @@ export function Editor() {
     previewRef.current.reset();
     rendererRef.current?.clear();
     setAssetLoading(true);
-    setLoadProgress({ loaded: 0, total: 1, label: "Reading asset files" });
+    setLoadProgress({ stage: "files", loaded: 0, total: 0 });
     setFiles(null);
     void source.getSetFiles(directory).then((value) => { if (!cancelled) setFiles(value); }).catch((value) => {
       if (!cancelled) {
@@ -1095,6 +1121,14 @@ export function Editor() {
 
   const assetLoaded = Boolean(source && directory && files && frame && project);
   const loadPercent = Math.round(Math.max(0, Math.min(1, loadProgress.total > 0 ? loadProgress.loaded / loadProgress.total : 0)) * 100);
+  const loadStageLabel = {
+    files: "Reading asset files",
+    atlas: "Reading atlas",
+    textures: "Loading textures",
+    skeleton: "Parsing skeleton",
+    finalizing: "Finalizing asset",
+    audio: "Loading audio",
+  }[loadProgress.stage];
   const saveLabel = saveState === "saving"
     ? "Saving…"
     : saveState === "dirty"
@@ -1199,7 +1233,7 @@ export function Editor() {
               <span>{error && source && directory ? error : source && directory ? "Reading the selected .atlas, .skel, and texture files." : "Choose the local folder containing your Spine lobby assets to begin."}</span>
               {source && directory && !error && <div className="editor-load-progress" role="progressbar" aria-label="Asset loading progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loadPercent}>
                 <progress value={loadPercent} max={100} />
-                <span>{loadProgress.label} · {loadPercent}%</span>
+                <span>{loadStageLabel} · {loadPercent}%</span>
               </div>}
               <div className="editor-start-actions">
                 <button className="editor-button editor-start-button" onClick={() => void openFolder()}>{source && directory ? "Choose another folder" : "Open asset folder"}</button>

@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ChangeEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { IconAlert, IconChevronDown, IconChevronUp, IconClose, IconCompress, IconDot, IconExpand, IconEye, IconEyeOff, IconFolder, IconHand, IconMessage, IconPause, IconPlay, IconRotate, IconSearch, IconSliders, IconTarget, IconUsers } from "./components/icons";
 import { LanguageSwitch } from "./components/LanguageSwitch";
 import { SiteNav } from "./components/SiteNav";
@@ -12,6 +12,7 @@ import {
   type SpineFiles,
   type SpineInteractionMode,
   type SpineInteractionOverlay,
+  type SpineLoadProgress,
   type SpineMeta,
   type SpineProgress,
 } from "./spine/spineRuntime";
@@ -27,6 +28,7 @@ import {
   type IndexedAsset,
 } from "./spine/spineAssets";
 import { DEFAULT_EFFECTS_STRENGTH } from "./spine/spineEffects";
+import { preloadSpineAudio, releasePreloadedSpineAudio, spineAudioPathCandidates, type PreloadedSpineAudio } from "./spine/spineAudio";
 import {
   dialogueForVoiceLine,
   introVoiceLineForCharacter,
@@ -105,6 +107,7 @@ interface SpineViewportProps {
   onMeta: (meta: SpineMeta | null) => void;
   onProgress: (progress: SpineProgress) => void;
   onLoading: (loading: boolean) => void;
+  onLoadProgress: (progress: SpineLoadProgress) => void;
   onError: (error: Error | null) => void;
   onCameraMode: (mode: SpineCameraMode) => void;
   onTalk: (index: number, animation: string, eventCount: number) => boolean;
@@ -129,6 +132,7 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   onMeta,
   onProgress,
   onLoading,
+  onLoadProgress,
   onError,
   onCameraMode,
   onTalk,
@@ -140,8 +144,8 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<SpineRenderer | null>(null);
   const [interactionOverlay, setInteractionOverlay] = useState<SpineInteractionOverlay>({ canvasWidth: 0, canvasHeight: 0, points: [] });
-  const callbacks = useRef({ onMeta, onProgress, onLoading, onError, onCameraMode, onTalk, onTalkClip, onIntro, onIntroClip });
-  callbacks.current = { onMeta, onProgress, onLoading, onError, onCameraMode, onTalk, onTalkClip, onIntro, onIntroClip };
+  const callbacks = useRef({ onMeta, onProgress, onLoading, onLoadProgress, onError, onCameraMode, onTalk, onTalkClip, onIntro, onIntroClip });
+  callbacks.current = { onMeta, onProgress, onLoading, onLoadProgress, onError, onCameraMode, onTalk, onTalkClip, onIntro, onIntroClip };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -153,6 +157,7 @@ const SpineViewport = forwardRef<SpineViewportHandle, SpineViewportProps>(functi
         },
         onProgress: (progress) => callbacks.current.onProgress(progress),
         onLoading: (loading) => callbacks.current.onLoading(loading),
+        onLoadProgress: (progress) => callbacks.current.onLoadProgress(progress),
         onError: (error) => callbacks.current.onError(error),
         onCameraMode: (mode) => callbacks.current.onCameraMode(mode),
         onTalk: (index, animation, eventCount) => callbacks.current.onTalk(index, animation, eventCount),
@@ -234,11 +239,6 @@ function formatSeconds(value: number) {
   return value.toFixed(2);
 }
 
-const FULLSCREEN_EDGE_ZONE = 112;
-const FULLSCREEN_EDGE_DWELL = 260;
-const FULLSCREEN_EDGE_DISMISS = 180;
-const FULLSCREEN_EDGE_MAX_SPEED = 0.9;
-
 function interactionProjectMap(value: unknown): Map<string, SpineInteractionProject> {
   if (!value || typeof value !== "object") return new Map();
   const bundle = value as Partial<SpineInteractionBundle>;
@@ -260,13 +260,51 @@ interface VoiceSession {
   line: SpineVoiceLine;
   eventCount: number;
   started: Set<number>;
-  files: Promise<Array<File | null>>;
+  files: Promise<Array<PreloadedSpineAudio | null>>;
+}
+
+function cachedVoiceAudio(
+  cache: Map<string, Promise<PreloadedSpineAudio | null>>,
+  source: AssetSource,
+  path: string,
+): Promise<PreloadedSpineAudio | null> {
+  const current = cache.get(path);
+  if (current) return current;
+  const audioPath = path.replaceAll("\\", "/").replace(/^\.\//, "");
+  const rootedPath = /^audios\//i.test(audioPath) ? audioPath : `audios/voicelines/${audioPath}`;
+  const pending = (async () => {
+    for (const candidate of spineAudioPathCandidates(rootedPath)) {
+      try {
+        const file = await source.getFile(candidate);
+        if (file) return preloadSpineAudio(file);
+      } catch {
+        // Try the remaining common path spellings.
+      }
+    }
+    return null;
+  })()
+    .catch(() => null);
+  cache.set(path, pending);
+  return pending;
 }
 
 function voiceAnimationForLine(line: SpineVoiceLine): string | undefined {
   if (line.animation) return line.animation;
   const number = Number(line.id.match(/(\d+)$/)?.[1] ?? Number.NaN);
   return Number.isFinite(number) ? `Talk_${String(number).padStart(2, "0")}_M` : undefined;
+}
+
+function loadingLabel(progress: SpineLoadProgress | null, folderLoading: boolean): string {
+  if (folderLoading) return t("spine.loading.folder");
+  if (!progress) return t("spine.loading");
+  switch (progress.stage) {
+    case "files": return t("spine.loading.files");
+    case "atlas": return t("spine.loading.atlas");
+    case "textures": return t("spine.loading.textures", { loaded: progress.loaded, total: progress.total });
+    case "skeleton": return t("spine.loading.skeleton");
+    case "finalizing": return t("spine.loading.finalizing");
+    case "audio": return t("spine.loading.audio", { loaded: progress.loaded, total: progress.total });
+  }
 }
 
 export function Spine() {
@@ -283,6 +321,9 @@ export function Spine() {
   const [localInteractionProject, setLocalInteractionProject] = useState<SpineInteractionProject | null>(null);
   const [setLoading, setSetLoading] = useState(false);
   const [rendererLoading, setRendererLoading] = useState(false);
+  const [rendererLoadProgress, setRendererLoadProgress] = useState<SpineLoadProgress | null>(null);
+  const [compositionLoadProgress, setCompositionLoadProgress] = useState<SpineLoadProgress | null>(null);
+  const [voiceAudioProgress, setVoiceAudioProgress] = useState({ loaded: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
   const [meta, setMeta] = useState<SpineMeta | null>(null);
   const [animation, setAnimation] = useState("");
@@ -293,8 +334,8 @@ export function Spine() {
   const [skipIntro, setSkipIntro] = useState(false);
   const [showInteractionPoints, setShowInteractionPoints] = useState(false);
   const [showFullscreenControls, setShowFullscreenControls] = useState(true);
+  const [showFullscreenControlsHint, setShowFullscreenControlsHint] = useState(false);
   const [fullscreenClean, setFullscreenClean] = useState(false);
-  const [showFullscreenEdgeTrigger, setShowFullscreenEdgeTrigger] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [effectsStrength, setEffectsStrength] = useState(DEFAULT_EFFECTS_STRENGTH);
   const [progress, setProgress] = useState<SpineProgress>({ time: 0, duration: 0, animation: null });
@@ -315,15 +356,16 @@ export function Spine() {
   const inputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<SpineViewportHandle>(null);
   const compositionRef = useRef<SpineCompositionViewportHandle>(null);
+  const fullscreenLayoutRef = useRef<HTMLDivElement>(null);
+  const fullscreenControlsRef = useRef<HTMLDivElement>(null);
   const voiceAudioRef = useRef<HTMLAudioElement | null>(null);
-  const voiceUrlRef = useRef<string | null>(null);
+  const voiceAudioCacheRef = useRef(new Map<string, Promise<PreloadedSpineAudio | null>>());
   const voiceRunRef = useRef(0);
   const voiceSessionRef = useRef<VoiceSession | null>(null);
   const autoPlayTimerRef = useRef<number | null>(null);
   const fullscreenHideTimerRef = useRef<number | null>(null);
-  const fullscreenEdgeRevealTimerRef = useRef<number | null>(null);
-  const fullscreenEdgeDismissTimerRef = useRef<number | null>(null);
-  const fullscreenEdgePointerRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const fullscreenControlsHintTimerRef = useRef<number | null>(null);
+  const fullscreenControlsHintSeenRef = useRef(false);
   const talkAutoplayRef = useRef(false);
   const authoredTalkIndexRef = useRef(0);
   const stagePointer = useRef<{ x: number; y: number } | null>(null);
@@ -331,6 +373,8 @@ export function Spine() {
   const freePlaying = useRef(true);
   const freeLoop = useRef(true);
   const freeSpeed = useRef(1);
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
 
   talkAutoplayRef.current = talkAutoplay;
 
@@ -442,6 +486,10 @@ export function Spine() {
     const line = introVoiceLineForCharacter(voiceCharacter) ?? introVoiceLineForCharacter(legacyVoiceCharacter);
     return line ? voiceLineForLanguage(line, language) : undefined;
   }, [language, legacyVoiceCharacter, voiceCharacter]);
+  const voiceAudioPaths = useMemo(
+    () => [...new Set([...(introVoiceLine?.audio ?? []), ...voiceLines.flatMap((line) => line.audio)])],
+    [introVoiceLine, voiceLines],
+  );
   const activeVoiceLine = voiceLineIndex === null
     ? undefined
     : voiceLineIndex < 0
@@ -466,7 +514,27 @@ export function Spine() {
     return () => { live = false; };
   }, [source, selectedDirectoryName, voiceCatalog]);
 
-  const isLoading = setLoading || rendererLoading || Boolean(source && !availableDirectories);
+  const folderLoading = Boolean(source && !availableDirectories);
+  const selectedSetAvailable = Boolean(source && selectedDirectoryName && availableDirectories?.has(selectedDirectoryName));
+  const filesLoading = setLoading || (selectedSetAvailable && !setFiles && !error);
+  const rendererPending = selectedSetAvailable && Boolean(setFiles) && !meta && !error;
+  const voiceAudioLoading = voiceAudioProgress.total > 0 && voiceAudioProgress.loaded < voiceAudioProgress.total;
+  const compositionAudioLoading = compositionActive
+    && compositionLoadProgress?.stage === "audio"
+    && compositionLoadProgress.loaded < compositionLoadProgress.total;
+  const isLoading = !error && Boolean(folderLoading || filesLoading || rendererLoading || rendererPending || voiceAudioLoading || compositionAudioLoading);
+  const compositionRendererProgress = compositionLoadProgress?.stage === "audio" ? null : compositionLoadProgress;
+  const loadingProgress: SpineLoadProgress | null = folderLoading
+      ? null
+      : filesLoading
+        ? { stage: "files", loaded: 0, total: 0 }
+      : rendererLoading || rendererPending
+        ? (compositionActive ? compositionRendererProgress : rendererLoadProgress) ?? { stage: "skeleton", loaded: 0, total: 1 }
+        : voiceAudioLoading
+          ? { stage: "audio", ...voiceAudioProgress }
+          : compositionAudioLoading
+            ? compositionLoadProgress
+            : null;
   const animationOptions = meta
     ? [
       ...(meta.introAnimation && meta.idleAnimation ? [INTRO_ANIMATION] : []),
@@ -483,8 +551,6 @@ export function Spine() {
       audio.pause();
     }
     voiceAudioRef.current = null;
-    if (voiceUrlRef.current) URL.revokeObjectURL(voiceUrlRef.current);
-    voiceUrlRef.current = null;
   };
 
   const clearAutoPlayTimer = () => {
@@ -588,7 +654,7 @@ export function Spine() {
     if (session.run !== voiceRunRef.current || voiceSessionRef.current !== session || clipIndex >= session.line.audio.length) return;
     const files = await session.files;
     if (session.run !== voiceRunRef.current || voiceSessionRef.current !== session) return;
-    const file = files[clipIndex] ?? null;
+    const prepared = files[clipIndex] ?? null;
     const continueMissingClip = () => {
       if (session.run !== voiceRunRef.current || voiceSessionRef.current !== session) return;
       setVoicePlaying(false);
@@ -596,16 +662,22 @@ export function Spine() {
       if (clipIndex + 1 >= session.line.audio.length) finishVoicePlayback(session.run);
       else if (clipIndex + 1 >= session.eventCount) void playVoiceClip(session, clipIndex + 1);
     };
-    if (!file) {
+    if (!prepared) {
+      continueMissingClip();
+      return;
+    }
+
+    const playable = await prepared.ready;
+    if (session.run !== voiceRunRef.current || voiceSessionRef.current !== session) return;
+    if (!playable) {
       continueMissingClip();
       return;
     }
 
     clearVoiceAudio();
-    const url = URL.createObjectURL(file);
-    const audio = new Audio(url);
+    const audio = prepared.audio;
+    audio.currentTime = 0;
     voiceAudioRef.current = audio;
-    voiceUrlRef.current = url;
     audio.onplay = () => {
       if (session.run !== voiceRunRef.current || voiceSessionRef.current !== session || voiceAudioRef.current !== audio) return;
       setVoiceLineIndex(session.lineIndex);
@@ -636,13 +708,7 @@ export function Spine() {
     if (!line || line.audio.length === 0) return false;
     stopVoice(true, false);
     const run = voiceRunRef.current;
-    const files = Promise.all(line.audio.map(async (path) => {
-      try {
-        return await source.getFile(`audios/voicelines/${path}`);
-      } catch {
-        return null;
-      }
-    }));
+    const files = Promise.all(line.audio.map((path) => cachedVoiceAudio(voiceAudioCacheRef.current, source, path)));
     const session: VoiceSession = { kind: "talk", run, talkIndex: index, lineIndex, line, eventCount, started: new Set(), files };
     voiceSessionRef.current = session;
     setSelectedVoiceLineIndex(lineIndex);
@@ -660,13 +726,7 @@ export function Spine() {
     if (!voiceEnabled || !source || !introVoiceLine || introVoiceLine.audio.length === 0) return false;
     stopVoice(true, false);
     const run = voiceRunRef.current;
-    const files = Promise.all(introVoiceLine.audio.map(async (path) => {
-      try {
-        return await source.getFile(`audios/voicelines/${path}`);
-      } catch {
-        return null;
-      }
-    }));
+    const files = Promise.all(introVoiceLine.audio.map((path) => cachedVoiceAudio(voiceAudioCacheRef.current, source, path)));
     const session: VoiceSession = {
       kind: "intro",
       run,
@@ -705,6 +765,27 @@ export function Spine() {
     setVoiceClipIndex(0);
     setSelectedVoiceLineIndex(null);
   }, [language, selectedDirectoryName, source]);
+
+  useEffect(() => {
+    const cache = new Map<string, Promise<PreloadedSpineAudio | null>>();
+    voiceAudioCacheRef.current = cache;
+    let live = true;
+    let loaded = 0;
+    const paths = source && selectedDirectoryName ? voiceAudioPaths : [];
+    setVoiceAudioProgress({ loaded: 0, total: paths.length });
+    if (source && selectedDirectoryName) {
+      void Promise.all(paths.map(async (path) => {
+        const audio = await cachedVoiceAudio(cache, source, path);
+        if (audio) await audio.ready;
+        if (live) setVoiceAudioProgress({ loaded: ++loaded, total: paths.length });
+      }));
+    }
+    return () => {
+      live = false;
+      if (voiceAudioCacheRef.current === cache) voiceAudioCacheRef.current = new Map();
+      for (const pending of cache.values()) void pending.then((audio) => { if (audio) releasePreloadedSpineAudio(audio); });
+    };
+  }, [selectedDirectoryName, source, voiceAudioPaths]);
 
   useEffect(() => {
     if (!voiceEnabled) stopVoice();
@@ -780,19 +861,20 @@ export function Spine() {
     fullscreenHideTimerRef.current = null;
   };
 
-  const clearFullscreenEdgeRevealTimer = () => {
-    if (fullscreenEdgeRevealTimerRef.current !== null) window.clearTimeout(fullscreenEdgeRevealTimerRef.current);
-    fullscreenEdgeRevealTimerRef.current = null;
+  const clearFullscreenControlsHintTimer = () => {
+    if (fullscreenControlsHintTimerRef.current !== null) window.clearTimeout(fullscreenControlsHintTimerRef.current);
+    fullscreenControlsHintTimerRef.current = null;
   };
 
-  const clearFullscreenEdgeDismissTimer = () => {
-    if (fullscreenEdgeDismissTimerRef.current !== null) window.clearTimeout(fullscreenEdgeDismissTimerRef.current);
-    fullscreenEdgeDismissTimerRef.current = null;
-  };
-
-  const clearFullscreenEdgeTimers = () => {
-    clearFullscreenEdgeRevealTimer();
-    clearFullscreenEdgeDismissTimer();
+  const showFullscreenControlsHintOnce = () => {
+    if (fullscreenControlsHintSeenRef.current) return;
+    fullscreenControlsHintSeenRef.current = true;
+    setShowFullscreenControlsHint(true);
+    clearFullscreenControlsHintTimer();
+    fullscreenControlsHintTimerRef.current = window.setTimeout(() => {
+      fullscreenControlsHintTimerRef.current = null;
+      setShowFullscreenControlsHint(false);
+    }, 2600);
   };
 
   const scheduleFullscreenHide = () => {
@@ -802,15 +884,15 @@ export function Spine() {
       fullscreenHideTimerRef.current = null;
       if (document.fullscreenElement) {
         setShowFullscreenControls(false);
-        setShowFullscreenEdgeTrigger(false);
+        showFullscreenControlsHintOnce();
       }
     }, 3600);
   };
 
   const revealFullscreenControls = () => {
     if (!fullscreen || fullscreenClean) return;
-    clearFullscreenEdgeTimers();
-    setShowFullscreenEdgeTrigger(false);
+    clearFullscreenControlsHintTimer();
+    setShowFullscreenControlsHint(false);
     setShowFullscreenControls(true);
     scheduleFullscreenHide();
   };
@@ -818,62 +900,16 @@ export function Spine() {
   const hideFullscreenControls = () => {
     if (!fullscreen || fullscreenClean) return;
     clearFullscreenHideTimer();
-    clearFullscreenEdgeTimers();
-    setShowFullscreenEdgeTrigger(false);
+    clearFullscreenControlsHintTimer();
+    setShowFullscreenControlsHint(false);
     setShowFullscreenControls(false);
-  };
-
-  const scheduleFullscreenEdgeDismiss = () => {
-    clearFullscreenEdgeDismissTimer();
-    fullscreenEdgeDismissTimerRef.current = window.setTimeout(() => {
-      fullscreenEdgeDismissTimerRef.current = null;
-      setShowFullscreenEdgeTrigger(false);
-    }, FULLSCREEN_EDGE_DISMISS);
-  };
-
-  const handleFullscreenPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
-    if (!fullscreen || fullscreenClean || event.pointerType !== "mouse") return;
-
-    const now = performance.now();
-    const previous = fullscreenEdgePointerRef.current;
-    const elapsed = previous ? now - previous.time : Number.POSITIVE_INFINITY;
-    const distance = previous ? Math.hypot(event.clientX - previous.x, event.clientY - previous.y) : Number.POSITIVE_INFINITY;
-    const speed = elapsed > 0 && elapsed <= 180 ? distance / elapsed : Number.POSITIVE_INFINITY;
-    fullscreenEdgePointerRef.current = { x: event.clientX, y: event.clientY, time: now };
-
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-    const nearBottom = viewportHeight - event.clientY <= FULLSCREEN_EDGE_ZONE;
-    if (!nearBottom || showFullscreenControls) {
-      clearFullscreenEdgeRevealTimer();
-      if (showFullscreenEdgeTrigger && !showFullscreenControls) scheduleFullscreenEdgeDismiss();
-      return;
-    }
-
-    clearFullscreenEdgeDismissTimer();
-    const movingAwayFromBottom = previous && event.clientY < previous.y && event.clientY !== previous.y;
-    if (speed > FULLSCREEN_EDGE_MAX_SPEED || movingAwayFromBottom) {
-      clearFullscreenEdgeRevealTimer();
-      return;
-    }
-    if (showFullscreenEdgeTrigger || fullscreenEdgeRevealTimerRef.current !== null) return;
-
-    fullscreenEdgeRevealTimerRef.current = window.setTimeout(() => {
-      fullscreenEdgeRevealTimerRef.current = null;
-      if (document.fullscreenElement && !fullscreenClean && !showFullscreenControls) setShowFullscreenEdgeTrigger(true);
-    }, FULLSCREEN_EDGE_DWELL);
-  };
-
-  const handleFullscreenPointerLeave = () => {
-    fullscreenEdgePointerRef.current = null;
-    clearFullscreenEdgeRevealTimer();
-    if (!showFullscreenControls && showFullscreenEdgeTrigger) scheduleFullscreenEdgeDismiss();
   };
 
   const enterCleanFullscreen = () => {
     if (!fullscreen) return;
     clearFullscreenHideTimer();
-    clearFullscreenEdgeTimers();
-    setShowFullscreenEdgeTrigger(false);
+    clearFullscreenControlsHintTimer();
+    setShowFullscreenControlsHint(false);
     setShowOptions(false);
     setShowSidebar(false);
     setShowFullscreenControls(false);
@@ -882,8 +918,8 @@ export function Spine() {
 
   const exitCleanFullscreen = () => {
     setFullscreenClean(false);
-    clearFullscreenEdgeTimers();
-    setShowFullscreenEdgeTrigger(false);
+    clearFullscreenControlsHintTimer();
+    setShowFullscreenControlsHint(false);
     setShowFullscreenControls(true);
     scheduleFullscreenHide();
   };
@@ -892,17 +928,32 @@ export function Spine() {
     const onFullscreen = () => {
       const active = Boolean(document.fullscreenElement);
       clearFullscreenHideTimer();
-      clearFullscreenEdgeTimers();
-      fullscreenEdgePointerRef.current = null;
+      clearFullscreenControlsHintTimer();
+      setShowFullscreenControlsHint(false);
+      if (active) fullscreenControlsHintSeenRef.current = false;
       setFullscreen(active);
       setShowSidebar(!active);
       setShowOptions(false);
       setShowFullscreenControls(!active);
-      setShowFullscreenEdgeTrigger(false);
       setFullscreenClean(false);
     };
     document.addEventListener("fullscreenchange", onFullscreen);
     return () => document.removeEventListener("fullscreenchange", onFullscreen);
+  }, []);
+
+  useEffect(() => {
+    const layout = fullscreenLayoutRef.current;
+    const controls = fullscreenControlsRef.current;
+    if (!layout || !controls || typeof ResizeObserver === "undefined") return;
+
+    const updateControlsHeight = () => layout.style.setProperty("--spine-fullscreen-controls-height", `${controls.getBoundingClientRect().height}px`);
+    const observer = new ResizeObserver(updateControlsHeight);
+    observer.observe(controls);
+    updateControlsHeight();
+    return () => {
+      observer.disconnect();
+      layout.style.removeProperty("--spine-fullscreen-controls-height");
+    };
   }, []);
 
   useEffect(() => {
@@ -912,7 +963,7 @@ export function Spine() {
 
   useEffect(() => () => {
     clearFullscreenHideTimer();
-    clearFullscreenEdgeTimers();
+    clearFullscreenControlsHintTimer();
   }, []);
 
   useEffect(() => {
@@ -1139,12 +1190,35 @@ export function Spine() {
     if (!next && !compositionActive) setProgress({ time: 0, duration: 0, animation: null });
   };
 
+  const seekPlayback = (time: number) => {
+    const duration = progressRef.current.duration;
+    if (duration <= 0) return;
+    activeViewport()?.seek(Math.max(0, Math.min(duration, time)));
+  };
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.repeat) return;
+      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, select, textarea, button, a, [contenteditable]")) return;
       const key = event.key.toLowerCase();
+
+      if (key === "arrowleft" || key === "arrowright") {
+        const current = progressRef.current;
+        if (current.duration <= 0) return;
+        event.preventDefault();
+        const step = event.shiftKey ? 10 : 5;
+        seekPlayback(current.time + (key === "arrowleft" ? -step : step));
+        return;
+      }
+      if (key === "home" || key === "end") {
+        const current = progressRef.current;
+        if (current.duration <= 0) return;
+        event.preventDefault();
+        seekPlayback(key === "home" ? 0 : current.duration);
+        return;
+      }
+      if (event.shiftKey) return;
 
       if (event.code === "Space") {
         if (interactionMode !== "free" || !meta) return;
@@ -1170,6 +1244,15 @@ export function Spine() {
       } else if (key === "o") {
         event.preventDefault();
         setShowOptions((shown) => !shown);
+      } else if (key === "l" && meta && interactionMode === "free" && !compositionActive) {
+        event.preventDefault();
+        setLoop((value) => !value);
+      } else if (key === "v" && voiceLines.length > 0) {
+        event.preventDefault();
+        setVoiceEnabled((value) => !value);
+      } else if (key === "0" && meta) {
+        event.preventDefault();
+        activeViewport()?.resetCamera();
       } else if (key === "escape" && fullscreenClean) {
         event.preventDefault();
         exitCleanFullscreen();
@@ -1182,7 +1265,7 @@ export function Spine() {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [cameraMode, fullscreen, fullscreenClean, interactionMode, interactionReady, loop, meta, playing, showFullscreenControls, speed]);
+  }, [cameraMode, compositionActive, compositionSequenceId, fullscreen, fullscreenClean, interactionMode, interactionReady, loop, meta, playing, selectedInteractionProject, showFullscreenControls, speed, voiceLines.length]);
 
   return <main className="spine-page">
     <SiteNav active="spine" />
@@ -1219,7 +1302,7 @@ export function Spine() {
 
     {error && <div className="alert spine-alert" role="alert">{error}</div>}
 
-    <div className={`spine-layout${showSidebar ? "" : " spine-sidebar-hidden"}${fullscreenClean ? " spine-clean-mode" : ""}`}>
+    <div ref={fullscreenLayoutRef} className={`spine-layout${showSidebar ? "" : " spine-sidebar-hidden"}${fullscreenClean ? " spine-clean-mode" : ""}`}>
       <aside id="spine-sidebar" className="spine-sidebar">
         <section className="spine-selector panel">
           <div className="spine-panel-heading">
@@ -1272,7 +1355,7 @@ export function Spine() {
         </section>
       </aside>
 
-        <section className={`spine-workspace${showFullscreenControls && !fullscreenClean ? "" : " spine-controls-hidden"}`} aria-label={t("spine.viewerAria")} onPointerMove={handleFullscreenPointerMove} onPointerLeave={handleFullscreenPointerLeave}>
+        <section className={`spine-workspace${showFullscreenControls && !fullscreenClean ? "" : " spine-controls-hidden"}`} aria-label={t("spine.viewerAria")}>
         <div className="spine-workspace-heading">
            <div className="spine-workspace-identity"><strong>{selectedCharacter}</strong><span>{selectedVariant?.extraType ? extraLabel(selectedVariant.extraType) : selectedVariant?.variant}</span></div>
           <div className="spine-workspace-status">
@@ -1308,9 +1391,10 @@ export function Spine() {
                 effectsStrength={effectsStrength}
                 idleMode={idleMode}
                onMeta={handleViewportMeta}
-              onProgress={setProgress}
-              onLoading={setRendererLoading}
-               onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
+               onProgress={setProgress}
+               onLoading={(loading) => { setRendererLoading(loading); if (!loading) setRendererLoadProgress(null); }}
+               onLoadProgress={setCompositionLoadProgress}
+                onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
                 onFinished={handleCompositionFinished}
                onTalk={(index, talkAnimation, eventCount) => beginVoiceSession(index, talkAnimation, eventCount)}
                onTalkClip={playVoiceEvent}
@@ -1331,11 +1415,12 @@ export function Spine() {
               interactionMode={interactionMode}
               skipIntro={skipIntro}
               showInteractionPoints={showInteractionPoints}
-              effectsStrength={effectsStrength}
-              onMeta={handleViewportMeta}
-              onProgress={(next) => { if (!compositionActive) setProgress(next); }}
-              onLoading={setRendererLoading}
-              onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
+               effectsStrength={effectsStrength}
+               onMeta={handleViewportMeta}
+               onProgress={(next) => { if (!compositionActive) setProgress(next); }}
+               onLoading={(loading) => { setRendererLoading(loading); if (!loading) setRendererLoadProgress(null); }}
+               onLoadProgress={setRendererLoadProgress}
+               onError={(next) => setError(next ? t("spine.error.render", { error: next.message }) : null)}
               onCameraMode={(mode) => setCameraMode(interactionMode === "interaction" ? "game" : mode)}
               onTalk={(index, animation, eventCount) => beginVoiceSession(index, animation, eventCount)}
               onTalkClip={playVoiceEvent}
@@ -1344,13 +1429,23 @@ export function Spine() {
             />}
           {showDialogue && activeVoiceLine && activeDialogue && <div className="spine-dialogue" aria-live="polite">{activeDialogue}</div>}
           {!source && <div className="spine-stage-empty"><strong>{t("spine.empty.heading")}</strong><span>{t("spine.empty.body")}</span></div>}
-          {source && !setFiles && !error && <div className="spine-stage-empty"><strong>{isLoading ? t("spine.loading") : t("spine.empty.set")}</strong><span>{isLoading ? t("spine.loadingDetail") : selectedDirectoryName}</span></div>}
-          {isLoading && setFiles && <div className="spine-loading" aria-live="polite">{t("spine.loading")}</div>}
+          {source && !setFiles && !error && !isLoading && <div className="spine-stage-empty"><strong>{t("spine.empty.set")}</strong><span>{selectedDirectoryName}</span></div>}
           <div className="spine-stage-hint">{t(interactionMode === "interaction" ? "spine.interactionHint" : "spine.stageHint")}</div>
+          {isLoading && <div className="spine-loading-screen" role="status" aria-live="polite">
+            <div className="spine-loading-card">
+              <span className="spine-loading-spinner" aria-hidden="true" />
+              <strong>{loadingLabel(loadingProgress, folderLoading)}</strong>
+              <span>{folderLoading ? t("spine.loading.folderDetail") : loadingProgress?.stage === "audio" ? t("spine.loading.audioDetail") : t("spine.loadingDetail")}</span>
+              <div className={`spine-loading-progress${loadingProgress && loadingProgress.total > 0 ? " is-determinate" : ""}`} role="progressbar" aria-label={t("spine.loadingDetail")} aria-valuemin={0} aria-valuemax={loadingProgress?.total || 100} aria-valuenow={loadingProgress && loadingProgress.total > 0 ? Math.min(loadingProgress.loaded, loadingProgress.total) : undefined}>
+                <span style={loadingProgress && loadingProgress.total > 0 ? { width: `${Math.min(100, Math.round((loadingProgress.loaded / loadingProgress.total) * 100))}%` } : undefined} />
+              </div>
+            </div>
+          </div>}
         </div>
-          {fullscreen && !fullscreenClean && !showFullscreenControls && showFullscreenEdgeTrigger && <button className="spine-show-controls-edge" type="button" aria-controls="spine-playback-controls" aria-label={t("spine.controls.show")} title={t("spine.controls.show")} onClick={revealFullscreenControls}><IconChevronUp /></button>}
+          {fullscreen && !fullscreenClean && !showFullscreenControls && showFullscreenControlsHint && <div id="spine-controls-hint" className="spine-controls-hint" role="status">{t("spine.controls.tapHint")}</div>}
+          {fullscreen && !fullscreenClean && !showFullscreenControls && showFullscreenControlsHint && <button className="spine-show-controls-edge" type="button" aria-controls="spine-playback-controls" aria-describedby="spine-controls-hint" aria-label={t("spine.controls.show")} title={t("spine.controls.show")} onClick={revealFullscreenControls}><IconChevronUp /></button>}
 
-        <div id="spine-playback-controls" className={`spine-controls${showOptions ? " spine-options-open" : ""}`} aria-label={t("spine.controlsAria")}>
+        <div ref={fullscreenControlsRef} id="spine-playback-controls" className={`spine-controls${showOptions ? " spine-options-open" : ""}`} aria-label={t("spine.controlsAria")}>
           <div className="spine-toolbar-row">
             <div className="spine-mode-switch" role="group" aria-label={t("spine.modeAria")}>
               <button className={interactionMode === "interaction" ? "is-selected" : undefined} type="button" aria-pressed={interactionMode === "interaction"} onClick={() => selectInteractionMode("interaction")}><IconHand /><span>{t("spine.mode.interaction")}</span></button>
