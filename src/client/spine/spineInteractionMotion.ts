@@ -1,6 +1,8 @@
 import { Physics, Vector2, type Bone, type Skeleton } from "@esotericsoftware/spine-core";
 import { cheekControlNames } from "./spinePinch";
-import type { SpineInteractionKind } from "./spineInteraction";
+import { DEFAULT_INTERACTION_RETURN_DURATION, DEFAULT_INTERACTION_RETURN_EASING, type SpineInteractionKind, type SpineInteractionReturnEasing } from "./spineInteraction";
+
+export type SpineMotionReturnEasing = SpineInteractionReturnEasing;
 
 export interface SpineMotionInteraction {
   startAnimation: string;
@@ -9,6 +11,9 @@ export interface SpineMotionInteraction {
   limitX: number;
   limitY: number;
   smoothing: number;
+  /** Time in seconds to return the follow target to its animated pose. */
+  returnDuration?: number;
+  returnEasing?: SpineMotionReturnEasing;
   /** Local parent-space translation axes. Missing legacy fields mean both. */
   allowX?: boolean;
   allowY?: boolean;
@@ -44,12 +49,18 @@ export interface SpineInteractionMotionState {
   target: MotionTarget | null;
   resolvedTargetBonePath: string | null;
   rotation: number;
+  returning: boolean;
+  returnElapsed: number;
+  returnStartOffset: SpineMotionPoint;
+  returnStartRotation: number;
 }
 
 const DEFAULT_SENSITIVITY = 0.25;
 const DEFAULT_SMOOTHING = 8;
 const DEFAULT_LIMIT_X = 90;
 const DEFAULT_LIMIT_Y = 65;
+export const DEFAULT_RETURN_DURATION = DEFAULT_INTERACTION_RETURN_DURATION;
+export const DEFAULT_RETURN_EASING: SpineMotionReturnEasing = DEFAULT_INTERACTION_RETURN_EASING;
 
 function bonePath(bone: Bone): string {
   const names: string[] = [];
@@ -113,6 +124,10 @@ export function createInteractionMotionState(): SpineInteractionMotionState {
     target: null,
     resolvedTargetBonePath: null,
     rotation: 0,
+    returning: false,
+    returnElapsed: 0,
+    returnStartOffset: { x: 0, y: 0 },
+    returnStartRotation: 0,
   };
 }
 
@@ -139,6 +154,10 @@ export function resetInteractionMotion(state: SpineInteractionMotionState): void
   state.target = null;
   state.resolvedTargetBonePath = null;
   state.rotation = 0;
+  state.returning = false;
+  state.returnElapsed = 0;
+  state.returnStartOffset = { x: 0, y: 0 };
+  state.returnStartRotation = 0;
 }
 
 /** Re-anchor an active gesture after an external timeline sample changes the base pose. */
@@ -164,6 +183,28 @@ export function beginInteractionMotion(
   state.interaction = interaction;
   state.kind = kind;
   state.origin = origin ? { ...origin } : null;
+}
+
+/** Begin easing the current follow offset back to the animated bone pose. */
+export function beginInteractionMotionReturn(state: SpineInteractionMotionState): void {
+  if (state.returning) return;
+  state.returning = true;
+  state.returnElapsed = 0;
+  state.returnStartOffset = { ...state.offset };
+  state.returnStartRotation = state.rotation;
+  if (Math.hypot(state.offset.x, state.offset.y) < 0.001 && Math.abs(state.rotation) < 0.001) {
+    state.returnElapsed = finitePositive(state.interaction?.returnDuration ?? DEFAULT_RETURN_DURATION, DEFAULT_RETURN_DURATION);
+  }
+}
+
+export function interactionMotionReturnProgress(state: SpineInteractionMotionState): number {
+  if (!state.returning) return 0;
+  const duration = finitePositive(state.interaction?.returnDuration ?? DEFAULT_RETURN_DURATION, DEFAULT_RETURN_DURATION);
+  return Math.min(1, Math.max(0, state.returnElapsed / duration));
+}
+
+export function interactionMotionReturnComplete(state: SpineInteractionMotionState): boolean {
+  return state.returning && interactionMotionReturnProgress(state) >= 1;
 }
 
 function resolveTarget(state: SpineInteractionMotionState, skeleton: Skeleton, pointer: SpineMotionPoint, fallbackTarget: Bone | null): MotionTarget | null {
@@ -207,6 +248,51 @@ function resolveTarget(state: SpineInteractionMotionState, skeleton: Skeleton, p
   return motionTarget;
 }
 
+function applyMotionPose(state: SpineInteractionMotionState, skeleton: Skeleton, target: MotionTarget): void {
+  // Capture the animation's current pose each frame so phase transitions keep
+  // their authored movement while the pointer offset remains continuous.
+  target.baseX = target.bone.x;
+  target.baseY = target.bone.y;
+  target.baseRotation = target.bone.rotation;
+  target.restoreX = target.baseX;
+  target.restoreY = target.baseY;
+  target.restoreRotation = target.baseRotation;
+  for (const item of target.constraints) {
+    item.constraint.mixX = 0;
+    item.constraint.mixY = 0;
+  }
+
+  const parent = target.bone.parent;
+  if (target.directCheek) {
+    const baseWorld = new Vector2(target.bone.worldX, target.bone.worldY);
+    const baseLocal = parent ? parent.worldToLocal(new Vector2(baseWorld.x, baseWorld.y)) : baseWorld;
+    const desiredWorld = parent
+      ? parent.localToWorld(new Vector2(baseLocal.x + state.offset.x, baseLocal.y + state.offset.y))
+      : new Vector2(baseWorld.x + state.offset.x, baseWorld.y + state.offset.y);
+    for (let iteration = 0; iteration < 4; iteration += 1) {
+      const position = new Vector2(desiredWorld.x, desiredWorld.y);
+      if (parent) parent.worldToLocal(position);
+      target.bone.x = position.x;
+      target.bone.y = position.y;
+      target.bone.rotation = target.baseRotation + state.rotation;
+      skeleton.updateWorldTransform(Physics.pose);
+      if (Math.hypot(target.bone.worldX - desiredWorld.x, target.bone.worldY - desiredWorld.y) < 0.01) break;
+    }
+  } else {
+    target.bone.x = target.baseX + state.offset.x;
+    target.bone.y = target.baseY + state.offset.y;
+    target.bone.rotation = target.baseRotation + state.rotation;
+    skeleton.updateWorldTransform(Physics.pose);
+  }
+}
+
+function easedProgress(progress: number, easing: SpineMotionReturnEasing | undefined): number {
+  const value = Math.min(1, Math.max(0, progress));
+  if (easing === "linear") return value;
+  if (easing === "ease-in-out") return value < 0.5 ? 2 * value * value : 1 - ((-2 * value + 2) ** 2) / 2;
+  return 1 - (1 - value) ** 2;
+}
+
 /** Apply the same relative, bounded, smoothed motion used by the editor and viewer. */
 export function applyInteractionMotion(
   state: SpineInteractionMotionState,
@@ -216,26 +302,10 @@ export function applyInteractionMotion(
   fallbackTarget: Bone | null = null,
   fallbackLimits?: SpineMotionPoint,
 ): boolean {
-  if (!pointer) return false;
+  if (!pointer || state.returning) return false;
   const interaction = state.interaction ?? defaultInteraction(fallbackLimits);
   const target = state.target ?? resolveTarget(state, skeleton, pointer, fallbackTarget);
   if (!target) return false;
-
-  // The animation has already been applied for this frame. Save that pose so
-  // beforeInteractionMotion can remove only this frame's input on the next one.
-  if (target.directCheek) {
-    target.restoreX = target.bone.x;
-    target.restoreY = target.bone.y;
-    target.restoreRotation = target.bone.rotation;
-  } else {
-    target.restoreX = target.baseX;
-    target.restoreY = target.baseY;
-    target.restoreRotation = target.baseRotation;
-  }
-  for (const item of target.constraints) {
-    item.constraint.mixX = 0;
-    item.constraint.mixY = 0;
-  }
 
   const origin = state.origin ?? pointer;
   const sensitivity = target.legacyCheek && interaction.sensitivity === DEFAULT_SENSITIVITY && interaction.limitX === DEFAULT_LIMIT_X && interaction.limitY === DEFAULT_LIMIT_Y && interaction.allowX !== false && interaction.allowY !== false && interaction.rotationEnabled !== true
@@ -297,29 +367,21 @@ export function applyInteractionMotion(
     ? rotationInput < 0 ? rotationInput * Math.abs(rotationMin) : rotationInput * rotationMax
     : 0;
   state.rotation += (desiredRotation - state.rotation) * amount;
-
-  if (target.directCheek) {
-    const baseWorld = new Vector2(target.bone.worldX, target.bone.worldY);
-    const baseLocal = parent ? parent.worldToLocal(new Vector2(baseWorld.x, baseWorld.y)) : baseWorld;
-    const desiredWorld = parent
-      ? parent.localToWorld(new Vector2(baseLocal.x + state.offset.x, baseLocal.y + state.offset.y))
-      : new Vector2(baseWorld.x + state.offset.x, baseWorld.y + state.offset.y);
-    const desiredX = desiredWorld.x;
-    const desiredY = desiredWorld.y;
-    for (let iteration = 0; iteration < 4; iteration += 1) {
-      const position = new Vector2(desiredX, desiredY);
-      if (parent) parent.worldToLocal(position);
-      target.bone.x = position.x;
-      target.bone.y = position.y;
-      target.bone.rotation = target.baseRotation + state.rotation;
-      skeleton.updateWorldTransform(Physics.pose);
-      if (Math.hypot(target.bone.worldX - desiredX, target.bone.worldY - desiredY) < 0.01) break;
-    }
-  } else {
-    target.bone.x = target.baseX + state.offset.x;
-    target.bone.y = target.baseY + state.offset.y;
-    target.bone.rotation = target.baseRotation + state.rotation;
-    skeleton.updateWorldTransform(Physics.pose);
-  }
+  applyMotionPose(state, skeleton, target);
   return true;
+}
+
+/** Smoothly remove the final follow offset while the release animation plays. */
+export function applyInteractionMotionReturn(state: SpineInteractionMotionState, skeleton: Skeleton, delta: number): boolean {
+  if (!state.returning) return false;
+  const interaction = state.interaction;
+  const duration = finitePositive(interaction?.returnDuration ?? DEFAULT_RETURN_DURATION, DEFAULT_RETURN_DURATION);
+  state.returnElapsed = Math.min(duration, state.returnElapsed + Math.max(0, delta));
+  const progress = easedProgress(state.returnElapsed / duration, interaction?.returnEasing ?? DEFAULT_RETURN_EASING);
+  const remaining = 1 - progress;
+  state.offset.x = state.returnStartOffset.x * remaining;
+  state.offset.y = state.returnStartOffset.y * remaining;
+  state.rotation = state.returnStartRotation * remaining;
+  if (state.target) applyMotionPose(state, skeleton, state.target);
+  return state.returnElapsed >= duration;
 }

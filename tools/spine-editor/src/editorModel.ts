@@ -1,6 +1,6 @@
 import type { SpineTimelineAnimationClip } from "../../../src/client/spine/spineTimeline";
 import type { SpineEditorBone } from "../../../src/client/spine/spineRuntime";
-import { findInteractionProfile } from "../../../src/client/spine/spineInteraction";
+import { DEFAULT_INTERACTION_RETURN_DURATION, DEFAULT_INTERACTION_RETURN_EASING, findInteractionProfile, type SpineInteractionReturnEasing } from "../../../src/client/spine/spineInteraction";
 import { cheekControlNames } from "../../../src/client/spine/spinePinch";
 
 export const EDITOR_SCHEMA_VERSION = 2;
@@ -40,6 +40,8 @@ export interface EditorInteraction {
   limitX: number;
   limitY: number;
   smoothing: number;
+  returnDuration: number;
+  returnEasing: SpineInteractionReturnEasing;
   allowX: boolean;
   allowY: boolean;
   rotationEnabled: boolean;
@@ -294,6 +296,8 @@ function interaction(
     limitX: 90,
     limitY: 65,
     smoothing: 8,
+    returnDuration: DEFAULT_INTERACTION_RETURN_DURATION,
+    returnEasing: DEFAULT_INTERACTION_RETURN_EASING,
     allowX: true,
     allowY: true,
     rotationEnabled: false,
@@ -728,6 +732,8 @@ function normalizeInteraction(value: Partial<EditorInteraction>, index: number):
     limitX: finiteNumber(value.limitX, 90, 0),
     limitY: finiteNumber(value.limitY, 65, 0),
     smoothing: finiteNumber(value.smoothing, 8, 0.1),
+    returnDuration: Math.min(2, finiteNumber(value.returnDuration, DEFAULT_INTERACTION_RETURN_DURATION, 0.05)),
+    returnEasing: value.returnEasing === "linear" || value.returnEasing === "ease-in-out" ? value.returnEasing : DEFAULT_INTERACTION_RETURN_EASING,
     allowX: value.allowX !== false,
     allowY: value.allowY !== false,
     rotationEnabled: value.rotationEnabled === true,

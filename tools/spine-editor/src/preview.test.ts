@@ -66,7 +66,7 @@ describe("Authored interaction preview", () => {
       for (let i = 0; i < 120; i++) step(1 / 60);
       expect(grabbed.worldX).toBeCloseTo(start.x, 2);
       expect(grabbed.worldY).toBeCloseTo(start.y, 2);
-      preview.release(); step(0.01); step(0.25);
+      preview.release(); step(0.01); step(0.4);
       expect(grabbed.worldX).toBeCloseTo(start.x, 5);
       expect(skeleton.transformConstraints.every((constraint) => constraint.mixX === 0.2 && constraint.mixY === 0.2)).toBe(true);
       expect(item.followTargetBone).toBe("root/Touch_Point");
@@ -81,15 +81,24 @@ describe("Authored interaction preview", () => {
     expect(state.getCurrent(1)?.animation?.name).toBe("start");
     expect(state.getCurrent(2)?.animation?.name).toBe("face");
     expect(state.getCurrent(0)?.animation?.name).toBe("idle");
-    step(0.25);
+    preview.move(30, 0);
+    step(0.05);
+    expect(preview.phase).toBe("starting");
+    expect(preview.debug.offsetX).toBeGreaterThan(0);
+    step(0.2);
     expect(preview.phase).toBe("holding");
     expect(state.getCurrent(1)?.loop).toBe(true);
     expect(state.getCurrent(1)?.animation?.name).toBe("follow");
-    preview.release(); step(0.01);
+    const beforeRelease = preview.debug.offsetX;
+    preview.release(); step(0.01); step(0.05);
     expect(preview.phase).toBe("releasing");
     expect(state.getCurrent(1)?.animation?.name).toBe("end");
-    step(0.25);
+    expect(preview.debug.returning).toBe(true);
+    expect(preview.debug.offsetX).toBeLessThan(beforeRelease);
+    expect(preview.debug.offsetX).toBeGreaterThan(0);
+    step(0.4);
     expect(preview.phase).toBe("idle");
+    expect(preview.debug.offsetX).toBe(0);
     expect(state.getCurrent(1)).toBeNull();
   });
 
@@ -97,10 +106,33 @@ describe("Authored interaction preview", () => {
     for (const trigger of ["hold", "press", "drag"] as const) {
       const { preview, item, state, step } = fixture();
       preview.press({ ...item, trigger, followAnimation: "missing", endAnimation: "" }, "head", 0, 0);
-      preview.release(); step(0); step(0.25); step(0.25);
+      preview.release(); step(0); step(0.25); step(0.25); step(0.2);
       expect(preview.phase).toBe("idle");
       expect(state.getCurrent(1)).toBeNull();
     }
+  });
+
+  test("smoothly returns the follow target even when no End animation is assigned", () => {
+    const { preview, item, skeleton, step } = fixture();
+    preview.press({ ...item, endAnimation: "", returnDuration: 0.4, returnEasing: "linear" }, "head", 0, 0);
+    step(0);
+    preview.move(40, 0);
+    step(0.25);
+    const target = skeleton.findBone("target")!;
+    const beforeRelease = target.x;
+    expect(preview.phase).toBe("holding");
+    expect(beforeRelease).toBeGreaterThan(0);
+
+    preview.release();
+    step(0.1);
+    expect(preview.phase).toBe("releasing");
+    expect(target.x).toBeCloseTo(beforeRelease, 4);
+    step(0.1);
+    expect(target.x).toBeGreaterThan(0);
+    expect(target.x).toBeLessThan(beforeRelease);
+    step(0.3);
+    expect(preview.phase).toBe("idle");
+    expect(target.x).toBe(0);
   });
 
   test("movement is bounded, smoothed and does not accumulate in an unkeyed target", () => {
@@ -113,7 +145,7 @@ describe("Authored interaction preview", () => {
     expect(firstX).toBeLessThan(item.limitX);
     for (let i = 0; i < 120; i++) step(1 / 60);
     expect(Math.hypot(target.x / item.limitX, target.y / item.limitY)).toBeLessThanOrEqual(1.00001);
-    preview.release(); step(0.01); step(0.25);
+    preview.release(); step(0.01); step(0.4);
     expect(target.x).toBe(0);
     expect(target.y).toBe(0);
   });
@@ -122,7 +154,7 @@ describe("Authored interaction preview", () => {
     const { preview, item, step } = fixture();
     preview.press({ ...item, trigger: "press" }, "head", 0, 0); step(0); step(0.25);
     expect(preview.phase).toBe("releasing");
-    step(0.25);
+    step(0.4);
     expect(preview.phase).toBe("idle");
   });
 

@@ -24,9 +24,12 @@ import { DEFAULT_EFFECTS_STRENGTH, drawWithEffectsStrength } from "./spineEffect
 import { authoredInteraction, authoredRegions, clearInteractionTrack, interactionPhaseAfterStart, interactionPressReady, profileFromProject, queueInteractionFadeOut, setInteractionTrack, type SpineAnimationPair, type SpineInteractionAction, type SpineInteractionProfile, type SpineInteractionProject, type SpineAuthoredInteraction, type SpineAuthoredRegion } from "./spineInteraction";
 import {
   applyInteractionMotion,
+  applyInteractionMotionReturn,
   beforeInteractionMotion,
+  beginInteractionMotionReturn,
   beginInteractionMotion,
   createInteractionMotionState,
+  interactionMotionReturnComplete,
   rebaseInteractionMotion,
   resetInteractionMotion,
   type SpineInteractionMotionState,
@@ -924,13 +927,15 @@ export class SpineRenderer {
     }
   }
 
-  private resetInteractionTargets() {
+  private resetInteractionTargets(resetBasePose = true) {
     const bundle = this.bundle;
     resetInteractionMotion(this.motionState());
-    for (const target of [bundle?.eyeTarget, bundle?.touchTarget]) {
-      if (!target) continue;
-      target.bone.x = target.baseX;
-      target.bone.y = target.baseY;
+    if (resetBasePose) {
+      for (const target of [bundle?.eyeTarget, bundle?.touchTarget]) {
+        if (!target) continue;
+        target.bone.x = target.baseX;
+        target.bone.y = target.baseY;
+      }
     }
     this.interactionFollowWorld = null;
     this.touchPointerOrigin = null;
@@ -1011,7 +1016,7 @@ export class SpineRenderer {
   private playGestureRelease(kind: GestureKind) {
     const bundle = this.bundle;
     if (!bundle) return;
-    this.resetInteractionTargets();
+    beginInteractionMotionReturn(this.motionState());
     const release = this.gestureAction(kind)?.release;
     if (release) {
       this.interactionState = `${kind}Release` as `${GestureKind}Release`;
@@ -1020,7 +1025,7 @@ export class SpineRenderer {
     } else {
       this.clearOverlay(3, true);
       this.clearOverlay(4, true);
-      this.interactionState = "idle";
+      this.interactionState = `${kind}Release` as `${GestureKind}Release`;
       this.interactionTrackName = null;
     }
   }
@@ -1079,8 +1084,22 @@ export class SpineRenderer {
 
   private finishInteractionState() {
     const bundle = this.bundle;
-    if (!bundle || !this.interactionTrackName) return;
+    if (!bundle) return;
     const kind = this.gestureKind();
+    const gestureRelease = Boolean(kind && this.interactionState === `${kind}Release`);
+    if (gestureRelease) {
+      if (this.interactionTrackName && !this.interactionAnimationFinished(3)) return;
+      if (!interactionMotionReturnComplete(this.motionState())) return;
+      this.interactionState = "idle";
+      this.interactionTrackName = null;
+      this.activeTalkIndex = -1;
+      this.talkEventIndex = 0;
+      this.talkFadeQueued = false;
+      this.eyeFollowHold = 0;
+      this.resetInteractionTargets(false);
+      return;
+    }
+    if (!this.interactionTrackName) return;
     if (kind && this.interactionState === `${kind}Start`) {
       if (!this.interactionAnimationFinished(3)) return;
       if (interactionPhaseAfterStart(this.interactionPressedTrigger, this.interactionPointerHeld) === "releasing") {
@@ -1517,8 +1536,10 @@ export class SpineRenderer {
               }
             } else if (this.interactionState === "look") {
               this.applyEyeFollow(delta);
-            } else if (["pat", "pinch", "touch"].includes(this.interactionState)) {
+            } else if (["patStart", "pinchStart", "touchStart", "pat", "pinch", "touch"].includes(this.interactionState)) {
               this.applyTouchFollow(delta);
+            } else if (["patRelease", "pinchRelease", "touchRelease"].includes(this.interactionState)) {
+              this.applyTouchReturn(delta);
             } else if (this.interactionState === "idle") {
               this.eyeFollowHold = 0;
             }
@@ -1772,6 +1793,14 @@ export class SpineRenderer {
       x: bundle.touchTarget?.rangeX ?? MAX_TOUCH_FOLLOW_X,
       y: bundle.touchTarget?.rangeY ?? MAX_TOUCH_FOLLOW_Y,
     });
+    this.touchFollowOffset = { ...motion.offset };
+  }
+
+  private applyTouchReturn(delta: number) {
+    const bundle = this.bundle;
+    if (!bundle) return;
+    const motion = this.motionState();
+    applyInteractionMotionReturn(motion, bundle.skeleton, delta);
     this.touchFollowOffset = { ...motion.offset };
   }
 

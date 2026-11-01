@@ -343,6 +343,7 @@ describe("Spine restart playback", () => {
     root.x = 500;
     skeleton.bones[0]!.x = root.x;
     skeleton.updateWorldTransform(0 as never);
+    renderer.restoreInteractionPose();
     renderer.applyTouchFollow(1);
     expect(target.x).toBeCloseTo(30, 1);
   });

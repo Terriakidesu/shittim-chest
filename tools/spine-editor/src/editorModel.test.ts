@@ -92,6 +92,19 @@ test("clip-based opening timelines survive editor save and reopen normalization"
   expect(reopened.timeline.layers[0]?.animationClips?.at(-1)).toMatchObject({ continueAfterOpening: true, loop: true });
 });
 
+test("legacy interactions receive release-return defaults and preserve authored settings on reopen", () => {
+  const project = createProject("Airi_home", ["Idle_01", "Touch_01_M", "Touch_02_M"], []);
+  const raw = JSON.parse(JSON.stringify(project)) as EditorProject;
+  delete (raw.interactions[0] as Partial<EditorProject["interactions"][number]>).returnDuration;
+  delete (raw.interactions[0] as Partial<EditorProject["interactions"][number]>).returnEasing;
+  const migrated = normalizeProject(raw, "Airi_home")!;
+  expect(migrated.interactions[0]).toMatchObject({ returnDuration: 0.35, returnEasing: "ease-out" });
+  migrated.interactions[0]!.returnDuration = 0.8;
+  migrated.interactions[0]!.returnEasing = "linear";
+  const reopened = normalizeProject(JSON.parse(JSON.stringify(migrated)), "Airi_home")!;
+  expect(reopened.interactions[0]).toMatchObject({ returnDuration: 0.8, returnEasing: "linear" });
+});
+
 describe("Spine editor project model", () => {
   test("an intentionally empty project survives save/load", () => {
     const empty = normalizeProject({ schemaVersion: 1, interactions: [] }, "test");

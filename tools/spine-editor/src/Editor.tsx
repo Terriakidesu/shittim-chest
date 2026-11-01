@@ -88,6 +88,8 @@ interface MotionLimitOverlay {
   targetBonePath: string | null;
   limitX: number;
   limitY: number;
+  offsetX: number;
+  offsetY: number;
   allowX: boolean;
   allowY: boolean;
   rotationEnabled: boolean;
@@ -148,9 +150,13 @@ function motionLimitGeometry(frame: SpineEditorFrame, overlay: MotionLimitOverla
   const yAxis = parent
     ? { x: parent.screenLocalYEndX - parent.screenX, y: parent.screenLocalYEndY - parent.screenY }
     : { x: frame.screenUnitYEndX - frame.screenOriginX, y: frame.screenUnitYEndY - frame.screenOriginY };
+  const currentX = target.screenX;
+  const currentY = target.screenY;
   return {
-    centerX: target.screenX,
-    centerY: target.screenY,
+    centerX: currentX - xAxis.x * overlay.offsetX - yAxis.x * overlay.offsetY,
+    centerY: currentY - xAxis.y * overlay.offsetX - yAxis.y * overlay.offsetY,
+    currentX,
+    currentY,
     radiusX: Math.max(8, Math.hypot(xAxis.x, xAxis.y) * Math.max(1, overlay.limitX)),
     radiusY: Math.max(8, Math.hypot(yAxis.x, yAxis.y) * Math.max(1, overlay.limitY)),
     rotation: Math.atan2(xAxis.y, xAxis.x) * 180 / Math.PI,
@@ -239,6 +245,9 @@ function BoneOverlay({ frame, project, viewSettings, motionLimits, tool, onSelec
           <text className="editor-motion-label x" x={motion.centerX + motion.radiusX + 7} y={motion.centerY + 4}>X</text>
           <text className="editor-motion-label y" x={motion.centerX + 5} y={motion.centerY - motion.radiusY - 6}>Y</text>
         </g>
+        <line className="editor-motion-displacement" x1={motion.centerX} y1={motion.centerY} x2={motion.currentX} y2={motion.currentY} />
+        <circle className="editor-motion-origin" cx={motion.centerX} cy={motion.centerY} r={4} />
+        <circle className="editor-motion-current" cx={motion.currentX} cy={motion.currentY} r={5} />
         <line className="editor-motion-bone" x1={motion.centerX} y1={motion.centerY} x2={motion.boneEndX} y2={motion.boneEndY} />
         {motionLimits?.rotationEnabled && <path className="editor-motion-rotation" d={arcPath(motion.centerX, motion.centerY, motion.rotationRadius, motion.boneRotation - motionLimits.rotationMax, motion.boneRotation - motionLimits.rotationMin)} />}
         <circle className={motionLimits?.rotationEnabled ? "editor-motion-rotation-handle is-enabled" : "editor-motion-rotation-handle is-locked"} cx={motion.centerX} cy={motion.centerY} r={6} />
@@ -930,6 +939,7 @@ export function Editor() {
     if (typeof value === "number") {
       if (!Number.isFinite(value)) return;
       if (field === "smoothing") value = Math.max(0.1, value);
+      else if (field === "returnDuration") value = Math.min(2, Math.max(0.05, value));
       else if (field === "rotationMin") value = Math.min(0, Math.max(-180, value));
       else if (field === "rotationMax") value = Math.max(0, Math.min(180, value));
       else value = Math.max(0, value);
@@ -1018,9 +1028,52 @@ export function Editor() {
     setPlaying(true);
   }
 
-  function toggleTest() {
+  function startSelectedTest() {
+    if (!selectedInteraction || !frame) return;
+    const testRegion = selectedRegion?.enabled && selectedInteraction.regions.some((region) => region.id === selectedRegion.id)
+      ? selectedRegion
+      : selectedInteraction.regions.find((region) => region.enabled) ?? null;
+    const center = testRegion
+      ? regionMatrix(frame, testRegion)
+      : { e: frame.canvasWidth / 2, f: frame.canvasHeight / 2 };
+    const origin = screenToWorld(frame, center.e, center.f);
+    if (!origin) return;
     resetPreview();
-    setTesting((value) => !value);
+    previewRef.current.press(selectedInteraction, testRegion?.name ?? "Direct test", origin.x, origin.y);
+    setPreviewDebug(previewRef.current.debug);
+    setPreviewStatus(`starting · ${selectedInteraction.name}`);
+    setTesting(true);
+    setTool("select");
+    setStatus(`Testing ${selectedInteraction.name} directly. Drag on the stage, or release with the test controls.`);
+  }
+
+  function releaseTest() {
+    previewRef.current.release();
+    testPointerRef.current = null;
+    setPreviewDebug(previewRef.current.debug);
+    setPreviewStatus("releasing · returning to pose");
+    setStatus("Released interaction test. The follow target is easing back to its animated pose.");
+  }
+
+  function replayTest() {
+    if (selectedInteraction && frame) {
+      startSelectedTest();
+      return;
+    }
+    setStatus("Select an interaction and load its Spine asset to replay the test.");
+  }
+
+  function toggleTest() {
+    if (testing) {
+      testPointerRef.current = null;
+      previewRef.current.release();
+      resetPreview();
+      setTesting(false);
+      return;
+    }
+    resetPreview();
+    setTesting(true);
+    setStatus("Test mode is ready. Press an enabled hit region or use Test selected for a direct test.");
   }
 
   function duplicateRegion() {
@@ -1263,12 +1316,23 @@ export function Editor() {
           </div>
           <div className="editor-stage" ref={stageRef} onDoubleClick={(event) => { if (!testing && event.target === canvasRef.current) rendererRef.current?.resetCamera(); }}>
             <canvas ref={canvasRef} aria-label="Spine editor canvas" />
-            {(!testing || showTestRegions) && <BoneOverlay
-               frame={frame}
-               project={testing && project ? { ...project, selectedRegionId: null } : project}
-               viewSettings={renderedViewSettings}
-               motionLimits={!testing && inspectorTab === "movement" && selectedInteraction?.followTargetBone ? { targetBonePath: selectedInteraction.followTargetBone, limitX: selectedInteraction.limitX, limitY: selectedInteraction.limitY, allowX: selectedInteraction.allowX, allowY: selectedInteraction.allowY, rotationEnabled: selectedInteraction.rotationEnabled, rotationMin: selectedInteraction.rotationMin, rotationMax: selectedInteraction.rotationMax } : null}
-               tool={testing ? "pan" : tool}
+            <BoneOverlay
+                frame={frame}
+                project={testing && project ? { ...project, selectedRegionId: null, ...(showTestRegions ? {} : { interactions: project.interactions.map((interaction) => ({ ...interaction, regions: [] })) }) } : project}
+                viewSettings={renderedViewSettings}
+                motionLimits={(testing || inspectorTab === "movement") && selectedInteraction ? {
+                  targetBonePath: testing ? previewDebug.targetBonePath ?? selectedInteraction.followTargetBone : selectedInteraction.followTargetBone,
+                  limitX: selectedInteraction.limitX,
+                  limitY: selectedInteraction.limitY,
+                  offsetX: testing ? previewDebug.offsetX : 0,
+                  offsetY: testing ? previewDebug.offsetY : 0,
+                  allowX: selectedInteraction.allowX,
+                  allowY: selectedInteraction.allowY,
+                  rotationEnabled: selectedInteraction.rotationEnabled,
+                  rotationMin: selectedInteraction.rotationMin,
+                  rotationMax: selectedInteraction.rotationMax,
+                } : null}
+                tool={testing ? "pan" : tool}
               onSelectBone={(path) => live((current) => ({ ...current, selectedBonePath: path }))}
               onSelectRegion={(interactionId, regionId) => live((current) => ({ ...current, selectedInteractionId: interactionId, selectedRegionId: regionId }))}
               onBeginRegionDrag={() => { if (projectRef.current) setUndo((items) => [...items.slice(-49), projectRef.current!]); setRedo([]); }}
@@ -1280,8 +1344,8 @@ export function Editor() {
                    regions: interaction.regions.map((region) => region.id === regionId ? { ...region, offsetX: x, offsetY: y, placement: "manual" } : region),
                 }),
               }))}
-            />}
-            {(testing || tool === "draw") && <div className={`editor-input-surface${testing ? " testing" : " drawing"}`} aria-label={testing ? "Interaction test surface" : "Draw region surface"} onPointerDown={stagePress} onPointerMove={stageMove} onPointerUp={stageRelease} onPointerCancel={(event) => { if (!testing || testPointerRef.current === event.pointerId) { testPointerRef.current = null; previewRef.current.release(); } drawRef.current = null; setDrawBox(null); }} />}
+             />
+            {(testing || tool === "draw") && <div className={`editor-input-surface${testing ? " testing" : " drawing"}`} aria-label={testing ? "Interaction test surface" : "Draw region surface"} onPointerDown={stagePress} onPointerMove={stageMove} onPointerUp={stageRelease} onPointerCancel={(event) => { if (!testing || testPointerRef.current === null || testPointerRef.current === event.pointerId) { testPointerRef.current = null; previewRef.current.release(); } drawRef.current = null; setDrawBox(null); }} />}
             {drawBox && frame && <svg className="editor-draw-ghost" viewBox={`0 0 ${frame.canvasWidth} ${frame.canvasHeight}`} preserveAspectRatio="none"><ellipse cx={drawBox.x + drawBox.width / 2} cy={drawBox.y + drawBox.height / 2} rx={drawBox.width / 2} ry={drawBox.height / 2} /></svg>}
             {!frame && <div className="editor-empty"><strong>Open a Spine asset folder</strong><span>The desktop editor reads .atlas, .skel, and local texture files from the selected root.</span></div>}
             {frame && <div className="editor-canvas-badge">{frame.animation ?? "No animation"} · {frame.bones.length} bones</div>}
@@ -1292,14 +1356,19 @@ export function Editor() {
              <div className="editor-debug-grid" aria-label="Interaction debugger">
                <span>Interaction <b>{previewDebug.interactionName || "—"}</b></span>
                <span>Region <b>{previewDebug.regionName || "—"}</b></span>
-               <span>Phase <b>{previewDebug.phase}</b></span>
+                <span>Phase <b>{previewDebug.phase}{previewDebug.returning ? ` · return ${Math.round(previewDebug.returnProgress * 100)}%` : ""}</b></span>
                <span>Body <b>{previewDebug.bodyAnimation || "—"}</b></span>
                <span>Face <b>{previewDebug.faceAnimation || "—"}</b></span>
                <span>Target <b title={previewDebug.targetBonePath ?? ""}>{previewDebug.targetBonePath?.split("/").pop() ?? "—"}</b></span>
                <span>Offset <b>{previewDebug.offsetX.toFixed(1)}, {previewDebug.offsetY.toFixed(1)}</b></span>
                <span>Rotation <b>{previewDebug.rotation.toFixed(1)}°</b></span>
-             </div>
-             <label><input type="checkbox" checked={showTestRegions} onChange={(event) => setShowTestRegions(event.target.checked)} /> Hit regions</label>
+              </div>
+              <div className="editor-test-controls">
+                <button className="editor-preview-button" disabled={!selectedInteraction || !frame} onClick={startSelectedTest}><IconPlay /> Test selected</button>
+                <button className="editor-preview-button" disabled={previewDebug.phase === "idle" || previewDebug.phase === "releasing"} onClick={releaseTest}>Release</button>
+                <button className="editor-preview-button" disabled={!selectedInteraction || !frame} onClick={replayTest}>Replay</button>
+              </div>
+              <label><input type="checkbox" checked={showTestRegions} onChange={(event) => setShowTestRegions(event.target.checked)} /> Hit regions</label>
            </div>}
           <div className="editor-timeline">
             <div className="editor-timeline-top">
@@ -1344,10 +1413,10 @@ export function Editor() {
               <button className="editor-preview-button" onClick={detectPhases}>Auto-detect phases from press animation</button>
               <div className="editor-phase-strip" aria-label="Interaction animation phases">
                 {[
-                  { label: "On press", body: selectedInteraction.startAnimation, face: selectedInteraction.faceStartAnimation, loop: false },
-                  { label: "While held", body: selectedInteraction.followAnimation, face: selectedInteraction.faceFollowAnimation, loop: true },
-                  { label: "On release", body: selectedInteraction.endAnimation, face: selectedInteraction.faceEndAnimation, loop: false },
-                ].map((phase) => <article className="editor-phase-card" key={phase.label}>
+                   { label: "On press", phase: "starting", body: selectedInteraction.startAnimation, face: selectedInteraction.faceStartAnimation, loop: false },
+                   { label: "While held", phase: "holding", body: selectedInteraction.followAnimation, face: selectedInteraction.faceFollowAnimation, loop: true },
+                   { label: "On release", phase: "releasing", body: selectedInteraction.endAnimation, face: selectedInteraction.faceEndAnimation, loop: false },
+                  ].map((phase) => <article className={`editor-phase-card${testing && previewDebug.interactionName === selectedInteraction.name && previewDebug.phase === phase.phase ? " is-active" : ""}`} key={phase.label}>
                   <div><strong>{phase.label}</strong><button className="editor-preview-button" disabled={testing || (!phase.body && !phase.face)} onClick={() => previewPhase(phase.label, phase.body, phase.face, phase.loop)}>Preview</button></div>
                   <span>{phase.body || "No body animation"}</span>
                   <small>{phase.face ? `Face · ${phase.face}` : "No face track"}{phase.loop ? " · loops" : ""}</small>
@@ -1388,8 +1457,11 @@ export function Editor() {
                 <label>Rotation input<select value={selectedInteraction.rotationAxis} disabled={!selectedInteraction.rotationEnabled} onChange={(event) => updateInteraction("rotationAxis", event.target.value)}><option value="x">Local X drag</option><option value="y">Local Y drag</option></select></label>
               </div>
               <div className="editor-two-fields"><label>Min rotation °<input type="number" min="-180" max="0" step="1" disabled={!selectedInteraction.rotationEnabled} value={selectedInteraction.rotationMin} onChange={(event) => updateInteraction("rotationMin", Number(event.target.value))} /></label><label>Max rotation °<input type="number" min="0" max="180" step="1" disabled={!selectedInteraction.rotationEnabled} value={selectedInteraction.rotationMax} onChange={(event) => updateInteraction("rotationMax", Number(event.target.value))} /></label></div>
-              <label>Smoothing · {selectedInteraction.smoothing.toFixed(1)} (higher = faster response)<input type="range" min="1" max="24" step="0.5" value={selectedInteraction.smoothing} onChange={(event) => updateInteraction("smoothing", Number(event.target.value))} /></label>
-              <button className="editor-preview-button" disabled={!project?.selectedBonePath} onClick={() => updateInteraction("followTargetBone", project?.selectedBonePath ?? null)}>Use selected bone as movement target</button>
+               <label>Follow smoothing · {selectedInteraction.smoothing.toFixed(1)} (higher = faster response)<input type="range" min="1" max="24" step="0.5" value={selectedInteraction.smoothing} onChange={(event) => updateInteraction("smoothing", Number(event.target.value))} /></label>
+               <div className="editor-subheading">Release return</div>
+               <p className="editor-muted">When released, the target eases from its current offset back to the animated bone pose while the End phase plays.</p>
+               <div className="editor-two-fields"><label>Return duration (s)<input aria-label="Return duration in seconds" type="number" min="0.05" max="2" step="0.05" value={selectedInteraction.returnDuration} onChange={(event) => updateInteraction("returnDuration", Number(event.target.value))} /></label><label>Return easing<select aria-label="Return easing" value={selectedInteraction.returnEasing} onChange={(event) => updateInteraction("returnEasing", event.target.value as EditorInteraction["returnEasing"])}><option value="linear">Linear</option><option value="ease-out">Ease out</option><option value="ease-in-out">Ease in / out</option></select></label></div>
+               <button className="editor-preview-button" disabled={!project?.selectedBonePath} onClick={() => updateInteraction("followTargetBone", project?.selectedBonePath ?? null)}>Use selected bone as movement target</button>
               </div>
                </div>
              </details>

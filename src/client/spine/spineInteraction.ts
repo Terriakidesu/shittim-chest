@@ -1,5 +1,9 @@
 import { normalizeSpineTimeline, type SpineTimeline } from "./spineTimeline";
 
+export type SpineInteractionReturnEasing = "linear" | "ease-out" | "ease-in-out";
+export const DEFAULT_INTERACTION_RETURN_DURATION = 0.35;
+export const DEFAULT_INTERACTION_RETURN_EASING: SpineInteractionReturnEasing = "ease-out";
+
 export interface SpineAnimationPair {
   main: string;
   face: string | null;
@@ -55,6 +59,9 @@ export interface SpineAuthoredInteraction {
   limitX: number;
   limitY: number;
   smoothing: number;
+  /** Optional for legacy projects; normalization supplies a stable default. */
+  returnDuration?: number;
+  returnEasing?: SpineInteractionReturnEasing;
   /** Local parent-space translation axes. Missing legacy fields mean both. */
   allowX?: boolean;
   allowY?: boolean;
@@ -136,6 +143,10 @@ function normalizeAuthoredInteraction(value: unknown, index: number): SpineAutho
     limitX: positiveNumber(interaction.limitX, 90),
     limitY: positiveNumber(interaction.limitY, 65),
     smoothing: positiveNumber(interaction.smoothing, 8),
+    returnDuration: Math.max(0.05, Math.min(2, positiveNumber(interaction.returnDuration ?? DEFAULT_INTERACTION_RETURN_DURATION, DEFAULT_INTERACTION_RETURN_DURATION))),
+    returnEasing: interaction.returnEasing === "linear" || interaction.returnEasing === "ease-in-out"
+      ? interaction.returnEasing
+      : DEFAULT_INTERACTION_RETURN_EASING,
     regions: (Array.isArray(interaction.regions) ? interaction.regions : [])
       .map((region, regionIndex) => normalizeInteractionRegion(region, regionIndex))
       .filter((region): region is SpineInteractionRegion => region !== null),

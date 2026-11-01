@@ -120,7 +120,38 @@ describe("Spine lobby interaction data", () => {
       }],
     });
     expect(project?.interactions[0]?.regions[0]).toMatchObject({ shape: "rectangle", anchorBone: "root/head", offsetX: 2 });
+    expect(project?.interactions[0]).toMatchObject({ returnDuration: 0.35, returnEasing: "ease-out" });
     expect(authoredRegions(project)).toMatchObject([{ kind: "pat", id: "head", enabled: true }]);
+  });
+
+  test("normalizes authored return easing and duration without changing follow smoothing", () => {
+    const project = normalizeSpineInteractionProject({
+      schemaVersion: 2,
+      assetDirectory: "Airi_home",
+      interactions: [{
+        id: "touch",
+        name: "Touch",
+        startAnimation: "Touch_01_M",
+        followAnimation: "Touch_02_M",
+        smoothing: 12,
+        returnDuration: 0.8,
+        returnEasing: "linear",
+        regions: [],
+      }],
+    });
+    expect(project?.interactions[0]).toMatchObject({ smoothing: 12, returnDuration: 0.8, returnEasing: "linear" });
+    const invalid = normalizeSpineInteractionProject({
+      schemaVersion: 2,
+      assetDirectory: "Airi_home",
+      interactions: [{ id: "touch", name: "Touch", startAnimation: "Touch_01_M", followAnimation: "Touch_02_M", returnDuration: 20, returnEasing: "bounce", regions: [] }],
+    });
+    expect(invalid?.interactions[0]).toMatchObject({ returnDuration: 2, returnEasing: "ease-out" });
+    const tooShort = normalizeSpineInteractionProject({
+      schemaVersion: 2,
+      assetDirectory: "Airi_home",
+      interactions: [{ id: "touch", name: "Touch", startAnimation: "Touch_01_M", followAnimation: "Touch_02_M", returnDuration: 0.01, regions: [] }],
+    });
+    expect(tooShort?.interactions[0]?.returnDuration).toBe(0.05);
   });
 
   test("ignores developer and nested duplicate talk tracks when root tracks exist", () => {

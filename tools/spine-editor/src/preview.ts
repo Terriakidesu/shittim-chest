@@ -3,9 +3,13 @@ import type { EditorInteraction } from "./editorModel";
 import { clearInteractionTrack, interactionKind, interactionPhaseAfterStart, interactionPressReady, setInteractionTrack } from "../../../src/client/spine/spineInteraction";
 import {
   applyInteractionMotion,
+  applyInteractionMotionReturn,
   beforeInteractionMotion,
   beginInteractionMotion,
+  beginInteractionMotionReturn,
   createInteractionMotionState,
+  interactionMotionReturnComplete,
+  interactionMotionReturnProgress,
   resetInteractionMotion,
   type SpineInteractionMotionState,
 } from "../../../src/client/spine/spineInteractionMotion";
@@ -24,6 +28,8 @@ export interface InteractionPreviewDebug {
   offsetX: number;
   offsetY: number;
   rotation: number;
+  returning: boolean;
+  returnProgress: number;
 }
 
 /** Runs the authored project, independently of the viewer's detected presets. */
@@ -63,6 +69,8 @@ export class InteractionPreview {
       offsetX: this.motion.offset.x,
       offsetY: this.motion.offset.y,
       rotation: this.motion.rotation,
+      returning: this.motion.returning,
+      returnProgress: interactionMotionReturnProgress(this.motion),
     };
   }
 
@@ -100,6 +108,7 @@ export class InteractionPreview {
     this.elapsed = 0;
     const item = this.interaction;
     if (!item) return;
+    if (phase === "releasing") beginInteractionMotionReturn(this.motion);
     const main = phase === "starting" ? item.startAnimation : phase === "holding" ? item.followAnimation : item.endAnimation;
     const face = phase === "starting" ? item.faceStartAnimation : phase === "holding" ? item.faceFollowAnimation : item.faceEndAnimation;
     this.duration = 0;
@@ -109,6 +118,7 @@ export class InteractionPreview {
         this.duration = Math.max(this.duration, entry?.animation?.duration ?? 0);
       } else clearInteractionTrack(state, track);
     }
+    if (phase === "releasing") this.duration = Math.max(this.duration, item.returnDuration);
   }
 
   update(delta: number, skeleton: Skeleton, state: AnimationState) {
@@ -125,20 +135,23 @@ export class InteractionPreview {
       this.enter(interactionPhaseAfterStart(item.trigger, this.held), state);
     }
     if (this.phase === "holding" && !this.held) this.enter("releasing", state);
-    if (this.phase === "releasing" && this.elapsed >= this.duration) {
-      this.reset(state);
-      skeleton.setToSetupPose();
-      state.apply(skeleton);
-      skeleton.updateWorldTransform(Physics.pose);
-      return;
-    }
     // Apply newly entered body/face tracks immediately, then apply the shared
     // editor/viewer motion in the animated parent space.
     state.apply(skeleton);
     skeleton.updateWorldTransform(Physics.pose);
-    if (this.phase === "holding" && item.trigger !== "press") {
+    if (this.phase === "starting" || (this.phase === "holding" && item.trigger !== "press")) {
       applyInteractionMotion(this.motion, skeleton, this.pointer, delta);
       if (this.motion.target?.directCheek && this.motion.resolvedTargetBonePath) item.followTargetBone = this.motion.resolvedTargetBonePath;
+    } else if (this.phase === "releasing") {
+      // The state update above happened before the release track was entered;
+      // its first frame and the return clock both start on the next tick.
+      applyInteractionMotionReturn(this.motion, skeleton, this.elapsed === 0 ? 0 : delta);
+    }
+    if (this.phase === "releasing" && this.elapsed >= this.duration && interactionMotionReturnComplete(this.motion)) {
+      this.reset(state);
+      skeleton.setToSetupPose();
+      state.apply(skeleton);
+      skeleton.updateWorldTransform(Physics.pose);
     }
   }
 }
