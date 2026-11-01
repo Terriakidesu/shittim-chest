@@ -438,6 +438,8 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--editor-cy
 .timeline-empty code { color: var(--editor-cyan); }
 .timeline-workspace { grid-template-columns: 190px minmax(380px, 1fr) 300px; }
 .sequence-browser h2, .timeline-inspector h2 { margin: 6px 0 12px; font-size: 17px; }
+.timeline-talk-playlist-actions { display: grid; gap: 5px; margin: 7px 0; }
+.timeline-talk-playlist-actions > button { width: 100%; justify-content: center; }
 .sequence-button { display: block; width: 100%; padding: 8px 9px; margin-bottom: 4px; border: 1px solid var(--editor-line); border-radius: 4px; text-align: left; color: var(--editor-text); background: #102431; }
 .sequence-button.active { border-color: var(--editor-cyan); background: #164457; }
 .sequence-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--editor-line); }

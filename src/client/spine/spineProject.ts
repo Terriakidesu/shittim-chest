@@ -99,6 +99,7 @@ export function manifestProjectValue(data: SpineManifestProjectData, directory: 
     interactions: Array.isArray(rawInteractions.interactions) ? rawInteractions.interactions : [],
     ...(active !== undefined ? { timeline: active } : {}),
     sequences,
+    ...(typeof rawInteractions.talkMixDuration === "number" ? { talkMixDuration: rawInteractions.talkMixDuration } : {}),
     ...workspaceState,
   };
 }

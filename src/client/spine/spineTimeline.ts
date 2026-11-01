@@ -168,6 +168,7 @@ export function timelinePlaybackDuration(
   timeline: Pick<SpineTimeline, "layers" | "subtitles" | "audio" | "duration"> & { sequenceId?: string; durationMode?: SpineTimeline["durationMode"] },
   openingMinimumDuration = 0,
   layerEndFor: (layer: SpineTimelineLayer) => number = (layer) => layer.animationClips?.length ? Math.max(0, ...layer.animationClips.map((clip) => clip.end)) : layer.end,
+  talkMixDuration = 0,
 ): number {
   const allLayerEnd = Math.max(0, ...timeline.layers.map(layerEndFor));
   const selectedLayerEnd = timeline.sequenceId === "opening" && timeline.durationMode !== "auto"
@@ -176,13 +177,16 @@ export function timelinePlaybackDuration(
       : layer.endMode === "manual" ? [layerEndFor(layer)] : []))
     : allLayerEnd;
   const contentEnd = Math.max(0, ...timeline.subtitles.map((cue) => cue.end), ...timeline.audio.map((clip) => clip.end));
-  if (timeline.sequenceId === "opening" && timeline.durationMode === "auto" && timeline.layers.length > 0) {
+  const baseDuration = timeline.sequenceId === "opening" && timeline.durationMode === "auto" && timeline.layers.length > 0
     // Automatic openings end at their last visible/authored endpoint. This
     // removes stale blank tail time left by an older import while the caller
     // can still protect an intro that has not yet reached its idle state.
-    return Math.max(1, openingMinimumDuration, selectedLayerEnd, contentEnd);
-  }
-  return Math.max(1, timeline.duration, selectedLayerEnd, contentEnd);
+    ? Math.max(1, openingMinimumDuration, selectedLayerEnd, contentEnd)
+    : Math.max(1, timeline.duration, selectedLayerEnd, contentEnd);
+  const talkTail = /^talk-\d+$/i.test(timeline.sequenceId ?? "") && timeline.layers.some((layer) => layer.role === "character")
+    ? Math.max(0, Math.min(2, Number.isFinite(talkMixDuration) ? talkMixDuration : 0))
+    : 0;
+  return baseDuration + talkTail;
 }
 
 /** Resolve an automatic opening's meaningful endpoint for both UIs. */

@@ -21,7 +21,7 @@ import {
 } from "@esotericsoftware/spine-webgl";
 import { authoredViewport, fitScene, interactionKindAtPoint, interactionZonesForDisplay, sceneBounds, type InteractionHitKind, type SceneBounds } from "./spineCamera";
 import { DEFAULT_EFFECTS_STRENGTH, drawWithEffectsStrength } from "./spineEffects";
-import { authoredInteraction, authoredRegions, clearInteractionTrack, interactionPhaseAfterStart, interactionPressReady, profileFromProject, queueInteractionFadeOut, setInteractionTrack, type SpineAnimationPair, type SpineInteractionAction, type SpineInteractionProfile, type SpineInteractionProject, type SpineAuthoredInteraction, type SpineAuthoredRegion } from "./spineInteraction";
+import { authoredInteraction, authoredRegions, clearInteractionTrack, DEFAULT_INTERACTION_PHASE_MIX, DEFAULT_TALK_MIX_DURATION, interactionPhaseAfterStart, interactionPressReady, normalizeAnimationMixDuration, profileFromProject, queueInteractionFadeOut, setInteractionTrack, type SpineAnimationPair, type SpineInteractionAction, type SpineInteractionProfile, type SpineInteractionProject, type SpineAuthoredInteraction, type SpineAuthoredRegion } from "./spineInteraction";
 import {
   applyInteractionMotion,
   applyInteractionMotionReturn,
@@ -793,7 +793,8 @@ export class SpineRenderer {
     this.resetInteractionTargets();
     this.clearOverlay(3);
     this.clearOverlay(4);
-    const main = this.playOverlayPair(pair, 5, 6, false, !this.talkAudioPending);
+    const talkMix = normalizeAnimationMixDuration(this.bundle.project?.talkMixDuration, DEFAULT_TALK_MIX_DURATION);
+    const main = this.playOverlayPair(pair, 5, 6, false, !this.talkAudioPending, talkMix);
     if (this.talkAudioPending) {
       if (main) {
         main.listener = {
@@ -816,8 +817,13 @@ export class SpineRenderer {
     const state = this.bundle?.state;
     if (!state) return;
     if (!this.talkFadeQueued) {
-      if (state.getCurrent(5)) queueInteractionFadeOut(state, 5);
-      if (state.getCurrent(6)) queueInteractionFadeOut(state, 6);
+      const mix = normalizeAnimationMixDuration(this.bundle?.project?.talkMixDuration, DEFAULT_TALK_MIX_DURATION);
+      for (const track of [5, 6]) {
+        const current = state.getCurrent(track);
+        if (!current) continue;
+        if (!current.loop && current.trackTime >= (current.animation?.duration ?? 0)) state.setEmptyAnimation(track, mix);
+        else queueInteractionFadeOut(state, track, mix);
+      }
       this.talkFadeQueued = true;
     }
     this.finishInteractionState();
@@ -953,22 +959,23 @@ export class SpineRenderer {
     return this.interactionMotionState;
   }
 
-  private clearOverlay(track: number, smooth = false) {
+  private clearOverlay(track: number, smooth = false, mixDuration = DEFAULT_INTERACTION_PHASE_MIX) {
     const state = this.bundle?.state;
     if (!state) return;
-    clearInteractionTrack(state, track, smooth);
+    clearInteractionTrack(state, track, smooth, mixDuration);
   }
 
-  private playOverlayPair(pair: SpineAnimationPair, mainTrack: number, faceTrack: number, loop: boolean, clearAfter: boolean): TrackEntry | null {
+  private playOverlayPair(pair: SpineAnimationPair, mainTrack: number, faceTrack: number, loop: boolean, clearAfter: boolean, mixDuration = DEFAULT_INTERACTION_PHASE_MIX): TrackEntry | null {
     const bundle = this.bundle;
     if (!bundle) return null;
-    const main = setInteractionTrack(bundle.state, mainTrack, pair.main, loop);
-    if (clearAfter && !loop) queueInteractionFadeOut(bundle.state, mainTrack);
+    const mix = normalizeAnimationMixDuration(mixDuration);
+    const main = setInteractionTrack(bundle.state, mainTrack, pair.main, loop, mix);
+    if (clearAfter && !loop) queueInteractionFadeOut(bundle.state, mainTrack, mix);
     if (pair.face) {
-      setInteractionTrack(bundle.state, faceTrack, pair.face, loop);
-      if (clearAfter && !loop) queueInteractionFadeOut(bundle.state, faceTrack);
+      setInteractionTrack(bundle.state, faceTrack, pair.face, loop, mix);
+      if (clearAfter && !loop) queueInteractionFadeOut(bundle.state, faceTrack, mix);
     } else {
-      clearInteractionTrack(bundle.state, faceTrack);
+      clearInteractionTrack(bundle.state, faceTrack, true, mix);
     }
     // Keep the local variable meaningful for zero-duration authored poses.
     if (main) main.trackTime = Math.max(0, main.trackTime);
@@ -1021,10 +1028,11 @@ export class SpineRenderer {
     if (release) {
       this.interactionState = `${kind}Release` as `${GestureKind}Release`;
       this.interactionTrackName = release.main;
-      this.playOverlayPair(release, 3, 4, false, true);
+      this.playOverlayPair(release, 3, 4, false, true, this.interactionMixDuration(kind, "release"));
     } else {
-      this.clearOverlay(3, true);
-      this.clearOverlay(4, true);
+      const mix = this.interactionMixDuration(kind, "release");
+      this.clearOverlay(3, true, mix);
+      this.clearOverlay(4, true, mix);
       this.interactionState = `${kind}Release` as `${GestureKind}Release`;
       this.interactionTrackName = null;
     }
@@ -1053,8 +1061,16 @@ export class SpineRenderer {
     beginInteractionMotion(this.motionState(), motion, state, this.touchPointerOrigin);
     this.clearOverlay(5);
     this.clearOverlay(6);
-    this.playOverlayPair(action.start, 3, 4, false, false);
+    this.playOverlayPair(action.start, 3, 4, false, false, this.interactionMixDuration(state, "start"));
     return true;
+  }
+
+  private interactionMixDuration(kind: GestureKind, phase: "start" | "follow" | "release"): number {
+    const interaction = authoredInteraction(this.bundle?.project, kind);
+    const value = phase === "start" ? interaction?.startMixDuration
+      : phase === "follow" ? interaction?.followMixDuration
+        : interaction?.releaseMixDuration;
+    return normalizeAnimationMixDuration(value, DEFAULT_INTERACTION_PHASE_MIX);
   }
 
   private beginPat(): boolean {
@@ -1109,7 +1125,7 @@ export class SpineRenderer {
         if (!action) return;
         this.interactionState = kind;
         this.interactionTrackName = action.follow.main;
-        this.playOverlayPair(action.follow, 3, 4, true, false);
+        this.playOverlayPair(action.follow, 3, 4, true, false, this.interactionMixDuration(kind, "follow"));
       } else {
         this.playGestureRelease(kind);
       }
@@ -1125,6 +1141,8 @@ export class SpineRenderer {
     if (track < 0) return;
     if (this.interactionState === "talk" && this.talkAudioPending) return;
     if (!this.interactionAnimationFinished(track)) return;
+    if (this.interactionState === "talk" && this.talkFadeQueued
+      && (bundle.state.getCurrent(5) || bundle.state.getCurrent(6))) return;
     this.interactionState = "idle";
     this.interactionTrackName = null;
     this.activeTalkIndex = -1;
@@ -1179,7 +1197,7 @@ export class SpineRenderer {
   }
 
   /** Deterministic authoring sample: idle under body/face tracks, with no event playback. */
-  sampleEditorAnimation(animation: string, face: string, time: number, loop: boolean, idleUnderlay = false, preserveInteractions = false) {
+  sampleEditorAnimation(animation: string, face: string, time: number, loop: boolean, idleUnderlay = false, preserveInteractions = false, animationAlpha = 1, faceAlpha = animationAlpha) {
     const bundle = this.bundle;
     if (!bundle) return;
     if (!preserveInteractions) this.playing = false;
@@ -1197,12 +1215,12 @@ export class SpineRenderer {
       bundle.state.clearTrack(8);
     }
     else bundle.state.clearTracks();
-    const apply = (name: string, track: number): TrackEntry | null => {
+    const apply = (name: string, track: number, repeat = loop): TrackEntry | null => {
       const data = bundle.skeleton.data.findAnimation(name);
       if (!data) return null;
-      const entry = bundle.state.setAnimation(track, name, false);
+      const entry = bundle.state.setAnimation(track, name, repeat);
       entry.trackEnd = Number.POSITIVE_INFINITY;
-      entry.trackTime = loop && data.duration > 0 ? time % data.duration : Math.min(time, data.duration);
+      entry.trackTime = repeat && data.duration > 0 ? time % data.duration : Math.min(time, data.duration);
       if (track === 0) {
         const last = previousTime !== null && previousTime <= entry.trackTime ? previousTime : entry.trackTime;
         entry.animationLast = last;
@@ -1218,26 +1236,31 @@ export class SpineRenderer {
       // or face. The base body remains on track 0 so every interaction track
       // keeps priority; the authored face shares the normal look-face track
       // only while no interaction overlay is using it.
-      const underlay = idleUnderlay && bundle.meta.idleAnimation ? apply(bundle.meta.idleAnimation, 0) : null;
+      const underlay = idleUnderlay && bundle.meta.idleAnimation ? apply(bundle.meta.idleAnimation, 0, true) : null;
       if (underlay) underlay.timeScale = 0;
       baseEntry = apply(animation, 0);
-      if (baseEntry) baseEntry.timeScale = 0;
+      if (baseEntry) {
+        baseEntry.timeScale = 0;
+        if (idleUnderlay) baseEntry.alpha = animationAlpha;
+      }
       const faceTrack = bundle.state.getCurrent(2);
       const authoredFaceActive = Boolean(this.sampledEditorFace && faceTrack?.animation?.name === this.sampledEditorFace);
       const interactionFaceActive = Boolean(bundle.state.getCurrent(4) || bundle.state.getCurrent(6) || (faceTrack && !authoredFaceActive));
       if (face && !interactionFaceActive) {
         const faceEntry = apply(face, 2);
-        if (faceEntry) faceEntry.timeScale = 0;
+        if (faceEntry) { faceEntry.timeScale = 0; faceEntry.alpha = faceAlpha; }
         this.sampledEditorFace = face;
       } else if (!face && authoredFaceActive) {
         bundle.state.clearTrack(2);
         this.sampledEditorFace = "";
       }
     } else {
-      if (idleUnderlay && bundle.meta.idleAnimation) apply(bundle.meta.idleAnimation, 0);
+      if (idleUnderlay && bundle.meta.idleAnimation) apply(bundle.meta.idleAnimation, 0, true);
       baseEntry = apply(animation, idleUnderlay ? 1 : 0);
+      if (baseEntry && idleUnderlay) baseEntry.alpha = animationAlpha;
       if (face) {
-        apply(face, 2);
+        const faceEntry = apply(face, 2);
+        if (faceEntry) faceEntry.alpha = faceAlpha;
         this.sampledEditorFace = face;
       } else {
         this.sampledEditorFace = "";

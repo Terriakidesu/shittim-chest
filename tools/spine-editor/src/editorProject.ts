@@ -112,6 +112,7 @@ export async function saveManifestEditorProject(source: WritableEditorProjectSou
     schemaVersion: 1,
     id: project.assetDirectory,
     assetDirectory: project.assetDirectory,
+    talkMixDuration: project.talkMixDuration,
     interactions: project.interactions,
   }, null, 2) + "\n");
   const paths: string[] = [];

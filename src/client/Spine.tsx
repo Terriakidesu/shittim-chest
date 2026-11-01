@@ -16,7 +16,7 @@ import {
   type SpineMeta,
   type SpineProgress,
 } from "./spine/spineRuntime";
-import { normalizeSpineInteractionProject, type SpineInteractionBundle, type SpineInteractionProject } from "./spine/spineInteraction";
+import { DEFAULT_TALK_MIX_DURATION, normalizeAnimationMixDuration, normalizeSpineInteractionProject, type SpineInteractionBundle, type SpineInteractionProject } from "./spine/spineInteraction";
 import { readLocalInteractionProject } from "./spine/spineProject";
 import characterIndexJson from "./spine/characters.json";
 import {
@@ -47,9 +47,14 @@ import {
   type SpineVoiceLine,
 } from "./spine/spineVoicelines";
 import { SpineCompositionViewport, type SpineCompositionViewportHandle } from "./spine/SpineCompositionViewport";
-import { timelineForSequence, timelinePlaybackDuration, timelineSequenceIds, timelineTalkInProgress, timelineTalkSequenceIds } from "./spine/spineTimeline";
+import { timelineForSequence, timelinePlaybackDuration, timelineSequenceIds, timelineTalkInProgress, timelineTalkSequenceIds, type SpineTimeline } from "./spine/spineTimeline";
 
 const bundledCharacterIndex = characterIndexJson as CharacterIndex;
+
+function projectTimelineDuration(timeline: SpineTimeline, project: SpineInteractionProject | null): number {
+  const talkMix = normalizeAnimationMixDuration(project?.talkMixDuration, DEFAULT_TALK_MIX_DURATION);
+  return timelinePlaybackDuration(timeline, 0, undefined, talkMix);
+}
 
 function extraLabel(type: string): string {
   const key: LangKey | null = type === "alternate-home"
@@ -497,7 +502,7 @@ export function Spine() {
     const initialTimeline = selectedInteractionProject && initialSequence ? timelineForSequence(selectedInteractionProject, initialSequence) : null;
     setProgress({
       time: 0,
-      duration: initialTimeline ? timelinePlaybackDuration(initialTimeline) : 0,
+      duration: initialTimeline ? projectTimelineDuration(initialTimeline, selectedInteractionProject) : 0,
       animation: null,
     });
   }, [selectedInteractionProject]);
@@ -1096,7 +1101,7 @@ export function Spine() {
       if (next && nextId) {
         setIdleMode("none");
         setSelectedSequenceId(nextId);
-        setProgress({ time: 0, duration: timelinePlaybackDuration(next), animation: null });
+        setProgress({ time: 0, duration: projectTimelineDuration(next, selectedInteractionProject), animation: null });
         setPlaying(true);
       }
       return;
@@ -1138,7 +1143,7 @@ export function Spine() {
       }
       setIdleMode("none");
       setSelectedSequenceId(firstTalkId);
-      setProgress({ time: 0, duration: timelinePlaybackDuration(firstTalk), animation: null });
+      setProgress({ time: 0, duration: projectTimelineDuration(firstTalk, selectedInteractionProject), animation: null });
       setPlaying(true);
       return;
     }
@@ -1160,7 +1165,7 @@ export function Spine() {
       if (next && nextId) {
         setIdleMode("none");
         setSelectedSequenceId(nextId);
-        setProgress({ time: 0, duration: timelinePlaybackDuration(next), animation: null });
+        setProgress({ time: 0, duration: projectTimelineDuration(next, selectedInteractionProject), animation: null });
       } else {
         talkAutoplayRef.current = false;
         setTalkAutoplay(false);
@@ -1207,7 +1212,7 @@ export function Spine() {
     if (compositionActive && selectedInteractionProject && timelineForSequence(selectedInteractionProject, "opening")) {
       setIdleMode("none");
       setSelectedSequenceId("opening");
-      setProgress({ time: 0, duration: timelinePlaybackDuration(timelineForSequence(selectedInteractionProject, "opening")!), animation: null });
+      setProgress({ time: 0, duration: projectTimelineDuration(timelineForSequence(selectedInteractionProject, "opening")!, selectedInteractionProject), animation: null });
       return;
     }
     setProgress((current) => ({ ...current, time: 0 }));
@@ -1550,7 +1555,7 @@ export function Spine() {
                 </select></label>
                 {!compositionActive && <label className="spine-check"><input type="checkbox" checked={loop} onChange={(event) => setLoop(event.target.checked)} />{t("spine.loop")}</label>}
                  </>}
-                  {selectedInteractionProject && compositionSequenceIds.length > 0 && <label className="spine-setting-field"><span>{t("spine.sequence")}</span><select value={compositionSequenceId || "__runtime-intro__"} onChange={(event) => { const next = event.target.value === "__runtime-intro__" ? "" : event.target.value; const nextTimeline = next ? timelineForSequence(selectedInteractionProject, next) : null; stopVoice(); setIdleMode("none"); setProgress({ time: 0, duration: nextTimeline ? timelinePlaybackDuration(nextTimeline) : 0, animation: null }); setSelectedSequenceId(next); }} aria-label={t("spine.sequenceAria")}>
+                  {selectedInteractionProject && compositionSequenceIds.length > 0 && <label className="spine-setting-field"><span>{t("spine.sequence")}</span><select value={compositionSequenceId || "__runtime-intro__"} onChange={(event) => { const next = event.target.value === "__runtime-intro__" ? "" : event.target.value; const nextTimeline = next ? timelineForSequence(selectedInteractionProject, next) : null; stopVoice(); setIdleMode("none"); setProgress({ time: 0, duration: nextTimeline ? projectTimelineDuration(nextTimeline, selectedInteractionProject) : 0, animation: null }); setSelectedSequenceId(next); }} aria-label={t("spine.sequenceAria")}>
                     {!compositionSequenceId && <option value="__runtime-intro__">Runtime intro</option>}
                     {compositionSequenceIds.map((id) => <option key={id} value={id}>{id === "opening" ? t("spine.sequenceOpening") : id.match(/^talk-(\d+)$/)?.[1] ? t("spine.sequenceTalk", { n: id.match(/^talk-(\d+)$/)![1]! }) : id}</option>)}
                   </select></label>}

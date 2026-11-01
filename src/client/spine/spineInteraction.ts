@@ -62,6 +62,10 @@ export interface SpineAuthoredInteraction {
   /** Optional for legacy projects; normalization supplies a stable default. */
   returnDuration?: number;
   returnEasing?: SpineInteractionReturnEasing;
+  /** Per-transition animation crossfades; omitted legacy fields use the default. */
+  startMixDuration?: number;
+  followMixDuration?: number;
+  releaseMixDuration?: number;
   /** Local parent-space translation axes. Missing legacy fields mean both. */
   allowX?: boolean;
   allowY?: boolean;
@@ -79,6 +83,8 @@ export interface SpineInteractionProject {
   assetDirectory: string;
   /** Explicit authored entry; null intentionally selects the runtime intro. */
   entrySequence?: string | null;
+  /** Shared Talk animation crossfade for runtime dialogue and timeline previews. */
+  talkMixDuration?: number;
   interactions: SpineAuthoredInteraction[];
   timeline?: SpineTimeline;
   sequences?: Record<string, SpineTimeline>;
@@ -147,6 +153,9 @@ function normalizeAuthoredInteraction(value: unknown, index: number): SpineAutho
     returnEasing: interaction.returnEasing === "linear" || interaction.returnEasing === "ease-in-out"
       ? interaction.returnEasing
       : DEFAULT_INTERACTION_RETURN_EASING,
+    startMixDuration: normalizeAnimationMixDuration(interaction.startMixDuration),
+    followMixDuration: normalizeAnimationMixDuration(interaction.followMixDuration),
+    releaseMixDuration: normalizeAnimationMixDuration(interaction.releaseMixDuration),
     regions: (Array.isArray(interaction.regions) ? interaction.regions : [])
       .map((region, regionIndex) => normalizeInteractionRegion(region, regionIndex))
       .filter((region): region is SpineInteractionRegion => region !== null),
@@ -178,6 +187,7 @@ export function normalizeSpineInteractionProject(value: unknown, directory?: str
     ...(typeof project.name === "string" ? { name: project.name } : {}),
     assetDirectory,
     ...(project.entrySequence === null || typeof project.entrySequence === "string" ? { entrySequence: project.entrySequence } : {}),
+    talkMixDuration: normalizeAnimationMixDuration(project.talkMixDuration, DEFAULT_TALK_MIX_DURATION),
     interactions: project.interactions
       .map((interaction, index) => normalizeAuthoredInteraction(interaction, index))
       .filter((interaction): interaction is SpineAuthoredInteraction => interaction !== null),
@@ -202,22 +212,42 @@ export interface SpineInteractionProfile {
 }
 
 /** Short crossfades keep authored start/follow/release phases from hard-cutting. */
-export const INTERACTION_PHASE_MIX = 0.14;
+export const DEFAULT_INTERACTION_PHASE_MIX = 0.14;
+/** Backward-compatible alias retained for existing imports. */
+export const INTERACTION_PHASE_MIX = DEFAULT_INTERACTION_PHASE_MIX;
+export const DEFAULT_TALK_MIX_DURATION = 0.14;
+export const MAX_ANIMATION_MIX_DURATION = 2;
 
-export function setInteractionTrack(state: AnimationState, track: number, name: string, loop: boolean): TrackEntry | null {
+export function normalizeAnimationMixDuration(value: unknown, fallback = DEFAULT_INTERACTION_PHASE_MIX): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(MAX_ANIMATION_MIX_DURATION, value));
+}
+
+export function setInteractionTrack(state: AnimationState, track: number, name: string, loop: boolean, mixDuration = DEFAULT_INTERACTION_PHASE_MIX): TrackEntry | null {
   if (!name) return null;
+  const mix = normalizeAnimationMixDuration(mixDuration);
+  // Seed an empty overlay so the first authored phase can blend up from the
+  // underlying idle pose, not just mix when a previous overlay exists.
+  if (mix > 0 && !state.getCurrent(track)) {
+    const empty = state.setEmptyAnimation(track, mix);
+    // This empty animation has no timelines. Mark its no-op sample as applied
+    // so Spine will mix from it without applying the whole state and replaying
+    // events on unrelated tracks.
+    empty.trackLast = empty.trackTime;
+    empty.nextTrackLast = empty.trackTime;
+  }
   const entry = state.setAnimation(track, name, loop);
-  entry.mixDuration = INTERACTION_PHASE_MIX;
+  entry.mixDuration = mix;
   return entry;
 }
 
-export function clearInteractionTrack(state: AnimationState, track: number, smooth = true): void {
-  if (smooth && state.getCurrent(track)) state.setEmptyAnimation(track, INTERACTION_PHASE_MIX);
+export function clearInteractionTrack(state: AnimationState, track: number, smooth = true, mixDuration = DEFAULT_INTERACTION_PHASE_MIX): void {
+  if (smooth && state.getCurrent(track)) state.setEmptyAnimation(track, normalizeAnimationMixDuration(mixDuration));
   else state.clearTrack(track);
 }
 
-export function queueInteractionFadeOut(state: AnimationState, track: number): void {
-  state.addEmptyAnimation(track, INTERACTION_PHASE_MIX, 0);
+export function queueInteractionFadeOut(state: AnimationState, track: number, mixDuration = DEFAULT_INTERACTION_PHASE_MIX): void {
+  state.addEmptyAnimation(track, normalizeAnimationMixDuration(mixDuration), 0);
 }
 
 function exactAnimation(animations: string[], wanted: string): string | null {

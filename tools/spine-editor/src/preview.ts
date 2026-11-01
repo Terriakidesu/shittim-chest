@@ -111,12 +111,15 @@ export class InteractionPreview {
     if (phase === "releasing") beginInteractionMotionReturn(this.motion);
     const main = phase === "starting" ? item.startAnimation : phase === "holding" ? item.followAnimation : item.endAnimation;
     const face = phase === "starting" ? item.faceStartAnimation : phase === "holding" ? item.faceFollowAnimation : item.faceEndAnimation;
+    const mixDuration = phase === "starting" ? item.startMixDuration
+      : phase === "holding" ? item.followMixDuration
+        : item.releaseMixDuration;
     this.duration = 0;
     for (const [track, name] of [[1, main], [2, face]] as const) {
       if (name && state.data.skeletonData.findAnimation(name)) {
-        const entry = setInteractionTrack(state, track, name, phase === "holding");
+        const entry = setInteractionTrack(state, track, name, phase === "holding", mixDuration);
         this.duration = Math.max(this.duration, entry?.animation?.duration ?? 0);
-      } else clearInteractionTrack(state, track);
+      } else clearInteractionTrack(state, track, true, mixDuration);
     }
     if (phase === "releasing") this.duration = Math.max(this.duration, item.returnDuration);
   }

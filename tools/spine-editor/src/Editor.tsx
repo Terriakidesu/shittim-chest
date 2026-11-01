@@ -1005,6 +1005,7 @@ export function Editor() {
       if (!Number.isFinite(value)) return;
       if (field === "smoothing") value = Math.max(0.1, value);
       else if (field === "returnDuration") value = Math.min(2, Math.max(0.05, value));
+      else if (field === "startMixDuration" || field === "followMixDuration" || field === "releaseMixDuration") value = Math.min(2, Math.max(0, value));
       else if (field === "rotationMin") value = Math.min(0, Math.max(-180, value));
       else if (field === "rotationMax") value = Math.max(0, Math.min(180, value));
       else value = Math.max(0, value);
@@ -1498,6 +1499,13 @@ export function Editor() {
                   <span>{phase.body || "No body animation"}</span>
                   <small>{phase.face ? `Face · ${phase.face}` : "No face track"}{phase.loop ? " · loops" : ""}</small>
                 </article>)}
+              </div>
+              <div className="editor-subheading">Animation blending</div>
+              <p className="editor-muted">Crossfade body and face tracks at each phase transition. This is separate from the pointer return easing.</p>
+              <div className="editor-three-fields">
+                <label>Into press (s)<input aria-label="Blend into press in seconds" type="number" min="0" max="2" step="0.05" value={selectedInteraction.startMixDuration} onChange={(event) => updateInteraction("startMixDuration", Number(event.target.value))} /></label>
+                <label>Into hold (s)<input aria-label="Blend into hold in seconds" type="number" min="0" max="2" step="0.05" value={selectedInteraction.followMixDuration} onChange={(event) => updateInteraction("followMixDuration", Number(event.target.value))} /></label>
+                <label>Into release (s)<input aria-label="Blend into release in seconds" type="number" min="0" max="2" step="0.05" value={selectedInteraction.releaseMixDuration} onChange={(event) => updateInteraction("releaseMixDuration", Number(event.target.value))} /></label>
               </div>
               <label>On press<select value={selectedInteraction.startAnimation} onChange={(event) => updateInteraction("startAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
              <label>While held (loops)<select value={selectedInteraction.followAnimation} onChange={(event) => updateInteraction("followAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>

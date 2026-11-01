@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Animation, AnimationState, AnimationStateData, BoneData, Skeleton, SkeletonData } from "@esotericsoftware/spine-core";
-import { authoredRegions, findInteractionProfile, interactionPhaseAfterStart, interactionPressReady, INTERACTION_PHASE_MIX, normalizeSpineInteractionProject, profileFromProject, setInteractionTrack } from "./spineInteraction";
+import { authoredRegions, DEFAULT_TALK_MIX_DURATION, findInteractionProfile, interactionPhaseAfterStart, interactionPressReady, INTERACTION_PHASE_MIX, normalizeSpineInteractionProject, profileFromProject, setInteractionTrack } from "./spineInteraction";
 
 describe("Spine lobby interaction data", () => {
   test("pairs the game start, follow and release tracks", () => {
@@ -92,6 +92,32 @@ describe("Spine lobby interaction data", () => {
     const next = setInteractionTrack(state, 3, "follow", true)!;
     expect(next.mixDuration).toBe(INTERACTION_PHASE_MIX);
     expect(next.mixingFrom?.animation?.name).toBe("start");
+  });
+
+  test("uses a configurable mix duration and blends the first overlay up from idle", () => {
+    const data = new SkeletonData();
+    data.bones.push(new BoneData(0, "root", null));
+    data.animations.push(new Animation("start", [], 0.3));
+    const state = new AnimationState(new AnimationStateData(data));
+    const entry = setInteractionTrack(state, 3, "start", false, 0.42)!;
+    expect(entry.mixDuration).toBe(0.42);
+    expect(state.getCurrent(3)?.animation?.name).toBe("start");
+    expect(state.getCurrent(3)?.mixingFrom?.animation?.name).toBe("<empty>");
+  });
+
+  test("normalizes per-phase and Talk mix settings without changing legacy defaults", () => {
+    const legacy = normalizeSpineInteractionProject({ schemaVersion: 2, assetDirectory: "Airi_home", interactions: [{ id: "touch", name: "Touch", regions: [] }] });
+    expect(legacy?.talkMixDuration).toBe(DEFAULT_TALK_MIX_DURATION);
+    expect(legacy?.interactions[0]).toMatchObject({ startMixDuration: INTERACTION_PHASE_MIX, followMixDuration: INTERACTION_PHASE_MIX, releaseMixDuration: INTERACTION_PHASE_MIX });
+
+    const configured = normalizeSpineInteractionProject({
+      schemaVersion: 2,
+      assetDirectory: "Airi_home",
+      talkMixDuration: 0.8,
+      interactions: [{ id: "touch", name: "Touch", startMixDuration: 0.25, followMixDuration: 0, releaseMixDuration: 9, regions: [] }],
+    });
+    expect(configured).toMatchObject({ talkMixDuration: 0.8 });
+    expect(configured?.interactions[0]).toMatchObject({ startMixDuration: 0.25, followMixDuration: 0, releaseMixDuration: 2 });
   });
 
   test("uses authored trigger gates and phase transitions for both previews", () => {

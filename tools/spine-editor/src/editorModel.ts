@@ -1,6 +1,6 @@
 import type { SpineTimelineAnimationClip } from "../../../src/client/spine/spineTimeline";
 import type { SpineEditorBone } from "../../../src/client/spine/spineRuntime";
-import { DEFAULT_INTERACTION_RETURN_DURATION, DEFAULT_INTERACTION_RETURN_EASING, findInteractionProfile, type SpineInteractionReturnEasing } from "../../../src/client/spine/spineInteraction";
+import { DEFAULT_INTERACTION_PHASE_MIX, DEFAULT_INTERACTION_RETURN_DURATION, DEFAULT_INTERACTION_RETURN_EASING, DEFAULT_TALK_MIX_DURATION, findInteractionProfile, type SpineInteractionReturnEasing } from "../../../src/client/spine/spineInteraction";
 import { cheekControlNames } from "../../../src/client/spine/spinePinch";
 
 export const EDITOR_SCHEMA_VERSION = 2;
@@ -42,6 +42,9 @@ export interface EditorInteraction {
   smoothing: number;
   returnDuration: number;
   returnEasing: SpineInteractionReturnEasing;
+  startMixDuration: number;
+  followMixDuration: number;
+  releaseMixDuration: number;
   allowX: boolean;
   allowY: boolean;
   rotationEnabled: boolean;
@@ -125,6 +128,7 @@ export interface EditorTimeline {
 
 export interface EditorProject {
   sequences?: Record<string, EditorTimeline>;
+  talkMixDuration: number;
   schemaVersion: number;
   name: string;
   assetDirectory: string;
@@ -298,6 +302,9 @@ function interaction(
     smoothing: 8,
     returnDuration: DEFAULT_INTERACTION_RETURN_DURATION,
     returnEasing: DEFAULT_INTERACTION_RETURN_EASING,
+    startMixDuration: DEFAULT_INTERACTION_PHASE_MIX,
+    followMixDuration: DEFAULT_INTERACTION_PHASE_MIX,
+    releaseMixDuration: DEFAULT_INTERACTION_PHASE_MIX,
     allowX: true,
     allowY: true,
     rotationEnabled: false,
@@ -409,6 +416,7 @@ export function createProject(directory: string, animations: string[], bones: Sp
   if (interactions.length === 0) interactions.push(interaction("New interaction", "custom", animations, bones, 0));
   return {
     schemaVersion: EDITOR_SCHEMA_VERSION,
+    talkMixDuration: DEFAULT_TALK_MIX_DURATION,
     name: `${directory} interactions`,
     assetDirectory: directory,
     interactions,
@@ -626,6 +634,7 @@ export function normalizeProject(value: unknown, directory: string): EditorProje
     schemaVersion: EDITOR_SCHEMA_VERSION,
     name: typeof project.name === "string" ? project.name : `${directory} interactions`,
     assetDirectory: directory,
+    talkMixDuration: Math.min(2, finiteNumber(project.talkMixDuration, DEFAULT_TALK_MIX_DURATION, 0)),
     ...(project.entrySequence === null || typeof project.entrySequence === "string" ? { entrySequence: project.entrySequence } : {}),
     interactions,
     selectedInteractionId,
@@ -734,6 +743,9 @@ function normalizeInteraction(value: Partial<EditorInteraction>, index: number):
     smoothing: finiteNumber(value.smoothing, 8, 0.1),
     returnDuration: Math.min(2, finiteNumber(value.returnDuration, DEFAULT_INTERACTION_RETURN_DURATION, 0.05)),
     returnEasing: value.returnEasing === "linear" || value.returnEasing === "ease-in-out" ? value.returnEasing : DEFAULT_INTERACTION_RETURN_EASING,
+    startMixDuration: Math.min(2, finiteNumber(value.startMixDuration, DEFAULT_INTERACTION_PHASE_MIX, 0)),
+    followMixDuration: Math.min(2, finiteNumber(value.followMixDuration, DEFAULT_INTERACTION_PHASE_MIX, 0)),
+    releaseMixDuration: Math.min(2, finiteNumber(value.releaseMixDuration, DEFAULT_INTERACTION_PHASE_MIX, 0)),
     allowX: value.allowX !== false,
     allowY: value.allowY !== false,
     rotationEnabled: value.rotationEnabled === true,

@@ -78,6 +78,7 @@ test("authored talk sequences are ordered numerically for autoplay", () => {
 test("talk playback includes a saved layer that extends the nominal duration", () => {
   const timeline: SpineTimeline = { sequenceId: "talk-1", openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3, durationMode: "manual", duration: 4, loop: false, layers: [{ id: "layer", name: "Airi", role: "character", directory: "Airi_home", enabled: true, animation: "Talk_01_M", start: 0, end: 6, animationOffset: 0, loop: false, x: 0, y: 0, scale: 1, opacity: 1, order: 1 }], subtitles: [], audio: [], language: "en" };
   expect(timelinePlaybackDuration(timeline)).toBe(6);
+  expect(timelinePlaybackDuration(timeline, 0, undefined, 0.4)).toBe(6.4);
 });
 
 test("saved subtitle and audio endpoints keep a composition alive", () => {

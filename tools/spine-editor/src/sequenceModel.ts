@@ -210,6 +210,16 @@ export function talkSequenceId(animation: string): string {
   return number ? `talk-${Number(number)}` : "opening";
 }
 
+/** Return the next numbered Talk in playback order, optionally wrapping the playlist. */
+export function nextTalkSequenceId(sequenceIds: readonly string[], currentId: string, loop = false): string | null {
+  const ordered = [...new Set(sequenceIds.filter((id) => /^talk-\d+$/i.test(id)))]
+    .sort((a, b) => Number(a.match(/\d+$/)?.[0] ?? 0) - Number(b.match(/\d+$/)?.[0] ?? 0));
+  const index = ordered.indexOf(currentId);
+  if (index < 0 || ordered.length === 0) return null;
+  if (index + 1 < ordered.length) return ordered[index + 1]!;
+  return loop ? ordered[0]! : null;
+}
+
 export function switchSequence(project: EditorProject, id: string, animations: string[], directories: string[]): EditorProject {
   const previousId = project.timeline.sequenceId ?? "legacy";
   const sequences = { ...project.sequences };

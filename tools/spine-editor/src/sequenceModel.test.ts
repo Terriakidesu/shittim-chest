@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createProject, normalizeProject } from "./editorModel";
-import { animationClipEnd, animationEndForLayer, authoredTimelineEnd, deleteAnimationClipRipple, duplicateAnimationClipRipple, effectiveAnimationClips, extendTimelineDuration, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAnimationClipRipple, moveAudioClip, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
+import { animationClipEnd, animationEndForLayer, authoredTimelineEnd, deleteAnimationClipRipple, duplicateAnimationClipRipple, effectiveAnimationClips, extendTimelineDuration, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAnimationClipRipple, moveAudioClip, nextTalkSequenceId, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
 import type { SpineMeta } from "../../../src/client/spine/spineRuntime";
 
 test("talk sequences pair body and face and isolate subtitle clocks", () => {
@@ -16,6 +16,14 @@ test("talk sequences pair body and face and isolate subtitle clocks", () => {
   const restored = normalizeProject(JSON.parse(JSON.stringify(project)), "Airi_home")!;
   expect(restored.timeline.sequenceId).toBe("talk-1");
   expect(restored.sequences?.["talk-2"]?.layers[0]?.faceAnimation).toBe("Talk_02_A");
+});
+
+test("Talk autoplay advances numerically and can wrap the playlist", () => {
+  const talks = ["talk-10", "talk-2", "opening", "talk-1", "talk-2"];
+  expect(nextTalkSequenceId(talks, "talk-1")).toBe("talk-2");
+  expect(nextTalkSequenceId(talks, "talk-2")).toBe("talk-10");
+  expect(nextTalkSequenceId(talks, "talk-10")).toBeNull();
+  expect(nextTalkSequenceId(talks, "talk-10", true)).toBe("talk-1");
 });
 
 test("reselecting a talk sequence keeps its current imported edits", () => {

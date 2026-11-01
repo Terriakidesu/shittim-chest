@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { type SpineCameraPose, type SpineFiles, type SpineMeta } from "../../../src/client/spine/spineRuntime";
+import { DEFAULT_TALK_MIX_DURATION, normalizeAnimationMixDuration } from "../../../src/client/spine/spineInteraction";
 import {
   compositionDirectories,
   createTimelineLayer,
@@ -15,7 +16,7 @@ import {
 import type { DesktopAssetSource } from "./desktopSource";
 import { manifestReferenceCandidates } from "../../../src/client/spine/spineManifest";
 import { audioPlaybackDecision, clampAudioEnd, clampAudioStart, decodedAudioTiming } from "./audioModel";
-import { animationClipEnd, animationEndForLayer, authoredTimelineEnd, deleteAnimationClipRipple, duplicateAnimationClipRipple, effectiveAnimationClips, extendTimelineDuration, insertAnimationClipRipple, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAnimationClipRipple, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceId } from "./sequenceModel";
+import { animationClipEnd, animationEndForLayer, authoredTimelineEnd, deleteAnimationClipRipple, duplicateAnimationClipRipple, effectiveAnimationClips, extendTimelineDuration, insertAnimationClipRipple, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAnimationClipRipple, nextTalkSequenceId, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceId } from "./sequenceModel";
 import { advanceSpineTimeline, timelineActiveSubtitleTexts, timelineAudioPreloadsReady, timelineLayerAnimation, timelineMainAnimation, timelinePlaybackDuration, timelineSceneHidesCharacter, type SpineTimelineAudioPreloadState } from "../../../src/client/spine/spineTimeline";
 import { SpineTimelineLayerCanvas } from "../../../src/client/spine/SpineTimelineLayerCanvas";
 import { spineAudioPathCandidates } from "../../../src/client/spine/spineAudio";
@@ -234,6 +235,10 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [previewUntil, setPreviewUntil] = useState<number | null>(null);
+  const [talkAutoplayActive, setTalkAutoplayActive] = useState(false);
+  const [loopTalkList, setLoopTalkList] = useState(false);
+  const [pauseBetweenTalks, setPauseBetweenTalks] = useState(0.35);
+  const [pendingTalkSequence, setPendingTalkSequence] = useState<string | null>(null);
   const [metas, setMetas] = useState<Record<string, SpineMeta | null>>({});
   const [sharedCameraPose, setSharedCameraPose] = useState<SpineCameraPose | null>(null);
   const [files, setFiles] = useState<Record<string, SpineFiles | null>>({});
@@ -267,14 +272,20 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const sourceRef = useRef<DesktopAssetSource | null>(source);
   const directoryRef = useRef(directory);
   const subtitleSaveQueueRef = useRef(Promise.resolve());
+  const currentTimeRef = useRef(currentTime);
+  const talkAutoplayTimerRef = useRef<number | null>(null);
+  const onMutateRef = useRef(onMutate);
+  const sequenceContextRef = useRef({ animations: [] as string[], directories: [] as string[] });
   const saveSubtitleDocumentsRef = useRef<(getProject: () => EditorProject | null) => Promise<string[]>>(async () => []);
   const onRegisterSaveRef = useRef(onRegisterSave);
   const timelineKeydownRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
   const openedSubtitleRef = useRef("");
   const openedAudioRef = useRef("");
   projectRef.current = project;
+  currentTimeRef.current = currentTime;
   sourceRef.current = source;
   directoryRef.current = directory;
+  onMutateRef.current = onMutate;
   onRegisterSaveRef.current = onRegisterSave;
 
   function pauseAudioElement(id: string) {
@@ -356,7 +367,11 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const characterMeta = displayLayers.map((layer) => layer.role === "character" ? metas[layer.id] : null).find(Boolean);
   const characterLayer = displayLayers.find((layer) => layer.role === "character");
   const animations = characterMeta?.animations ?? [];
-  const sequenceIds = [...new Set(["opening", ...animations.filter((name) => /talk[_ -]?\d+/i.test(name)).map(talkSequenceId), ...Object.keys(project?.sequences ?? {}).filter((id) => id !== "legacy")])];
+  const sequenceIds = useMemo(() => [...new Set(["opening", ...animations.filter((name) => /talk[_ -]?\d+/i.test(name)).map(talkSequenceId), ...Object.keys(project?.sequences ?? {}).filter((id) => id !== "legacy")])], [animations, project?.sequences]);
+  const talkSequenceIds = useMemo(() => sequenceIds.filter((id) => /^talk-\d+$/i.test(id))
+    .sort((a, b) => Number(a.match(/\d+$/)?.[0] ?? 0) - Number(b.match(/\d+$/)?.[0] ?? 0)), [sequenceIds]);
+  sequenceContextRef.current = { animations, directories };
+  const isTalkSequence = /^talk-\d+$/i.test(timeline?.sequenceId ?? "");
 
   function layerAnimation(layer: EditorTimelineLayer): string {
     const meta = metas[layer.id];
@@ -389,12 +404,14 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const mainAnimation = mainAnimationState?.animation ?? "";
   const mainAnimationTime = mainAnimationState?.time;
   const mainAnimationLoop = mainAnimationState?.loop;
+  const talkMixDuration = normalizeAnimationMixDuration(project?.talkMixDuration, DEFAULT_TALK_MIX_DURATION);
   const openingAutoDuration = timeline?.sequenceId === "opening"
     ? openingTimelineDuration(timeline, introDuration, layerEnd)
     : 0;
   const duration = timeline
-    ? timelinePlaybackDuration(timeline, timeline.sequenceId === "opening" && !explicitAnimationClips ? openingIntroStart + (openingMode === "skip" ? 0 : introDuration) : 0, layerEnd)
+    ? timelinePlaybackDuration(timeline, timeline.sequenceId === "opening" && !explicitAnimationClips ? openingIntroStart + (openingMode === "skip" ? 0 : introDuration) : 0, layerEnd, talkMixDuration)
     : MIN_TIMELINE_DURATION;
+  const talkBlendOutStart = isTalkSequence ? duration - talkMixDuration : undefined;
   const trackWidth = Math.max(640, duration * TIMELINE_SCALE * zoom + 48);
   const openingCharacterClips = timeline?.sequenceId === "opening" && characterLayer ? layerAnimationClips(characterLayer) : [];
   const characterHidden = timeline ? timelineSceneHidesCharacter(timeline, currentTime) : false;
@@ -449,8 +466,49 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   }
 
   function chooseSequence(id: string) {
+    if (talkAutoplayTimerRef.current !== null) window.clearTimeout(talkAutoplayTimerRef.current);
+    talkAutoplayTimerRef.current = null;
+    setPendingTalkSequence(null);
+    setTalkAutoplayActive(false);
     onMutate((current) => switchSequence(current, id, animations, directories));
+    currentTimeRef.current = 0;
     setCurrentTime(0); setPlaying(false); setPreviewUntil(null); setSelectedClips([]); setSelectedAudioId(null); setInspector("sequence");
+  }
+
+  function startTalkAutoplay() {
+    const selected = talkSequenceIds.includes(timeline?.sequenceId ?? "") ? timeline?.sequenceId : talkSequenceIds[0];
+    if (!selected) return;
+    if (talkAutoplayTimerRef.current !== null) window.clearTimeout(talkAutoplayTimerRef.current);
+    talkAutoplayTimerRef.current = null;
+    setPendingTalkSequence(null);
+    setTalkAutoplayActive(true);
+    setPreviewUntil(null);
+    currentTimeRef.current = 0;
+    setCurrentTime(0);
+    if (timeline?.sequenceId !== selected) onMutate((current) => switchSequence(current, selected, animations, directories));
+    setPlaying(true);
+  }
+
+  function replayTalkSequence() {
+    if (!isTalkSequence) return;
+    if (talkAutoplayTimerRef.current !== null) window.clearTimeout(talkAutoplayTimerRef.current);
+    talkAutoplayTimerRef.current = null;
+    setPendingTalkSequence(null);
+    setPreviewUntil(null);
+    currentTimeRef.current = 0;
+    setCurrentTime(0);
+    setPlaying(true);
+  }
+
+  function stopTalkAutoplay() {
+    if (talkAutoplayTimerRef.current !== null) window.clearTimeout(talkAutoplayTimerRef.current);
+    talkAutoplayTimerRef.current = null;
+    setPendingTalkSequence(null);
+    setTalkAutoplayActive(false);
+    setPreviewUntil(null);
+    setPlaying(false);
+    currentTimeRef.current = 0;
+    setCurrentTime(0);
   }
 
   function previewOpeningClip(clip: EditorAnimationClip) {
@@ -665,22 +723,46 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     const tick = (now: number) => {
       const delta = Math.min(0.1, Math.max(0, (now - previous) / 1000));
       previous = now;
-      setCurrentTime((value) => {
-        const stopAt = previewUntil === null ? duration : Math.min(duration, previewUntil);
-        const advanced = advanceSpineTimeline(value, delta, speed, stopAt, previewUntil === null && Boolean(timeline?.loop));
-        if (advanced.finished && previewUntil !== null) {
-          setPreviewUntil(null);
-          setPlaying(false);
-          return stopAt;
+      const stopAt = previewUntil === null ? duration : Math.min(duration, previewUntil);
+      const advanced = advanceSpineTimeline(currentTimeRef.current, delta, speed, stopAt, previewUntil === null && Boolean(timeline?.loop) && !talkAutoplayActive);
+      currentTimeRef.current = advanced.time;
+      setCurrentTime(advanced.time);
+      if (advanced.finished) {
+        setPlaying(false);
+        if (previewUntil !== null) setPreviewUntil(null);
+        else if (talkAutoplayActive && isTalkSequence && timeline?.sequenceId) {
+          const next = nextTalkSequenceId(talkSequenceIds, timeline.sequenceId, loopTalkList);
+          if (next) setPendingTalkSequence(next);
+          else setTalkAutoplayActive(false);
         }
-        if (advanced.finished) setPlaying(false);
-        return advanced.time;
-      });
-      frame = requestAnimationFrame(tick);
+      } else frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [audioPreloadsReady, duration, playing, previewUntil, speed, timeline?.audio, timeline?.loop]);
+  }, [audioPreloadsReady, duration, isTalkSequence, loopTalkList, playing, previewUntil, speed, talkAutoplayActive, talkSequenceIds, timeline?.audio, timeline?.loop, timeline?.sequenceId]);
+
+  useEffect(() => {
+    if (!pendingTalkSequence || !talkAutoplayActive) return;
+    const timer = window.setTimeout(() => {
+      talkAutoplayTimerRef.current = null;
+      const context = sequenceContextRef.current;
+      onMutateRef.current((current) => switchSequence(current, pendingTalkSequence, context.animations, context.directories));
+      currentTimeRef.current = 0;
+      setCurrentTime(0);
+      setPreviewUntil(null);
+      setPendingTalkSequence(null);
+      setPlaying(true);
+    }, Math.max(0, pauseBetweenTalks * 1000));
+    talkAutoplayTimerRef.current = timer;
+    return () => {
+      window.clearTimeout(timer);
+      if (talkAutoplayTimerRef.current === timer) talkAutoplayTimerRef.current = null;
+    };
+  }, [pauseBetweenTalks, pendingTalkSequence, talkAutoplayActive]);
+
+  useEffect(() => () => {
+    if (talkAutoplayTimerRef.current !== null) window.clearTimeout(talkAutoplayTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!timeline) return;
@@ -758,6 +840,11 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   function updateTimeline(mutator: (timeline: EditorProject["timeline"]) => EditorProject["timeline"], history = true) {
     const callback = history ? onMutate : onLive;
     callback((current) => ({ ...current, timeline: mutator(current.timeline) }));
+  }
+
+  function updateTalkMixDuration(value: number) {
+    if (!Number.isFinite(value)) return;
+    onMutate((current) => ({ ...current, talkMixDuration: Math.max(0, Math.min(2, value)) }));
   }
 
   function updateLayer(id: string, patch: Partial<EditorTimelineLayer>, history = true) {
@@ -1495,6 +1582,11 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       <aside className="editor-panel sequence-browser">
         <div className="editor-section">
           <div className="editor-section-title"><strong>Sequences</strong><span>{sequenceIds.length}</span></div>
+          <div className="timeline-talk-playlist-actions">
+            {talkAutoplayActive
+              ? <button className="editor-preview-button danger" type="button" onClick={stopTalkAutoplay}>Stop Talk autoplay</button>
+              : <button className="editor-button" type="button" disabled={!talkSequenceIds.length} onClick={startTalkAutoplay}><IconPlay /> Play Talk list</button>}
+          </div>
           <div className="sequence-list">
             {sequenceIds.map((id) => <button key={id} className={`sequence-button${timeline.sequenceId === id ? " active" : ""}`} onClick={() => chooseSequence(id)}><strong>{id === "opening" ? "Opening" : `Talk ${id.replace("talk-", "").padStart(2, "0")}`}</strong></button>)}
             {(!timeline.sequenceId || timeline.sequenceId === "legacy") && <button className="sequence-button active"><strong>Recovered composition</strong></button>}
@@ -1524,7 +1616,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
              onWheel={zoomStageAtCursor}
              >
                <div className="timeline-stage-content" style={{ transform: `translate3d(${stageView.x}px, ${stageView.y}px, 0) scale(${stageView.scale})` }}>
-                   {displayLayers.map((layer) => <SpineTimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} mainAnimation={mainAnimation} mainAnimationTime={mainAnimationTime} mainAnimationLoop={mainAnimationLoop} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} characterHidden={characterHidden} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
+                    {displayLayers.map((layer) => <SpineTimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} mainAnimation={mainAnimation} mainAnimationTime={mainAnimationTime} mainAnimationLoop={mainAnimationLoop} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} talkMixDuration={talkMixDuration} talkBlendOutStart={talkBlendOutStart} characterHidden={characterHidden} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
                   {timeline.audio.map((clip) => <audio key={clip.id} ref={(element) => { audioElementsRef.current[clip.id] = element; }} src={audioUrls[clip.id]} preload="auto" onLoadedMetadata={(event) => applyDecodedAudioDuration(clip.id, event.currentTarget.duration)} onCanPlay={() => setAudioPreloadState(clip.id, "ready")} onError={() => { setMissingAudio((value) => value.includes(clip.path) ? value : [...value, clip.path]); setAudioPreloadState(clip.id, "missing"); }} />)}
                   {!displayLayers.length && <div className="timeline-empty"><strong>No layers</strong><span>Add a Spine set from the Add menu.</span></div>}
                </div>
@@ -1543,8 +1635,12 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
          </div>
 
          <div className="timeline-transport">
-             <button className="editor-icon-button" aria-label={playing ? "Pause sequence" : "Play sequence"} onClick={() => { setPreviewUntil(null); setPlaying((value) => !value); }}>{playing ? <IconPause /> : <IconPlay />}</button>
-             <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(0); setPlaying(false); }}><IconSkipBack /> Start</button>
+              <button className="editor-icon-button" aria-label={playing ? "Pause sequence" : "Play sequence"} onClick={() => { setPreviewUntil(null); setPlaying((value) => !value); }}>{playing ? <IconPause /> : <IconPlay />}</button>
+              <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(0); setPlaying(false); }}><IconSkipBack /> Start</button>
+              {isTalkSequence && <>
+                <button className="editor-button" onClick={replayTalkSequence} title="Restart this Talk from the beginning"><IconSkipBack /> Replay Talk</button>
+                <button className="editor-preview-button danger" onClick={stopTalkAutoplay} title="Stop playback and cancel Talk autoplay">Stop</button>
+              </>}
              {timeline.sequenceId === "opening" && <><button className="editor-button" onClick={() => stepOpeningClip(-1)} disabled={!openingCharacterClips.length}><IconChevronLeft /> Clip</button><button className="editor-button" onClick={() => stepOpeningClip(1)} disabled={!openingCharacterClips.length}>Clip <IconChevronRight /></button></>}
              <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(duration); setPlaying(false); }}>End <IconSkipForward /></button>
           <label className="editor-speed">Speed <input type="number" min="0.1" max="3" step="0.1" value={speed} onChange={(event) => setSpeed(Math.max(0.1, Number(event.target.value) || 1))} /></label>
@@ -1617,9 +1713,18 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       <aside className="editor-panel timeline-inspector">
          {inspector === "sequence" && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Sequence settings</strong><span>{seconds(duration)}</span></div>
-            <label>{timeline.sequenceId === "opening" ? "Total duration (s)" : "Length (s)"}<input type="number" min="1" step="0.1" value={Number(duration.toFixed(3))} disabled={timeline.sequenceId === "opening" && timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: value.sequenceId === "opening" ? "manual" : value.durationMode, duration: Math.max(1, Number(event.target.value) || 1) }))} /></label>
-           <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop sequence</span></label>
-            {timeline.sequenceId === "opening" && <div className="opening-flow-editor">
+           <label>{timeline.sequenceId === "opening" ? "Total duration (s)" : isTalkSequence ? "Total Talk playback (s)" : "Length (s)"}<input type="number" min="1" step="0.1" value={Number(duration.toFixed(3))} disabled={timeline.sequenceId === "opening" && timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: value.sequenceId === "opening" ? "manual" : value.durationMode, duration: Math.max(1, (Number(event.target.value) || 1) - (isTalkSequence ? talkMixDuration : 0)) }))} /></label>
+            <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop sequence</span></label>
+            {isTalkSequence && <>
+              <div className="editor-subheading">Talk playback</div>
+              <label><span className="timeline-inline-check"><input type="checkbox" checked={talkAutoplayActive} onChange={(event) => event.target.checked ? startTalkAutoplay() : stopTalkAutoplay()} /> Autoplay numbered Talks</span><small className="editor-field-hint">Waits for the animation, enabled voice clips, and subtitles to finish before advancing.</small></label>
+              <div className="editor-two-fields">
+                <label>Pause between Talks (s)<input type="number" min="0" max="10" step="0.1" value={pauseBetweenTalks} onChange={(event) => setPauseBetweenTalks(Math.max(0, Math.min(10, Number(event.target.value) || 0)))} /></label>
+                <label><span className="timeline-inline-check"><input type="checkbox" checked={loopTalkList} onChange={(event) => setLoopTalkList(event.target.checked)} /> Loop Talk list</span></label>
+              </div>
+              <label>Talk blend in / out (s)<input aria-label="Talk animation blend duration in seconds" type="number" min="0" max="2" step="0.05" value={project?.talkMixDuration ?? DEFAULT_TALK_MIX_DURATION} onChange={(event) => updateTalkMixDuration(Number(event.target.value))} /><small className="editor-field-hint">Shared by runtime Talk playback and the timeline preview.</small></label>
+            </>}
+             {timeline.sequenceId === "opening" && <div className="opening-flow-editor">
               <div className="editor-subheading">Animation clips</div>
               <p className="editor-muted">Each Spine asset keeps one loaded skeleton. Add clips to its track, then drag to reorder; later clips ripple with it.</p>
               <div className="timeline-batch-actions">

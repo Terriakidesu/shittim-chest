@@ -22,6 +22,9 @@ test("authored talks sample both moving body and face while preserving interacti
   renderer.sampleEditorAnimation("Talk_01_M", "Talk_01_A", 0.5, false, true, true);
   expect(skeleton.bones[0]!.x).toBeCloseTo(5);
   expect(skeleton.bones[1]!.y).toBeCloseTo(10);
+  renderer.sampleEditorAnimation("Talk_01_M", "Talk_01_A", 0.5, false, true, true, 0.5, 0.25);
+  expect(state.getCurrent(0)?.alpha).toBe(0.5);
+  expect(state.getCurrent(2)?.alpha).toBe(0.25);
   renderer.sampleEditorAnimation("Talk_01_M", "Talk_01_A", 1.5, false, true, true);
   expect(skeleton.bones[0]!.x).toBeCloseTo(15);
   expect(skeleton.bones[1]!.y).toBeCloseTo(30);
@@ -100,6 +103,18 @@ describe("Spine restart playback", () => {
     renderer.finishInteractionState();
     expect(renderer.interactionState).toBe("talk");
     renderer.setTalkAudioPending(false);
+    expect(renderer.interactionState).toBe("talk");
+    state.update(0.1);
+    state.apply(renderer.bundle.skeleton);
+    renderer.finishInteractionState();
+    expect(renderer.interactionState).toBe("talk");
+    state.update(0.1);
+    state.apply(renderer.bundle.skeleton);
+    renderer.finishInteractionState();
+    expect(renderer.interactionState).toBe("talk");
+    state.update(0.1);
+    state.apply(renderer.bundle.skeleton);
+    renderer.finishInteractionState();
     expect(renderer.interactionState).toBe("idle");
     expect(renderer.talkAudioPending).toBe(false);
   });
