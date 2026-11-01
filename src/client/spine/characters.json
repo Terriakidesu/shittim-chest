@@ -2122,6 +2122,12 @@
           "assetId": "CH0060",
           "devName": "Tsurugi_Swimsuit"
         }
+      ],
+      "extras": [
+        {
+          "type": "background",
+          "directory": "CH0060_home_background"
+        }
       ]
     },
     "Ui": {
@@ -2239,13 +2245,12 @@
           "directory": "CH0284_home",
           "assetId": "CH0284",
           "devName": "CH0284"
-        }
-      ],
-      "extras": [
+        },
         {
-          "type": "scene",
+          "variant": "Sportswear",
           "directory": "CH0184_00",
-          "assetId": "CH0184"
+          "assetId": "CH0184",
+          "devName": "CH0184"
         }
       ]
     },
