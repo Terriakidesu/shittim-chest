@@ -364,6 +364,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const selectedAnimation = selectedClips.find((item) => item.kind === "animation");
   const selectedAnimationClip = selectedAnimation ? findAnimationClip(selectedAnimation.id) : null;
   const layerDirectoriesKey = displayLayers.map((layer) => layer.directory).join("|");
+  const layerAssetPathsKey = JSON.stringify(displayLayers.map((layer) => [layer.directory, project?.timeline.assetPaths?.[layer.directory] ?? null]));
   const characterMeta = displayLayers.map((layer) => layer.role === "character" ? metas[layer.id] : null).find(Boolean);
   const characterLayer = displayLayers.find((layer) => layer.role === "character");
   const animations = characterMeta?.animations ?? [];
@@ -559,7 +560,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       if (!cancelled) setFiles(Object.fromEntries(entries));
     });
     return () => { cancelled = true; };
-  }, [layerDirectoriesKey, onError, project?.timeline.assetPaths, source]);
+  }, [layerAssetPathsKey, layerDirectoriesKey, onError, source]);
 
   useEffect(() => {
     const clips = timeline?.audio ?? [];
