@@ -23,6 +23,7 @@ import {
   sourceFromDirectory,
   sourceFromInput,
   indexedAssets,
+  readCharacterIndex,
   type AssetSource,
   type CharacterIndex,
   type IndexedAsset,
@@ -48,8 +49,7 @@ import {
 import { SpineCompositionViewport, type SpineCompositionViewportHandle } from "./spine/SpineCompositionViewport";
 import { timelineForSequence, timelinePlaybackDuration, timelineSequenceIds, timelineTalkSequenceIds } from "./spine/spineTimeline";
 
-const characterIndex = characterIndexJson as CharacterIndex;
-const characterNames = Object.keys(characterIndex.characters).sort((a, b) => a.localeCompare(b));
+const bundledCharacterIndex = characterIndexJson as CharacterIndex;
 
 function extraLabel(type: string): string {
   const key: LangKey | null = type === "alternate-home"
@@ -309,6 +309,8 @@ function loadingLabel(progress: SpineLoadProgress | null, folderLoading: boolean
 
 export function Spine() {
   const language = useLanguage();
+  const [characterIndex, setCharacterIndex] = useState<CharacterIndex>(bundledCharacterIndex);
+  const characterNames = useMemo(() => Object.keys(characterIndex.characters).sort((a, b) => a.localeCompare(b)), [characterIndex]);
   const firstCharacter = characterNames[0] ?? "";
   const [selectedCharacter, setSelectedCharacter] = useState(firstCharacter);
   const [selectedDirectory, setSelectedDirectory] = useState(characterIndex.characters[firstCharacter]?.variants[0]?.directory ?? "");
@@ -395,6 +397,30 @@ export function Spine() {
   useEffect(() => {
     inputRef.current?.setAttribute("webkitdirectory", "");
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    if (!source) {
+      setCharacterIndex(bundledCharacterIndex);
+      return () => { live = false; };
+    }
+    void readCharacterIndex(source, bundledCharacterIndex).then((index) => {
+      if (live) setCharacterIndex(index);
+    });
+    return () => { live = false; };
+  }, [source]);
+
+  useEffect(() => {
+    if (!characterIndex.characters[selectedCharacter]) {
+      const nextCharacter = characterNames[0] ?? "";
+      setSelectedCharacter(nextCharacter);
+      setSelectedDirectory(characterIndex.characters[nextCharacter]?.variants[0]?.directory ?? "");
+      return;
+    }
+    const variants = indexedAssets(characterIndex.characters[selectedCharacter]);
+    if (variants.some((variant) => variant.directory === selectedDirectory)) return;
+    setSelectedDirectory(variants[0]?.directory ?? "");
+  }, [characterIndex, characterNames, selectedCharacter, selectedDirectory]);
 
   useEffect(() => {
     let live = true;
@@ -1296,6 +1322,15 @@ export function Spine() {
       <small className="spine-source-local">{t("spine.source.localOnly")}</small>
       <div className="spine-source-action">
         <button className="btn ghost" type="button" onClick={chooseFolder}><IconFolder /><span>{t(source ? "spine.source.change" : "spine.source.choose")}</span></button>
+        <details className="spine-source-help">
+          <summary aria-label={t("spine.source.helpAria")} title={t("spine.source.helpAria")}>?</summary>
+          <div className="spine-source-help-panel">
+            <strong>{t("spine.source.helpTitle")}</strong>
+            <p>{t("spine.source.helpBody")}</p>
+            <pre aria-label={t("spine.source.helpExampleAria")}>{`asset-root/\n└─ lobbies/\n   └─ <set>/\n      ├─ manifest.json\n      └─ spine/\n         ├─ <name>.atlas\n         ├─ <name>.skel\n         └─ <page>.png`}</pre>
+            <p>{t("spine.source.helpFormat")}</p>
+          </div>
+        </details>
         <input ref={inputRef} type="file" multiple hidden onChange={onInputChange} />
       </div>
     </section>

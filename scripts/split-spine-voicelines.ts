@@ -76,8 +76,13 @@ interface MarkerSet {
 }
 
 const positionalArguments = process.argv.slice(2).filter((argument) => !argument.startsWith("--"));
-const root = resolve(positionalArguments[0] ?? "D:\\Misc\\ba-spine");
-const extractedRoot = resolve(positionalArguments[1] ?? "D:\\Misc\\BA-JP-extractor\\extracted\\Spines\\Memorial Lobby");
+const rootArgument = positionalArguments[0] ?? process.env.SPINE_ASSET_ROOT;
+if (!rootArgument) {
+  console.error("Usage: bun run scripts/split-spine-voicelines.ts <asset-root> [extracted-spines-root]");
+  process.exit(1);
+}
+const root = resolve(rootArgument);
+const extractedRoot = resolve(positionalArguments[1] ?? process.env.SPINE_EXTRACTED_ROOT ?? join(root, "extracted/Spines/Memorial Lobby"));
 const voiceRoot = join(root, "audios", "voicelines");
 const legacyPath = join(voiceRoot, "voicelines.json");
 const catalogPath = join(voiceRoot, "index.json");

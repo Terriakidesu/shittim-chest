@@ -366,9 +366,18 @@ a { color: var(--cyan); }
 .spine-source-copy strong { font-size: 11px; }
 .spine-source-copy span:not(.spine-source-icon) { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .spine-source-local { color: var(--muted); font-size: 9px; line-height: 1.4; }
-.spine-source-action { flex: none; }
+.spine-source-action { position: relative; display: flex; align-items: center; gap: 6px; flex: none; }
 .spine-source-action .btn { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 5px 10px; font-size: 10px; border-radius: 5px; transform: none; }
 .spine-source-action svg { width: 14px; height: 14px; }
+.spine-source-help { position: relative; flex: none; }
+.spine-source-help > summary { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); background: var(--surface); font-size: 14px; font-weight: 800; cursor: pointer; list-style: none; }
+.spine-source-help > summary::-webkit-details-marker { display: none; }
+.spine-source-help > summary:hover, .spine-source-help[open] > summary { border-color: var(--cyan); color: var(--cyan); }
+.spine-source-help > summary:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.spine-source-help-panel { position: absolute; z-index: 50; top: calc(100% + 8px); right: 0; width: min(520px, calc(100vw - 48px)); max-height: min(70vh, 540px); overflow: auto; padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); box-shadow: 0 12px 34px #0004; color: var(--text); }
+.spine-source-help-panel strong { font-size: 12px; }
+.spine-source-help-panel p { margin: 8px 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.spine-source-help-panel pre { margin: 8px 0; padding: 10px; overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-alt); color: var(--text); font: 10px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .spine-alert { margin-top: 11px; }
 .spine-layout { display: grid; grid-template-columns: 218px minmax(0, 1fr); gap: 12px; align-items: start; margin-top: 12px; }
 .spine-layout.spine-sidebar-hidden { grid-template-columns: minmax(0, 1fr); }

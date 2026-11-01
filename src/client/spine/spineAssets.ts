@@ -44,6 +44,62 @@ export interface CharacterIndex {
   characters: Record<string, CharacterEntry>;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function parseCharacterIndex(value: unknown): CharacterIndex | null {
+  const root = record(value);
+  const rawCharacters = record(root?.characters);
+  if (root?.schemaVersion !== 1 || !rawCharacters) return null;
+
+  const characters: Record<string, CharacterEntry> = {};
+  for (const [name, value] of Object.entries(rawCharacters)) {
+    const rawEntry = record(value);
+    if (!rawEntry || !Array.isArray(rawEntry.variants)) continue;
+    const variants = rawEntry.variants.flatMap((value): CharacterVariant[] => {
+      const item = record(value);
+      if (typeof item?.variant !== "string" || typeof item.directory !== "string") return [];
+      return [{
+        variant: item.variant,
+        directory: item.directory,
+        ...(typeof item.assetId === "string" ? { assetId: item.assetId } : {}),
+        ...(typeof item.devName === "string" ? { devName: item.devName } : {}),
+      }];
+    });
+    if (!variants.length) continue;
+    const extras = Array.isArray(rawEntry.extras)
+      ? rawEntry.extras.flatMap((value): CharacterExtra[] => {
+          const item = record(value);
+          if (typeof item?.type !== "string" || typeof item.directory !== "string") return [];
+          return [{
+            type: item.type,
+            directory: item.directory,
+            ...(typeof item.assetId === "string" ? { assetId: item.assetId } : {}),
+            ...(typeof item.devName === "string" ? { devName: item.devName } : {}),
+          }];
+        })
+      : [];
+    characters[name] = { variants, ...(extras.length ? { extras } : {}) };
+  }
+  return Object.keys(characters).length ? { schemaVersion: 1, characters } : null;
+}
+
+/** Prefer a valid selected-root catalog, while never carrying its private metadata into the viewer. */
+export async function readCharacterIndex(source: AssetSource, fallback: CharacterIndex): Promise<CharacterIndex> {
+  for (const path of ["characters.json", "catalog.json"]) {
+    try {
+      const file = await source.getFile(path);
+      if (!file) continue;
+      const index = parseCharacterIndex(JSON.parse(await file.text()) as unknown);
+      if (index) return index;
+    } catch {
+      // A missing or malformed local catalog falls back to the next file or the bundled index.
+    }
+  }
+  return fallback;
+}
+
 export interface AssetSource {
   getSetFiles: (directory: string) => Promise<SpineFiles>;
   /** Resolve a manifest-declared root-relative Spine set path without inferring from directory names. */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { indexedAssets, sourceFromDirectory, sourceFromInput } from "./spineAssets";
+import { indexedAssets, readCharacterIndex, sourceFromDirectory, sourceFromInput } from "./spineAssets";
 
 type MockEntry = FileSystemFileHandle | MockDirectory;
 
@@ -63,6 +63,50 @@ describe("Spine local asset sources", () => {
       { variant: "alternate-home", directory: "Airi0_home", extraType: "alternate-home" },
       { variant: "background", directory: "Airi_bg", assetId: "BG001", extraType: "background" },
     ]);
+  });
+
+  test("reads a valid selected-root catalog and omits private root metadata", async () => {
+    const localIndex = mockFile("characters.json", JSON.stringify({
+      schemaVersion: 1,
+      source: "private local metadata",
+      characters: {
+        Aru: {
+          variants: [{ variant: "Base", directory: "Aru_home", assetId: "CH0001", devName: "Aru_default" }],
+          extras: [{ type: "scene", directory: "Aru_scene" }],
+        },
+      },
+    }));
+    const source = sourceFromDirectory(mockDirectory("selected-assets", [localIndex]));
+    const fallback = { schemaVersion: 1, characters: { Hina: { variants: [{ variant: "Base", directory: "Hina_home" }] } } };
+
+    const index = await readCharacterIndex(source, fallback);
+
+    expect(index).toEqual({
+      schemaVersion: 1,
+      characters: {
+        Aru: {
+          variants: [{ variant: "Base", directory: "Aru_home", assetId: "CH0001", devName: "Aru_default" }],
+          extras: [{ type: "scene", directory: "Aru_scene" }],
+        },
+      },
+    });
+    expect(JSON.stringify(index)).not.toContain("private local metadata");
+  });
+
+  test("falls through a malformed characters file to the selected-root catalog", async () => {
+    const source = sourceFromDirectory(mockDirectory("selected-assets", [
+      mockFile("characters.json", "not valid json"),
+      mockFile("catalog.json", JSON.stringify({
+        schemaVersion: 1,
+        characters: { Airi: { variants: [{ variant: "Base", directory: "Airi_home" }] } },
+      })),
+    ]));
+    const fallback = { schemaVersion: 1, characters: { Hina: { variants: [{ variant: "Base", directory: "Hina_home" }] } } };
+
+    expect(await readCharacterIndex(source, fallback)).toEqual({
+      schemaVersion: 1,
+      characters: { Airi: { variants: [{ variant: "Base", directory: "Airi_home" }] } },
+    });
   });
 
   test("resolves lobby sets and voice files relative to a selected asset root", async () => {
