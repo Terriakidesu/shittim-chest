@@ -232,7 +232,8 @@ export function switchSequence(project: EditorProject, id: string, animations: s
     const animation = id === "opening" ? "" : main ?? animations.find((name) => talkSequenceId(name) === id) ?? `Talk_${number.padStart(2, "0")}_M`;
     next = {
       ...structuredClone(project.timeline), sequenceId: id, duration: id === "opening" ? 12 : 1, loop: false,
-      openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3, durationMode: id === "opening" ? "auto" : "manual",
+      openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3,
+      durationMode: id === "opening" || /^talk-\d+$/i.test(id) ? "auto" : "manual",
       layersInitialized: false,
       subtitles: [], audio: [], selectedCueId: null,
       layers: project.timeline.layers.map((layer) => ({ ...layer, start: 0, end: 12, animation: layer.role === "character" ? animation : "", faceAnimation: layer.role === "character" ? face ?? "" : "", loop: id === "opening" })),

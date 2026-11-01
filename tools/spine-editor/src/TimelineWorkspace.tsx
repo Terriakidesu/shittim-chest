@@ -382,10 +382,14 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   }
 
   function layerEnd(layer: EditorTimelineLayer): number {
-    const clips = layerAnimationClips(layer);
-    if (clips.length > 0) return Math.max(0, ...clips.map((clip) => animationClipEnd(clip, animationDurations[`${layer.id}:${clip.animation}`] ?? 0)));
-    const animationDuration = animationDurations[`${layer.id}:${layerAnimation(layer)}`] ?? 0;
+    if (!layer.enabled) return 0;
     const talkCharacter = timeline?.sequenceId?.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
+    const playbackLayer = talkCharacter ? { ...layer, loop: false } : layer;
+    const clips = layerAnimationClips(playbackLayer);
+    const enabledClips = clips.filter((clip) => clip.enabled !== false);
+    if (enabledClips.length > 0) return Math.max(0, ...enabledClips.map((clip) => animationClipEnd(clip, animationDurations[`${layer.id}:${clip.animation}`] ?? 0)));
+    if (Array.isArray(layer.animationClips)) return 0;
+    const animationDuration = animationDurations[`${layer.id}:${layerAnimation(layer)}`] ?? 0;
     return animationEndForLayer(talkCharacter ? { ...layer, loop: false } : layer, animationDuration);
   }
 
@@ -412,6 +416,9 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const duration = timeline
     ? timelinePlaybackDuration(timeline, timeline.sequenceId === "opening" && !explicitAnimationClips ? openingIntroStart + (openingMode === "skip" ? 0 : introDuration) : 0, layerEnd, talkMixDuration)
     : MIN_TIMELINE_DURATION;
+  const autoTalkDuration = timeline && isTalkSequence
+    ? timelinePlaybackDuration({ ...timeline, durationMode: "auto" }, 0, layerEnd, talkMixDuration)
+    : 0;
   const talkBlendOutStart = isTalkSequence ? duration - talkMixDuration : undefined;
   const trackWidth = Math.max(640, duration * TIMELINE_SCALE * zoom + 48);
   const openingCharacterClips = timeline?.sequenceId === "opening" && characterLayer ? layerAnimationClips(characterLayer) : [];
@@ -422,6 +429,13 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     if (Math.abs(timeline.duration - openingAutoDuration) < 0.01) return;
     updateTimeline((value) => ({ ...value, duration: openingAutoDuration }), false);
   }, [characterMeta, duration, openingAutoDuration, introAnimation, introDuration, timeline]);
+
+  useEffect(() => {
+    if (!timeline || !isTalkSequence || timeline.durationMode !== "auto") return;
+    const nextDuration = Math.max(1, autoTalkDuration - talkMixDuration);
+    if (Math.abs(timeline.duration - nextDuration) < 0.01) return;
+    updateTimeline((value) => ({ ...value, duration: nextDuration }), false);
+  }, [autoTalkDuration, isTalkSequence, talkMixDuration, timeline]);
 
   function onAnimationDuration(layerId: string, animation: string, animationDuration: number) {
     const key = `${layerId}:${animation}`;
@@ -1595,7 +1609,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
         </div>
       </aside>
        <section className="timeline-main">
-          <div className="sequence-heading"><div><strong>{timeline.sequenceId === "opening" ? "Opening / Intro" : timeline.sequenceId?.startsWith("talk-") ? `Talk ${timeline.sequenceId.replace("talk-", "")}` : "Recovered composition"}</strong><small>{timeline.sequenceId === "opening" ? "Arrange character and scene animation clips on their own tracks." : "Synchronized Spine composition"}</small></div>{timeline.sequenceId === "opening" && <span className="opening-duration-badge">{timeline.durationMode === "auto" ? "AUTO" : "MANUAL"} · {seconds(duration)}</span>}</div>
+          <div className="sequence-heading"><div><strong>{timeline.sequenceId === "opening" ? "Opening / Intro" : timeline.sequenceId?.startsWith("talk-") ? `Talk ${timeline.sequenceId.replace("talk-", "")}` : "Recovered composition"}</strong><small>{timeline.sequenceId === "opening" ? "Arrange character and scene animation clips on their own tracks." : "Synchronized Spine composition"}</small></div>{(timeline.sequenceId === "opening" || isTalkSequence) && <span className="opening-duration-badge">{timeline.durationMode === "auto" ? "AUTO" : "MANUAL"} · {seconds(duration)}</span>}</div>
           {timeline.sequenceId === "opening" && <div className="opening-phase-strip" aria-label="Opening animation clips">
             {openingCharacterClips.map((clip, index) => {
               const end = animationClipEnd(clip, animationDurations[`${characterLayer?.id}:${clip.animation}`] ?? 0);
@@ -1714,10 +1728,11 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       <aside className="editor-panel timeline-inspector">
          {inspector === "sequence" && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Sequence settings</strong><span>{seconds(duration)}</span></div>
-           <label>{timeline.sequenceId === "opening" ? "Total duration (s)" : isTalkSequence ? "Total Talk playback (s)" : "Length (s)"}<input type="number" min="1" step="0.1" value={Number(duration.toFixed(3))} disabled={timeline.sequenceId === "opening" && timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: value.sequenceId === "opening" ? "manual" : value.durationMode, duration: Math.max(1, (Number(event.target.value) || 1) - (isTalkSequence ? talkMixDuration : 0)) }))} /></label>
+            <label>{timeline.sequenceId === "opening" ? "Total duration (s)" : isTalkSequence ? "Total Talk playback (s)" : "Length (s)"}<input type="number" min="1" step="0.1" value={Number(duration.toFixed(3))} disabled={(timeline.sequenceId === "opening" || isTalkSequence) && timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: value.sequenceId === "opening" || /^talk-\d+$/i.test(value.sequenceId ?? "") ? "manual" : value.durationMode, duration: Math.max(1, (Number(event.target.value) || 1) - (isTalkSequence ? talkMixDuration : 0)) }))} /></label>
             <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop sequence</span></label>
             {isTalkSequence && <>
               <div className="editor-subheading">Talk playback</div>
+              <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: event.target.checked ? "auto" : "manual", duration: Math.max(1, autoTalkDuration - talkMixDuration) }))} /> Automatic total duration</span><small className="editor-field-hint">{timeline.durationMode === "auto" ? `Fits enabled animation, voice, and subtitle endpoints: ${seconds(autoTalkDuration)}.` : "Manual override"}</small></label>
               <label><span className="timeline-inline-check"><input type="checkbox" checked={talkAutoplayActive} onChange={(event) => event.target.checked ? startTalkAutoplay() : stopTalkAutoplay()} /> Autoplay numbered Talks</span><small className="editor-field-hint">Waits for the animation, enabled voice clips, and subtitles to finish before advancing.</small></label>
               <div className="editor-two-fields">
                 <label>Pause between Talks (s)<input type="number" min="0" max="10" step="0.1" value={pauseBetweenTalks} onChange={(event) => setPauseBetweenTalks(Math.max(0, Math.min(10, Number(event.target.value) || 0)))} /></label>

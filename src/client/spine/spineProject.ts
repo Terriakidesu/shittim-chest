@@ -92,7 +92,9 @@ export function manifestProjectValue(data: SpineManifestProjectData, directory: 
     ...(typeof workspace.showInactiveBones === "boolean" ? { showInactiveBones: workspace.showInactiveBones } : {}),
   };
   return {
-    schemaVersion: 2,
+    // Older workspaces predate the one-time Talk duration migration. Treat
+    // them as the previous editor schema until the editor saves the project.
+    schemaVersion: typeof workspace.projectSchemaVersion === "number" ? workspace.projectSchemaVersion : 2,
     name: `${directory} interactions`,
     assetDirectory: directory,
     entrySequence: data.record.manifest.entrySequence,

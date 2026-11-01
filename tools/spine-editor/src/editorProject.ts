@@ -1,4 +1,4 @@
-import { normalizeProject, type EditorProject } from "./editorModel";
+import { EDITOR_SCHEMA_VERSION, normalizeProject, type EditorProject } from "./editorModel";
 import { editorProjectPath, editorProjectPaths } from "./editorStorage";
 import { manifestProjectValue, readManifestProjectData } from "../../../src/client/spine/spineProject";
 import { manifestPath, manifestReferenceCandidates, sequencePath, type SpineManifest, type SpineManifestRecord, type SpineManifestPath } from "../../../src/client/spine/spineManifest";
@@ -74,6 +74,7 @@ async function saveManifestReference(source: WritableEditorProjectSource, record
 function workspaceForProject(project: EditorProject): Record<string, unknown> {
   return {
     schemaVersion: 1,
+    projectSchemaVersion: EDITOR_SCHEMA_VERSION,
     name: project.name,
     assetDirectory: project.assetDirectory,
     selectedSequenceId: project.timeline.sequenceId ?? "legacy",

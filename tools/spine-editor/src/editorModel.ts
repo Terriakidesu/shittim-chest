@@ -3,7 +3,7 @@ import type { SpineEditorBone } from "../../../src/client/spine/spineRuntime";
 import { DEFAULT_INTERACTION_PHASE_MIX, DEFAULT_INTERACTION_RETURN_DURATION, DEFAULT_INTERACTION_RETURN_EASING, DEFAULT_TALK_MIX_DURATION, findInteractionProfile, type SpineInteractionReturnEasing } from "../../../src/client/spine/spineInteraction";
 import { cheekControlNames } from "../../../src/client/spine/spinePinch";
 
-export const EDITOR_SCHEMA_VERSION = 2;
+export const EDITOR_SCHEMA_VERSION = 3;
 export const LEGACY_EDITOR_SCHEMA_VERSION = 1;
 
 export type EditorTrigger = "press" | "hold" | "drag";
@@ -619,6 +619,13 @@ export function normalizeProject(value: unknown, directory: string): EditorProje
   if (!Array.isArray(project.interactions)) return null;
   const schemaVersion = Number(project.schemaVersion);
   if (Number.isFinite(schemaVersion) && schemaVersion > EDITOR_SCHEMA_VERSION) return null;
+  const migrateTalkDurationMode = !Number.isFinite(schemaVersion) || schemaVersion < EDITOR_SCHEMA_VERSION;
+  const normalizeProjectTimeline = (value: unknown): EditorTimeline => {
+    const timeline = normalizeTimeline(value, directory);
+    return migrateTalkDurationMode && /^talk-\d+$/i.test(timeline.sequenceId ?? "")
+      ? { ...timeline, durationMode: "auto" }
+      : timeline;
+  };
   const interactions = (project.interactions as unknown[])
     .filter((item) => Boolean(item && typeof item === "object"))
     .map((item, index) => normalizeInteraction(item as Partial<EditorInteraction>, index))
@@ -644,9 +651,9 @@ export function normalizeProject(value: unknown, directory: string): EditorProje
     showBoneNames: project.showBoneNames === true,
     showConstraints: project.showConstraints !== false,
     showInactiveBones: project.showInactiveBones === true,
-    timeline: normalizeTimeline(project.timeline, directory),
+    timeline: normalizeProjectTimeline(project.timeline),
     sequences: project.sequences && typeof project.sequences === "object"
-      ? Object.fromEntries(Object.entries(project.sequences).map(([key, value]) => [key, normalizeTimeline(value, directory)])) : {},
+      ? Object.fromEntries(Object.entries(project.sequences).map(([key, value]) => [key, normalizeProjectTimeline(value)])) : {},
   };
 }
 

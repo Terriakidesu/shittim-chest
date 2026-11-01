@@ -167,23 +167,42 @@ export function timelineForSequence(project: SpineTimelineProject, sequenceId: s
 export function timelinePlaybackDuration(
   timeline: Pick<SpineTimeline, "layers" | "subtitles" | "audio" | "duration"> & { sequenceId?: string; durationMode?: SpineTimeline["durationMode"] },
   openingMinimumDuration = 0,
-  layerEndFor: (layer: SpineTimelineLayer) => number = (layer) => layer.animationClips?.length ? Math.max(0, ...layer.animationClips.map((clip) => clip.end)) : layer.end,
+  layerEndFor: (layer: SpineTimelineLayer) => number = (layer) => Array.isArray(layer.animationClips)
+    ? Math.max(0, ...layer.animationClips.filter((clip) => clip.enabled !== false).map((clip) => clip.end))
+    : layer.end,
   talkMixDuration = 0,
 ): number {
-  const allLayerEnd = Math.max(0, ...timeline.layers.map(layerEndFor));
+  const allLayerEnd = Math.max(0, ...timeline.layers.filter((layer) => layer.enabled).map(layerEndFor));
   const selectedLayerEnd = timeline.sequenceId === "opening" && timeline.durationMode !== "auto"
-    ? Math.max(0, ...timeline.layers.flatMap((layer) => layer.animationClips?.length
+    ? Math.max(0, ...timeline.layers.filter((layer) => layer.enabled).flatMap((layer) => Array.isArray(layer.animationClips)
       ? [layerEndFor(layer)]
       : layer.endMode === "manual" ? [layerEndFor(layer)] : []))
     : allLayerEnd;
   const contentEnd = Math.max(0, ...timeline.subtitles.map((cue) => cue.end), ...timeline.audio.map((clip) => clip.end));
-  const baseDuration = timeline.sequenceId === "opening" && timeline.durationMode === "auto" && timeline.layers.length > 0
+  const enabledContentEnd = Math.max(
+    0,
+    ...timeline.subtitles.filter((cue) => cue.enabled).map((cue) => cue.end),
+    ...timeline.audio.filter((clip) => clip.enabled).map((clip) => clip.end),
+  );
+  const isTalkSequence = /^talk-\d+$/i.test(timeline.sequenceId ?? "");
+  let baseDuration: number;
+  if (timeline.sequenceId === "opening" && timeline.durationMode === "auto" && timeline.layers.length > 0) {
     // Automatic openings end at their last visible/authored endpoint. This
     // removes stale blank tail time left by an older import while the caller
     // can still protect an intro that has not yet reached its idle state.
-    ? Math.max(1, openingMinimumDuration, selectedLayerEnd, contentEnd)
-    : Math.max(1, timeline.duration, selectedLayerEnd, contentEnd);
-  const talkTail = /^talk-\d+$/i.test(timeline.sequenceId ?? "") && timeline.layers.some((layer) => layer.role === "character")
+    baseDuration = Math.max(1, openingMinimumDuration, selectedLayerEnd, contentEnd);
+  } else if (isTalkSequence && timeline.durationMode === "auto") {
+    // Talk auto-fit ignores stale saved duration and disabled dialogue while
+    // retaining every enabled layer, subtitle, and voice endpoint.
+    baseDuration = Math.max(1, allLayerEnd, enabledContentEnd);
+  } else if (isTalkSequence) {
+    // Manual Talk duration is an intentional override, including when it is
+    // shorter than a clip endpoint.
+    baseDuration = Math.max(1, timeline.duration);
+  } else {
+    baseDuration = Math.max(1, timeline.duration, selectedLayerEnd, contentEnd);
+  }
+  const talkTail = isTalkSequence && timeline.layers.some((layer) => layer.role === "character" && layer.enabled)
     ? Math.max(0, Math.min(2, Number.isFinite(talkMixDuration) ? talkMixDuration : 0))
     : 0;
   return baseDuration + talkTail;

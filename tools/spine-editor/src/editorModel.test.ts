@@ -62,6 +62,26 @@ test("background timeline layers follow the main animation by default and keep e
   expect(legacy?.timeline.layers.find((layer) => layer.role === "background")?.followMainAnimation).toBe(true);
 });
 
+test("legacy Talk timelines migrate to auto duration without resetting current manual overrides", () => {
+  const legacy = normalizeProject({
+    schemaVersion: 2,
+    assetDirectory: "Akari_home",
+    interactions: [],
+    timeline: { sequenceId: "talk-1", duration: 19, durationMode: "manual", layers: [] },
+    sequences: { "talk-2": { sequenceId: "talk-2", duration: 18, durationMode: "manual", layers: [] } },
+  }, "Akari_home")!;
+  expect(legacy.timeline.durationMode).toBe("auto");
+  expect(legacy.sequences?.["talk-2"]?.durationMode).toBe("auto");
+
+  const current = normalizeProject({
+    schemaVersion: 3,
+    assetDirectory: "Akari_home",
+    interactions: [],
+    timeline: { sequenceId: "talk-1", duration: 19, durationMode: "manual", layers: [] },
+  }, "Akari_home")!;
+  expect(current.timeline.durationMode).toBe("manual");
+});
+
 test("clip-based opening timelines survive editor save and reopen normalization", () => {
   const raw = {
     schemaVersion: 2,

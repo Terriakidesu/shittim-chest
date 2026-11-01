@@ -75,10 +75,40 @@ test("authored talk sequences are ordered numerically for autoplay", () => {
   expect(timelineTalkSequenceIds(project)).toEqual(["talk-1", "talk-2", "talk-10"]);
 });
 
-test("talk playback includes a saved layer that extends the nominal duration", () => {
-  const timeline: SpineTimeline = { sequenceId: "talk-1", openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3, durationMode: "manual", duration: 4, loop: false, layers: [{ id: "layer", name: "Airi", role: "character", directory: "Airi_home", enabled: true, animation: "Talk_01_M", start: 0, end: 6, animationOffset: 0, loop: false, x: 0, y: 0, scale: 1, opacity: 1, order: 1 }], subtitles: [], audio: [], language: "en" };
-  expect(timelinePlaybackDuration(timeline)).toBe(6);
-  expect(timelinePlaybackDuration(timeline, 0, undefined, 0.4)).toBe(6.4);
+test("automatic Talk duration trims stale saved tails and fits enabled endpoints", () => {
+  const timeline: SpineTimeline = {
+    sequenceId: "talk-1", openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3,
+    durationMode: "auto", duration: 19.14, loop: false,
+    layers: [
+      { ...layer({ role: "character", animation: "Talk_01_M", end: 16.26, loop: false }) },
+      { ...layer({ id: "disabled-layer", role: "background", end: 19.14, enabled: false }) },
+      { ...layer({ id: "clips", role: "overlay", end: 20, animationClips: [
+        { id: "muted-clip", animation: "Old", start: 0, end: 20, animationOffset: 0, loop: false, enabled: false },
+        { id: "enabled-clip", animation: "Overlay", start: 0, end: 8, animationOffset: 0, loop: false, enabled: true },
+      ] }) },
+    ],
+    subtitles: [
+      { id: "enabled-cue", start: 9, end: 12, enabled: true, text: { en: "Hello", ja: "", ko: "" } },
+      { id: "disabled-cue", start: 15, end: 21, enabled: false, text: { en: "Disabled", ja: "", ko: "" } },
+    ],
+    audio: [
+      { id: "enabled-audio", name: "voice.ogg", path: "voice.ogg", start: 9, end: 13, enabled: true, volume: 1 },
+      { id: "disabled-audio", name: "unused.ogg", path: "unused.ogg", start: 15, end: 22, enabled: false, volume: 1 },
+    ],
+    language: "en",
+  };
+  expect(timelinePlaybackDuration(timeline, 0, undefined, 0.4)).toBeCloseTo(16.66);
+});
+
+test("manual Talk duration honors the explicit saved override", () => {
+  const timeline: SpineTimeline = {
+    sequenceId: "talk-1", openingMode: "direct", sceneDuration: 3, openingIdleDuration: 3,
+    durationMode: "manual", duration: 4, loop: false,
+    layers: [layer({ role: "character", end: 6, loop: false })],
+    subtitles: [{ id: "late", start: 8, end: 11, enabled: true, text: { en: "Late", ja: "", ko: "" } }],
+    audio: [], language: "en",
+  };
+  expect(timelinePlaybackDuration(timeline, 0, undefined, 0.4)).toBe(4.4);
 });
 
 test("saved subtitle and audio endpoints keep a composition alive", () => {
