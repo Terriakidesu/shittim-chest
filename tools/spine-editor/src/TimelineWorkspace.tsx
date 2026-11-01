@@ -4,6 +4,7 @@ import {
   compositionDirectories,
   createTimelineLayer,
   ensureTimelineLayers,
+  type EditorAnimationClip,
   type EditorProject,
   type EditorAudioClip,
   type EditorSubtitleCue,
@@ -14,8 +15,8 @@ import {
 import type { DesktopAssetSource } from "./desktopSource";
 import { manifestReferenceCandidates } from "../../../src/client/spine/spineManifest";
 import { audioPlaybackDecision, clampAudioEnd, clampAudioStart, decodedAudioTiming } from "./audioModel";
-import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceId, type OpeningPhaseTiming } from "./sequenceModel";
-import { advanceSpineTimeline, timelineActiveSubtitleTexts, timelineAudioPreloadsReady, timelineMainAnimation, timelinePlaybackDuration, type SpineTimelineAudioPreloadState } from "../../../src/client/spine/spineTimeline";
+import { animationClipEnd, animationEndForLayer, authoredTimelineEnd, deleteAnimationClipRipple, duplicateAnimationClipRipple, effectiveAnimationClips, extendTimelineDuration, insertAnimationClipRipple, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAnimationClipRipple, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceId } from "./sequenceModel";
+import { advanceSpineTimeline, timelineActiveSubtitleTexts, timelineAudioPreloadsReady, timelineLayerAnimation, timelineMainAnimation, timelinePlaybackDuration, timelineSceneHidesCharacter, type SpineTimelineAudioPreloadState } from "../../../src/client/spine/spineTimeline";
 import { SpineTimelineLayerCanvas } from "../../../src/client/spine/SpineTimelineLayerCanvas";
 import { spineAudioPathCandidates } from "../../../src/client/spine/spineAudio";
 import { serializeSubtitleDocument } from "./subtitleDocument";
@@ -92,9 +93,9 @@ function snapTime(value: number, snap: number, duration: number): number {
   return Math.max(0, Math.min(duration, Number(next.toFixed(3))));
 }
 
-type TimelineClipKind = "layer" | "cue" | "audio";
+type TimelineClipKind = "layer" | "animation" | "cue" | "audio";
 type TimelineSelection = { kind: TimelineClipKind; id: string };
-type TimelineDragKind = TimelineClipKind | "layer-start" | "layer-end" | "cue-start" | "cue-end" | "audio-start" | "audio-end";
+type TimelineDragKind = TimelineClipKind | "layer-start" | "layer-end" | "animation-start" | "animation-end" | "cue-start" | "cue-end" | "audio-start" | "audio-end";
 interface TimelineDragItem extends TimelineSelection { start: number; end: number; linked?: boolean; sourceDuration?: number }
 interface TimelineDragState {
   kind: TimelineDragKind;
@@ -129,10 +130,6 @@ function cueText(cue: EditorSubtitleCue, language: TimelineLanguage): string {
 
 function roleLabel(role: TimelineLayerRole): string {
   return role === "background" ? "BG" : role === "scene" ? "SCENE" : role === "character" ? "CHAR" : "OVERLAY";
-}
-
-function openingPhaseLabel(id: OpeningPhaseTiming["id"]): string {
-  return id === "scene" ? "Scene lead-in" : id === "intro" ? "Character intro" : "Idle hold";
 }
 
 function importedText(value: unknown): Record<TimelineLanguage, string> {
@@ -245,7 +242,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const [stageView, setStageView] = useState<StageView>(() => resetStageView());
   const [stagePanning, setStagePanning] = useState(false);
   const [markers, setMarkers] = useState<number[]>([]);
-  const [inspector, setInspector] = useState<"sequence" | "layer" | "cue" | "audio" | "multi">("sequence");
+  const [inspector, setInspector] = useState<"sequence" | "layer" | "animation" | "cue" | "audio" | "multi">("sequence");
   const scrollRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const stagePanRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
@@ -340,6 +337,21 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const selectedCue = timeline?.subtitles.find((cue) => cue.id === timeline.selectedCueId) ?? null;
   const selectedCueIndex = selectedCue && timeline ? timeline.subtitles.findIndex((cue) => cue.id === selectedCue.id) : -1;
   const selectedAudio = timeline?.audio.find((clip) => clip.id === selectedAudioId) ?? null;
+  function layerAnimationClips(layer: EditorTimelineLayer, value = timeline): EditorAnimationClip[] {
+    if (!value) return [];
+    const meta = metas[layer.id] ?? null;
+    const intro = meta?.introAnimation ? animationDurations[`${layer.id}:${meta.introAnimation}`] ?? 0 : 0;
+    return effectiveAnimationClips(layer, value, meta, intro);
+  }
+  function findAnimationClip(clipId: string, value = timeline): { layer: EditorTimelineLayer; clip: EditorAnimationClip } | null {
+    for (const layer of value?.layers ?? []) {
+      const clip = layerAnimationClips(layer, value).find((item) => item.id === clipId);
+      if (clip) return { layer, clip };
+    }
+    return null;
+  }
+  const selectedAnimation = selectedClips.find((item) => item.kind === "animation");
+  const selectedAnimationClip = selectedAnimation ? findAnimationClip(selectedAnimation.id) : null;
   const layerDirectoriesKey = displayLayers.map((layer) => layer.directory).join("|");
   const characterMeta = displayLayers.map((layer) => layer.role === "character" ? metas[layer.id] : null).find(Boolean);
   const characterLayer = displayLayers.find((layer) => layer.role === "character");
@@ -347,10 +359,15 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const sequenceIds = [...new Set(["opening", ...animations.filter((name) => /talk[_ -]?\d+/i.test(name)).map(talkSequenceId), ...Object.keys(project?.sequences ?? {}).filter((id) => id !== "legacy")])];
 
   function layerAnimation(layer: EditorTimelineLayer): string {
-    return layer.animation || metas[layer.id]?.idleAnimation || metas[layer.id]?.animations[0] || "";
+    const meta = metas[layer.id];
+    if (!meta || !timeline) return layer.animation || meta?.idleAnimation || meta?.animations[0] || "";
+    const intro = meta.introAnimation ? animationDurations[`${layer.id}:${meta.introAnimation}`] ?? 0 : 0;
+    return timelineLayerAnimation(layer, meta, undefined, currentTime, timeline.sequenceId ?? "legacy", timeline.openingMode ?? "direct", intro);
   }
 
   function layerEnd(layer: EditorTimelineLayer): number {
+    const clips = layerAnimationClips(layer);
+    if (clips.length > 0) return Math.max(0, ...clips.map((clip) => animationClipEnd(clip, animationDurations[`${layer.id}:${clip.animation}`] ?? 0)));
     const animationDuration = animationDurations[`${layer.id}:${layerAnimation(layer)}`] ?? 0;
     const talkCharacter = timeline?.sequenceId?.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
     return animationEndForLayer(talkCharacter ? { ...layer, loop: false } : layer, animationDuration);
@@ -362,6 +379,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const openingIntroStart = timeline?.sequenceId === "opening"
     ? Math.max(0, characterLayer?.start ?? timeline?.sceneDuration ?? 0)
     : 0;
+  const explicitAnimationClips = displayLayers.some((layer) => Array.isArray(layer.animationClips));
   const openingIdleDuration = Math.max(0, timeline?.openingIdleDuration ?? 3);
   const mainCharacterAnimation = characterLayer ? layerAnimation(characterLayer) : "";
   const mainCharacterDuration = characterLayer && mainCharacterAnimation ? animationDurations[`${characterLayer.id}:${mainCharacterAnimation}`] ?? 0 : 0;
@@ -375,10 +393,11 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     ? openingTimelineDuration(timeline, introDuration, layerEnd)
     : 0;
   const duration = timeline
-    ? timelinePlaybackDuration(timeline, timeline.sequenceId === "opening" ? openingIntroStart + (openingMode === "skip" ? 0 : introDuration) : 0, layerEnd)
+    ? timelinePlaybackDuration(timeline, timeline.sequenceId === "opening" && !explicitAnimationClips ? openingIntroStart + (openingMode === "skip" ? 0 : introDuration) : 0, layerEnd)
     : MIN_TIMELINE_DURATION;
   const trackWidth = Math.max(640, duration * TIMELINE_SCALE * zoom + 48);
-  const openingPhases = timeline?.sequenceId === "opening" ? openingPhaseTimings(openingMode, timeline.sceneDuration ?? 3, introDuration, duration, openingIntroStart) : [];
+  const openingCharacterClips = timeline?.sequenceId === "opening" && characterLayer ? layerAnimationClips(characterLayer) : [];
+  const characterHidden = timeline ? timelineSceneHidesCharacter(timeline, currentTime) : false;
 
   useEffect(() => {
     if (!timeline || timeline.sequenceId !== "opening" || timeline.durationMode !== "auto" || !characterMeta || (introAnimation && introDuration <= 0)) return;
@@ -391,7 +410,22 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     setAnimationDurations((value) => value[key] === animationDuration ? value : { ...value, [key]: animationDuration });
     const currentTimeline = timeline;
     const currentLayer = currentTimeline?.layers.find((layer) => layer.id === layerId);
-    if (!currentTimeline || !currentLayer || currentLayer.endMode === "manual") return;
+    if (!currentTimeline || !currentLayer) return;
+    if (Array.isArray(currentLayer.animationClips)) {
+      const nextClips = currentLayer.animationClips.map((clip) => {
+        if (clip.animation !== animation || clip.endMode === "manual" || clip.loop) return clip;
+        const end = animationClipEnd(clip, animationDuration);
+        return Math.abs(clip.end - end) < 0.01 ? clip : { ...clip, end };
+      });
+      if (nextClips.every((clip, index) => clip === currentLayer.animationClips![index])) return;
+      updateTimeline((value) => ({
+        ...value,
+        layers: value.layers.map((layer) => layer.id === layerId ? { ...layer, animationClips: nextClips } : layer),
+        duration: Math.max(value.duration, ...nextClips.map((clip) => clip.end)),
+      }), false);
+      return;
+    }
+    if (currentLayer.endMode === "manual") return;
     const talkCharacter = currentTimeline.sequenceId?.startsWith("talk-") && currentLayer.role === "character";
     if (!talkCharacter && currentLayer.loop) return;
     const effectiveLayer = talkCharacter ? { ...currentLayer, loop: false } : currentLayer;
@@ -419,17 +453,22 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     setCurrentTime(0); setPlaying(false); setPreviewUntil(null); setSelectedClips([]); setSelectedAudioId(null); setInspector("sequence");
   }
 
-  function previewOpeningPhase(phase: OpeningPhaseTiming) {
-    setCurrentTime(phase.start);
-    setPreviewUntil(Math.max(phase.start + 0.01, phase.end));
-    setPlaying(true);
-    setInspector("sequence");
+  function previewOpeningClip(clip: EditorAnimationClip) {
+    if (!characterLayer) return;
+    previewAnimationClip(characterLayer, clip);
   }
 
-  function stepOpeningPhase(direction: -1 | 1) {
-    if (!openingPhases.length) return;
-    const index = openingPhases.findIndex((phase) => currentTime >= phase.start && currentTime < phase.end);
-    const next = openingPhases[Math.max(0, Math.min(openingPhases.length - 1, (index < 0 ? 0 : index) + direction))];
+  function previewAnimationClip(layer: EditorTimelineLayer, clip: EditorAnimationClip) {
+    const end = animationClipEnd(clip, animationDurations[`${layer.id}:${clip.animation}`] ?? 0);
+    setCurrentTime(clip.start);
+    setPreviewUntil(Math.max(clip.start + 0.01, end));
+    setPlaying(true);
+  }
+
+  function stepOpeningClip(direction: -1 | 1) {
+    if (!openingCharacterClips.length) return;
+    const index = openingCharacterClips.findIndex((clip) => currentTime >= clip.start && currentTime < animationClipEnd(clip, animationDurations[`${characterLayer?.id}:${clip.animation}`] ?? 0));
+    const next = openingCharacterClips[Math.max(0, Math.min(openingCharacterClips.length - 1, (index < 0 ? 0 : index) + direction))];
     if (next) { setCurrentTime(next.start); setPlaying(false); setPreviewUntil(null); }
   }
 
@@ -737,6 +776,74 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     }, history);
   }
 
+  function updateAnimationClip(layerId: string, clipId: string, patch: Partial<EditorAnimationClip>, history = true) {
+    updateTimeline((value) => {
+      const layers = value.layers.map((layer) => {
+        if (layer.id !== layerId) return layer;
+        const clips = layerAnimationClips(layer, value);
+        return { ...layer, animationClips: clips.map((clip) => clip.id === clipId ? { ...clip, ...patch } : clip) };
+      });
+      const end = Math.max(0, ...layers.map((layer) => Math.max(0, ...layerAnimationClips(layer, value).map((clip) => animationClipEnd(clip, animationDurations[`${layer.id}:${clip.animation}`] ?? 0)))));
+      return extendTimelineDuration({ ...value, layers, duration: Math.max(value.duration, end) });
+    }, history);
+  }
+
+  function moveAnimationClipTo(layerId: string, clipId: string, start: number) {
+    updateTimeline((value) => {
+      const owner = value.layers.find((layer) => layer.id === layerId);
+      if (!owner) return value;
+      const clips = layerAnimationClips(owner, value);
+      const targets = value.layers.flatMap((layer) => layerAnimationClips(layer, value).filter((clip) => clip.id !== clipId).flatMap((clip) => [clip.start, clip.end]));
+      const moved = moveAnimationClipRipple(clips, clipId, start, value.snap, targets);
+      const layers = value.layers.map((layer) => layer.id === layerId ? { ...layer, animationClips: moved } : layer);
+      return extendTimelineDuration({ ...value, layers, duration: Math.max(value.duration, ...moved.map((clip) => clip.end)) });
+    });
+  }
+
+  function addAnimationClip(layerId = timeline?.selectedLayerId ?? characterLayer?.id ?? "") {
+    if (!timeline || !layerId) return;
+    const layer = timeline.layers.find((item) => item.id === layerId);
+    const meta = layer ? metas[layer.id] : null;
+    if (!layer || !meta) {
+      onStatus("Wait for the selected Spine layer to finish loading before adding an animation clip.");
+      return;
+    }
+    const animation = meta.idleAnimation || meta.animations.find((name) => /^idle(?:_|$)/i.test(name)) || meta.animations[0] || "";
+    const start = snapTime(currentTime, timeline.snap, Number.POSITIVE_INFINITY);
+    const duration = Math.max(0.1, animationDurations[`${layer.id}:${animation}`] ?? (timeline.sequenceId === "opening" ? openingIdleDuration || 3 : 2));
+    const loop = /^idle(?:_|$)/i.test(animation);
+    const clip: EditorAnimationClip = {
+      id: `animation-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`,
+      animation,
+      start,
+      end: start + (loop ? Math.max(duration, timeline.sequenceId === "opening" ? openingIdleDuration || 3 : duration) : duration),
+      endMode: "auto",
+      animationOffset: 0,
+      loop,
+      enabled: true,
+      ...(timeline.sequenceId === "opening" && layer.role === "character" && loop ? { continueAfterOpening: true } : {}),
+    };
+    const clips = insertAnimationClipRipple(layerAnimationClips(layer), clip);
+    updateTimeline((value) => ({ ...value, layers: value.layers.map((item) => item.id === layer.id ? { ...item, animationClips: clips } : item), selectedLayerId: layer.id }));
+    setSelectedClips([{ kind: "animation", id: clip.id }]);
+    setSelectedAudioId(null);
+    setInspector("animation");
+    onStatus(`Added ${animation || "animation"} at ${seconds(start)}.`);
+  }
+
+  function duplicateSelectedAnimationClip() {
+    if (!selectedAnimationClip) return;
+    const id = `animation-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
+    updateTimeline((value) => {
+      const layer = value.layers.find((item) => item.id === selectedAnimationClip.layer.id);
+      if (!layer) return value;
+      const clips = duplicateAnimationClipRipple(layerAnimationClips(layer, value), selectedAnimationClip.clip.id, id);
+      return { ...value, layers: value.layers.map((item) => item.id === layer.id ? { ...item, animationClips: clips } : item) };
+    });
+    setSelectedClips([{ kind: "animation", id }]);
+    setInspector("animation");
+  }
+
   function updateCue(id: string, patch: Partial<EditorSubtitleCue>, history = true) {
     updateTimeline((value) => extendTimelineDuration({ ...value, subtitles: value.subtitles.map((cue) => cue.id === id ? { ...cue, ...patch } : cue) }), history);
   }
@@ -813,6 +920,12 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
       setSelectedAudioId(null);
       setInspector("layer");
       updateTimeline((value) => ({ ...value, selectedLayerId: selection.id, selectedCueId: null }), false);
+    } else if (selection.kind === "animation") {
+      const found = findAnimationClip(selection.id);
+      if (!found) return;
+      setSelectedAudioId(null);
+      setInspector("animation");
+      updateTimeline((value) => ({ ...value, selectedLayerId: found.layer.id, selectedCueId: null }), false);
     } else if (selection.kind === "cue") {
       setSelectedAudioId(null);
       setInspector("cue");
@@ -984,12 +1097,18 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   function deleteSelectedClips() {
     if (!selectedClips.length || !timeline) return;
     const layers = new Set(selectedClips.filter((item) => item.kind === "layer").map((item) => item.id));
+    const animations = new Set(selectedClips.filter((item) => item.kind === "animation").map((item) => item.id));
     const cues = new Set(selectedClips.filter((item) => item.kind === "cue").map((item) => item.id));
     const audio = new Set(selectedClips.filter((item) => item.kind === "audio").map((item) => item.id));
     const removableLayers = new Set(timeline.layers.filter((layer) => layers.has(layer.id) && layer.role !== "character").map((layer) => layer.id));
     updateTimeline((value) => ({
       ...value,
-      layers: value.layers.filter((layer) => !removableLayers.has(layer.id)),
+      layers: value.layers.filter((layer) => !removableLayers.has(layer.id)).map((layer) => {
+        const clips = layerAnimationClips(layer, value);
+        const selected = clips.filter((clip) => animations.has(clip.id));
+        if (!selected.length) return layer;
+        return { ...layer, animationClips: selected.reduce((current, clip) => deleteAnimationClipRipple(current, clip.id), clips) };
+      }),
       subtitles: value.subtitles.filter((cue) => !cues.has(cue.id)),
       audio: value.audio.filter((clip) => !audio.has(clip.id)).map((clip) => clip.subtitleId && cues.has(clip.subtitleId) ? { ...clip, subtitleId: null } : clip),
       selectedLayerId: removableLayers.has(value.selectedLayerId ?? "") ? null : value.selectedLayerId,
@@ -1006,11 +1125,21 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   function setSelectedClipsEnabled(enabled: boolean) {
     if (!selectedClips.length) return;
     const layers = new Set(selectedClips.filter((item) => item.kind === "layer").map((item) => item.id));
+    const animations = new Set(selectedClips.filter((item) => item.kind === "animation").map((item) => item.id));
     const cues = new Set(selectedClips.filter((item) => item.kind === "cue").map((item) => item.id));
     const audio = new Set(selectedClips.filter((item) => item.kind === "audio").map((item) => item.id));
     updateTimeline((value) => ({
       ...value,
-      layers: value.layers.map((layer) => layers.has(layer.id) ? { ...layer, enabled } : layer),
+      layers: value.layers.map((layer) => {
+        const clips = layerAnimationClips(layer, value);
+        const hasAnimationSelection = clips.some((clip) => animations.has(clip.id));
+        if (!layers.has(layer.id) && !hasAnimationSelection) return layer;
+        return {
+          ...layer,
+          ...(layers.has(layer.id) ? { enabled } : {}),
+          ...(hasAnimationSelection ? { animationClips: clips.map((clip) => animations.has(clip.id) ? { ...clip, enabled } : clip) } : {}),
+        };
+      }),
       subtitles: value.subtitles.map((cue) => cues.has(cue.id) ? { ...cue, enabled } : cue),
       audio: value.audio.map((clip) => audio.has(clip.id) ? { ...clip, enabled } : clip),
     }));
@@ -1047,6 +1176,10 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     if (selection.kind === "layer") {
       const layer = timeline.layers.find((item) => item.id === selection.id);
       return layer ? { ...selection, start: layer.start, end: layerEnd(layer) } : null;
+    }
+    if (selection.kind === "animation") {
+      const found = findAnimationClip(selection.id);
+      return found ? { ...selection, start: found.clip.start, end: animationClipEnd(found.clip, animationDurations[`${found.layer.id}:${found.clip.animation}`] ?? 0) } : null;
     }
     if (selection.kind === "cue") {
       const cue = timeline.subtitles.find((item) => item.id === selection.id);
@@ -1091,7 +1224,9 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     const resize = drag.kind !== dragClipKind(drag.kind);
     const resizeKind = dragClipKind(drag.kind);
     const selectedCueIds = new Set(drag.items.filter((item) => item.kind === "cue" && !item.linked).map((item) => item.id));
-    const targets = [...markers, ...timeline.subtitles.filter((cue) => !selectedCueIds.has(cue.id)).flatMap((cue) => [cue.start, cue.end])];
+    const selectedAnimationIds = new Set(drag.items.filter((item) => item.kind === "animation").map((item) => item.id));
+    const animationTargets = timeline.layers.flatMap((layer) => layerAnimationClips(layer).filter((clip) => !selectedAnimationIds.has(clip.id)).flatMap((clip) => [clip.start, clip.end]));
+    const targets = [...markers, ...animationTargets, ...timeline.subtitles.filter((cue) => !selectedCueIds.has(cue.id)).flatMap((cue) => [cue.start, cue.end])];
     const snap = (value: number) => Math.max(0, snapToTargets(value, event.altKey ? 0 : timeline.snap, event.altKey ? [] : targets));
     const resizeAnchor = drag.kind.endsWith("-end") ? drag.end : drag.start;
     const snappedDelta = snap(resizeAnchor + delta) - resizeAnchor;
@@ -1114,6 +1249,19 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           if (item.kind === "layer") {
             layers = layers.map((layer) => layer.id === item.id ? { ...layer, start, end } : layer);
             if (value.sequenceId === "opening" && value.openingMode === "scene-first" && layers.find((layer) => layer.id === item.id)?.role === "character") sceneDuration = start;
+          } else if (item.kind === "animation") {
+            if (item.id !== drag.id) continue;
+            const owner = layers.find((layer) => layerAnimationClips(layer, value).some((clip) => clip.id === item.id));
+            if (!owner) continue;
+            let clips = moveAnimationClipRipple(layerAnimationClips(owner, value), item.id, item.start + moveDelta, 0, targets);
+            const selectedItems = drag.items.filter((candidate) => candidate.kind === "animation" && clips.some((clip) => clip.id === candidate.id));
+            if (selectedItems.length > 1) clips = clips.map((clip) => {
+              const selectedItem = selectedItems.find((candidate) => candidate.id === clip.id);
+              if (!selectedItem) return clip;
+              const nextStart = Math.max(0, selectedItem.start + moveDelta);
+              return { ...clip, start: nextStart, end: nextStart + (selectedItem.end - selectedItem.start) };
+            });
+            layers = layers.map((layer) => layer.id === owner.id ? { ...layer, animationClips: clips } : layer);
           }
           else if (item.kind === "cue") subtitles = subtitles.map((cue) => cue.id === item.id ? { ...cue, start, end } : cue);
           else audio = audio.map((clip) => clip.id === item.id ? { ...clip, start, end } : clip);
@@ -1124,6 +1272,13 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           if (item.kind === "layer") {
             layers = layers.map((layer) => layer.id === item.id ? { ...layer, start } : layer);
             if (value.sequenceId === "opening" && value.openingMode === "scene-first" && layers.find((layer) => layer.id === item.id)?.role === "character") sceneDuration = start;
+          } else if (item.kind === "animation") {
+            const owner = layers.find((layer) => layerAnimationClips(layer, value).some((clip) => clip.id === item.id));
+            if (!owner) continue;
+            const clips = layerAnimationClips(owner, value).map((clip) => clip.id === item.id
+              ? { ...clip, start, animationOffset: Math.max(0, clip.animationOffset + start - clip.start) }
+              : clip);
+            layers = layers.map((layer) => layer.id === owner.id ? { ...layer, animationClips: clips } : layer);
           } else if (item.kind === "cue") subtitles = subtitles.map((cue) => cue.id === item.id ? { ...cue, start } : cue);
           else audio = audio.map((clip) => clip.id === item.id ? { ...clip, start } : clip);
         } else {
@@ -1132,6 +1287,12 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
             ? clampAudioEnd(item.start, requestedEnd, item.sourceDuration)
             : requestedEnd;
           if (item.kind === "layer") layers = layers.map((layer) => layer.id === item.id ? { ...layer, endMode: "manual", end } : layer);
+          else if (item.kind === "animation") {
+            const owner = layers.find((layer) => layerAnimationClips(layer, value).some((clip) => clip.id === item.id));
+            if (!owner) continue;
+            const clips = layerAnimationClips(owner, value).map((clip) => clip.id === item.id ? { ...clip, endMode: "manual" as const, end } : clip);
+            layers = layers.map((layer) => layer.id === owner.id ? { ...layer, animationClips: clips } : layer);
+          }
           else if (item.kind === "cue") subtitles = subtitles.map((cue) => cue.id === item.id ? { ...cue, end } : cue);
           else audio = audio.map((clip) => clip.id === item.id ? { ...clip, autoEnd: false, end } : clip);
         }
@@ -1299,6 +1460,9 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     if (selection.kind === "layer") {
       const layer = timeline.layers.find((item) => item.id === selection.id);
       if (layer) selectedClipDetails.push({ ...selection, label: layer.name, start: layer.start, end: layerEnd(layer), enabled: layer.enabled, removable: layer.role !== "character" });
+    } else if (selection.kind === "animation") {
+      const found = findAnimationClip(selection.id);
+      if (found) selectedClipDetails.push({ ...selection, label: found.clip.animation || "Animation", start: found.clip.start, end: animationClipEnd(found.clip, animationDurations[`${found.layer.id}:${found.clip.animation}`] ?? 0), enabled: found.clip.enabled !== false, removable: true });
     } else if (selection.kind === "cue") {
       const cue = timeline.subtitles.find((item) => item.id === selection.id);
       if (cue) selectedClipDetails.push({ ...selection, label: cueText(cue, timeline.language) || "Subtitle cue", start: cue.start, end: cue.end, enabled: cue.enabled, removable: true });
@@ -1309,6 +1473,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   }
   const selectedTypeSummary = ([
     ["layer", selectedClipDetails.filter((item) => item.kind === "layer").length, "layer"],
+    ["animation", selectedClipDetails.filter((item) => item.kind === "animation").length, "animation"],
     ["cue", selectedClipDetails.filter((item) => item.kind === "cue").length, "subtitle"],
     ["audio", selectedClipDetails.filter((item) => item.kind === "audio").length, "audio"],
   ] as const).filter(([, count]) => count > 0).map(([, count, label]) => `${count} ${label}${count === 1 ? "" : "s"}`).join(" · ");
@@ -1337,12 +1502,15 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
         </div>
       </aside>
        <section className="timeline-main">
-         <div className="sequence-heading"><div><strong>{timeline.sequenceId === "opening" ? "Opening / Intro" : timeline.sequenceId?.startsWith("talk-") ? `Talk ${timeline.sequenceId.replace("talk-", "")}` : "Recovered composition"}</strong><small>{timeline.sequenceId === "opening" ? "Compose the scene, character entrance, and idle hold." : "Synchronized Spine composition"}</small></div>{timeline.sequenceId === "opening" && <span className="opening-duration-badge">{timeline.durationMode === "auto" ? "AUTO" : "MANUAL"} · {seconds(duration)}</span>}</div>
-         {timeline.sequenceId === "opening" && <div className="opening-phase-strip" aria-label="Opening phases">
-           {openingPhases.map((phase) => <button key={phase.id} className={`opening-phase${currentTime >= phase.start && currentTime < phase.end ? " is-active" : ""}`} onClick={() => previewOpeningPhase(phase)} title={`Preview ${openingPhaseLabel(phase.id)}`}>
-              <span><b>{openingPhaseLabel(phase.id)}</b><small>{seconds(phase.start)}–{seconds(phase.end)}</small></span><i><IconPlay /></i>
-           </button>)}
-         </div>}
+          <div className="sequence-heading"><div><strong>{timeline.sequenceId === "opening" ? "Opening / Intro" : timeline.sequenceId?.startsWith("talk-") ? `Talk ${timeline.sequenceId.replace("talk-", "")}` : "Recovered composition"}</strong><small>{timeline.sequenceId === "opening" ? "Arrange character and scene animation clips on their own tracks." : "Synchronized Spine composition"}</small></div>{timeline.sequenceId === "opening" && <span className="opening-duration-badge">{timeline.durationMode === "auto" ? "AUTO" : "MANUAL"} · {seconds(duration)}</span>}</div>
+          {timeline.sequenceId === "opening" && <div className="opening-phase-strip" aria-label="Opening animation clips">
+            {openingCharacterClips.map((clip, index) => {
+              const end = animationClipEnd(clip, animationDurations[`${characterLayer?.id}:${clip.animation}`] ?? 0);
+              return <button key={clip.id} className={`opening-phase${currentTime >= clip.start && currentTime < end ? " is-active" : ""}`} onClick={() => previewOpeningClip(clip)} title={`Preview ${clip.animation || `Animation ${index + 1}`}`}>
+                <span><b>{clip.animation || `Animation ${index + 1}`}</b><small>{seconds(clip.start)}–{seconds(end)}{clip.continueAfterOpening ? " · continues" : ""}</small></span><i><IconPlay /></i>
+              </button>;
+            })}
+          </div>}
          <div className="timeline-stage-wrap">
            <div
              ref={stageRef}
@@ -1356,7 +1524,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
              onWheel={zoomStageAtCursor}
              >
                <div className="timeline-stage-content" style={{ transform: `translate3d(${stageView.x}px, ${stageView.y}px, 0) scale(${stageView.scale})` }}>
-                  {displayLayers.map((layer) => <SpineTimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} mainAnimation={mainAnimation} mainAnimationTime={mainAnimationTime} mainAnimationLoop={mainAnimationLoop} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
+                   {displayLayers.map((layer) => <SpineTimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} currentTime={currentTime} mainAnimation={mainAnimation} mainAnimationTime={mainAnimationTime} mainAnimationLoop={mainAnimationLoop} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} characterHidden={characterHidden} onMarkers={(next) => setMarkers((old) => old.join() === next.join() ? old : next)} sharedCameraPose={sharedCameraPose} referenceCamera={layer.role === "character"} onMeta={(id, meta) => setMetas((value) => ({ ...value, [id]: meta }))} onCameraPose={setSharedCameraPose} onAnimationDuration={onAnimationDuration} onError={onError} />)}
                   {timeline.audio.map((clip) => <audio key={clip.id} ref={(element) => { audioElementsRef.current[clip.id] = element; }} src={audioUrls[clip.id]} preload="auto" onLoadedMetadata={(event) => applyDecodedAudioDuration(clip.id, event.currentTarget.duration)} onCanPlay={() => setAudioPreloadState(clip.id, "ready")} onError={() => { setMissingAudio((value) => value.includes(clip.path) ? value : [...value, clip.path]); setAudioPreloadState(clip.id, "missing"); }} />)}
                   {!displayLayers.length && <div className="timeline-empty"><strong>No layers</strong><span>Add a Spine set from the Add menu.</span></div>}
                </div>
@@ -1377,7 +1545,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
          <div className="timeline-transport">
              <button className="editor-icon-button" aria-label={playing ? "Pause sequence" : "Play sequence"} onClick={() => { setPreviewUntil(null); setPlaying((value) => !value); }}>{playing ? <IconPause /> : <IconPlay />}</button>
              <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(0); setPlaying(false); }}><IconSkipBack /> Start</button>
-            {timeline.sequenceId === "opening" && <><button className="editor-button" onClick={() => stepOpeningPhase(-1)} disabled={!openingPhases.length}><IconChevronLeft /> Phase</button><button className="editor-button" onClick={() => stepOpeningPhase(1)} disabled={!openingPhases.length}>Phase <IconChevronRight /></button></>}
+             {timeline.sequenceId === "opening" && <><button className="editor-button" onClick={() => stepOpeningClip(-1)} disabled={!openingCharacterClips.length}><IconChevronLeft /> Clip</button><button className="editor-button" onClick={() => stepOpeningClip(1)} disabled={!openingCharacterClips.length}>Clip <IconChevronRight /></button></>}
              <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(duration); setPlaying(false); }}>End <IconSkipForward /></button>
           <label className="editor-speed">Speed <input type="number" min="0.1" max="3" step="0.1" value={speed} onChange={(event) => setSpeed(Math.max(0.1, Number(event.target.value) || 1))} /></label>
           <label className="timeline-loop"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop</label>
@@ -1393,21 +1561,21 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
             {markers.map((time, index) => <i key={index} title={`Spine event ${time.toFixed(3)}s`} className="sequence-marker" style={{ left: time * TIMELINE_SCALE * zoom }} />)}
           </div>
         </div>
-          <div className="timeline-track-rows" style={{ minWidth: trackWidth + 116 }} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
-                {displayLayers.map((layer) => <div className="timeline-row" key={layer.id}>
-               <div className="timeline-track-label" title={layer.directory}><b>{roleLabel(layer.role)}</b><span>{layer.name}</span></div>
-                <div className={`timeline-track timeline-layer-track${layer.id === timeline.selectedLayerId ? " is-selected" : ""}`} onPointerDown={seekFromEvent}>
-                    <div className={`timeline-layer-clip${isClipSelected("layer", layer.id) || layer.id === timeline.selectedLayerId ? " is-selected" : ""}`} title="Drag to move the layer; drag an edge to change its timing. Shift/Ctrl-click to select multiple." style={{ left: layer.start * TIMELINE_SCALE * zoom, width: Math.max(8, (layerEnd(layer) - layer.start) * TIMELINE_SCALE * zoom), zIndex: layer.order }} onPointerDown={(event) => { const selection = selectTimelineClip({ kind: "layer", id: layer.id }, event); if (selection) beginDrag(event, "layer", layer.id, layer.start, layerEnd(layer), selection); }}>
-                     {timeline.sequenceId === "opening" && layer.role === "character" && introDuration > 0 && <>
-                       <i className="timeline-layer-phase intro" style={{ width: Math.min(layerEnd(layer) - layer.start, introDuration) * TIMELINE_SCALE * zoom }} title={`Intro · ${seconds(introDuration)} actual Spine duration`}>INTRO</i>
-                       <i className="timeline-layer-phase idle" style={{ left: introDuration * TIMELINE_SCALE * zoom, width: Math.max(0, layerEnd(layer) - layer.start - introDuration) * TIMELINE_SCALE * zoom }} title="Idle hold">IDLE</i>
-                     </>}
-                      <button type="button" className="timeline-clip-start-handle" aria-label={`Move ${layer.name} start`} title="Drag to change start time" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "layer", id: layer.id }, event); if (selection) beginDrag(event, "layer-start", layer.id, layer.start, layerEnd(layer), selection); }} />
-                      <button type="button" className="timeline-clip-end-handle" aria-label={`Move ${layer.name} end`} title="Drag to change end time" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "layer", id: layer.id }, event); if (selection) beginDrag(event, "layer-end", layer.id, layer.start, layerEnd(layer), selection); }} />
-                      <span className="timeline-layer-name">{layer.followMainAnimation ? "Follow main" : layer.animation || metas[layer.id]?.idleAnimation || "Animation"}</span>
-                   </div>
-                 <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
-               </div>
+           <div className="timeline-track-rows" style={{ minWidth: trackWidth + 116 }} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
+                 {displayLayers.map((layer) => <div className="timeline-row" key={layer.id}>
+                <div className="timeline-track-label" title={layer.directory}><b>{roleLabel(layer.role)}</b><button type="button" onClick={() => { setSelectedClips([{ kind: "layer", id: layer.id }]); focusTimelineClip({ kind: "layer", id: layer.id }); }}>{layer.name}</button></div>
+                 <div className={`timeline-track timeline-layer-track${layer.id === timeline.selectedLayerId ? " is-selected" : ""}`} onPointerDown={seekFromEvent}>
+                    {layerAnimationClips(layer).map((clip) => {
+                      const end = animationClipEnd(clip, animationDurations[`${layer.id}:${clip.animation}`] ?? 0);
+                      const selected = isClipSelected("animation", clip.id);
+                      return <div key={clip.id} className={`timeline-layer-clip timeline-animation-clip${selected ? " is-selected" : ""}${clip.enabled === false ? " is-disabled" : ""}${clip.continueAfterOpening ? " is-continuing" : ""}`} title={`${clip.animation || "Animation"} · drag to move; drag an edge to trim${clip.continueAfterOpening ? " · continues after opening" : ""}`} style={{ left: clip.start * TIMELINE_SCALE * zoom, width: Math.max(8, (end - clip.start) * TIMELINE_SCALE * zoom), zIndex: layer.order }} onPointerDown={(event) => { const selection = selectTimelineClip({ kind: "animation", id: clip.id }, event); if (selection) beginDrag(event, "animation", clip.id, clip.start, end, selection); }}>
+                        <button type="button" className="timeline-clip-start-handle" aria-label={`Trim ${clip.animation} start`} title="Drag to trim the start" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "animation", id: clip.id }, event); if (selection) beginDrag(event, "animation-start", clip.id, clip.start, end, selection); }} />
+                        <button type="button" className="timeline-clip-end-handle" aria-label={`Trim ${clip.animation} end`} title="Drag to trim the end" onPointerDown={(event) => { event.stopPropagation(); const selection = selectTimelineClip({ kind: "animation", id: clip.id }, event); if (selection) beginDrag(event, "animation-end", clip.id, clip.start, end, selection); }} />
+                        <span className="timeline-layer-name">{layer.followMainAnimation ? `Follow · ${clip.animation || "main"}` : clip.animation || "Animation"}</span>
+                      </div>;
+                    })}
+                  <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
+                </div>
               </div>)}
             <div className="timeline-row subtitle-row">
               <div className="timeline-track-label"><b>SUBS</b><span>{timeline.language.toUpperCase()}</span></div>
@@ -1436,7 +1604,8 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
              <details ref={addMenuRef} className="timeline-add-menu">
                <summary className="editor-button"><IconPlus /> Add <IconChevronDown /></summary>
               <div className="timeline-add-menu-popover">
-                <button className="editor-button" onClick={() => { closeAddMenu(); addCue(); }}>Subtitle cue</button>
+                 <button className="editor-button" onClick={() => { closeAddMenu(); addAnimationClip(); }} disabled={!metas[selectedLayer?.id ?? characterLayer?.id ?? ""]}>Animation clip</button>
+                 <button className="editor-button" onClick={() => { closeAddMenu(); addCue(); }}>Subtitle cue</button>
                 <button className="editor-button" onClick={() => { closeAddMenu(); void importAudio(); }}>Audio files</button>
                 <button className="editor-button" onClick={() => { closeAddMenu(); void importSubtitles(); }}>Import subtitles</button>
                 <button className="editor-button" onClick={() => { closeAddMenu(); setLayerPickerOpen(true); }} disabled={!availableLayerDirectories.length}>Choose Spine layer…</button>
@@ -1450,32 +1619,23 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           <div className="editor-section-title"><strong>Sequence settings</strong><span>{seconds(duration)}</span></div>
             <label>{timeline.sequenceId === "opening" ? "Total duration (s)" : "Length (s)"}<input type="number" min="1" step="0.1" value={Number(duration.toFixed(3))} disabled={timeline.sequenceId === "opening" && timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: value.sequenceId === "opening" ? "manual" : value.durationMode, duration: Math.max(1, Number(event.target.value) || 1) }))} /></label>
            <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop sequence</span></label>
-           {timeline.sequenceId === "opening" && <div className="opening-flow-editor">
-             <div className="editor-subheading">Opening flow</div>
-             <p className="editor-muted">Preview and tune each phase without guessing where the character entrance begins.</p>
-              <label>Flow preset<select value={timeline.openingMode ?? "direct"} onChange={(event) => updateTimeline((value) => {
-                const openingMode = event.target.value as "direct" | "scene-first" | "skip";
-                const start = Math.max(0, value.sceneDuration ?? 3);
-                return { ...value, openingMode, layers: openingMode === "scene-first" ? value.layers.map((layer) => layer.role === "character" ? { ...layer, start } : layer) : value.layers };
-               })}><option value="scene-first">Scene / Intro / Idle</option><option value="direct">Intro / Idle</option><option value="skip">Idle only</option></select></label>
-              {timeline.openingMode === "scene-first" && <label>Scene lead-in / intro start (s)<input type="number" min="0" step="0.1" value={Number((characterLayer?.start ?? timeline.sceneDuration ?? 0).toFixed(3))} onChange={(event) => updateTimeline((value) => {
-                const start = Math.max(0, Number(event.target.value) || 0);
-                return { ...value, sceneDuration: start, layers: value.layers.map((layer) => layer.role === "character" ? { ...layer, start } : layer) };
-              })} /></label>}
-             <div className="opening-intro-card"><span>Character intro animation</span><strong>{introAnimation || "No intro animation"}</strong><small>{introAnimation ? introDuration > 0 ? `${seconds(introDuration)} actual Spine duration` : "Reading Spine animation duration…" : "This asset set will go straight to idle."}</small></div>
-              <div className="editor-two-fields"><label>Idle hold (s)<input type="number" min="0" step="0.1" value={Number(openingIdleDuration.toFixed(3))} onChange={(event) => updateTimeline((value) => {
-                const idle = Math.max(0, Number(event.target.value) || 0);
-                const start = value.layers.find((layer) => layer.role === "character")?.start ?? value.sceneDuration ?? 0;
-                return { ...value, openingIdleDuration: idle, duration: value.durationMode === "auto" ? value.duration : Math.max(1, start + (value.openingMode === "skip" ? 0 : introDuration) + idle) };
-              })} /></label><label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: event.target.checked ? "auto" : "manual", duration: event.target.checked ? openingAutoDuration : value.duration }))} /> Automatic total</span><small className="editor-field-hint">{timeline.durationMode === "auto" ? `Updates to ${seconds(openingAutoDuration)}` : "Manual override"}</small></label></div>
-             <div className="opening-phase-summary">{openingPhases.map((phase) => <button key={phase.id} onClick={() => previewOpeningPhase(phase)}><b>{openingPhaseLabel(phase.id)}</b><span>{seconds(phase.end - phase.start)}</span></button>)}</div>
-           </div>}
+            {timeline.sequenceId === "opening" && <div className="opening-flow-editor">
+              <div className="editor-subheading">Animation clips</div>
+              <p className="editor-muted">Each Spine asset keeps one loaded skeleton. Add clips to its track, then drag to reorder; later clips ripple with it.</p>
+              <div className="timeline-batch-actions">
+                <button className="editor-button" disabled={!characterLayer || !metas[characterLayer.id]} onClick={() => characterLayer && addAnimationClip(characterLayer.id)}><IconPlus /> Character clip</button>
+                {selectedLayer && selectedLayer.id !== characterLayer?.id && <button className="editor-button" disabled={!metas[selectedLayer.id]} onClick={() => addAnimationClip(selectedLayer.id)}><IconPlus /> {selectedLayer.name} clip</button>}
+              </div>
+              <div className="opening-phase-summary">{openingCharacterClips.map((clip) => <button key={clip.id} onClick={() => previewOpeningClip(clip)}><b>{clip.animation || "Animation"}</b><span>{seconds(animationClipEnd(clip, animationDurations[`${characterLayer?.id}:${clip.animation}`] ?? 0) - clip.start)}</span></button>)}</div>
+              <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: event.target.checked ? "auto" : "manual", duration: event.target.checked ? openingAutoDuration : value.duration }))} /> Automatic total duration</span><small className="editor-field-hint">{timeline.durationMode === "auto" ? `Updates to ${seconds(openingAutoDuration)} from the last clip.` : "Manual override"}</small></label>
+              <p className="editor-muted">Mark the final looping character clip “Continue after opening” to keep it running when interaction controls take over. Scene clips can hide the character for their duration.</p>
+            </div>}
           <div className="timeline-context-summary"><span>Layers <b>{displayLayers.length}</b></span><span>Subtitles <b>{timeline.subtitles.length}</b></span><span>Audio <b>{timeline.audio.length}</b></span></div>
            <p className="editor-muted">Select a clip in the timeline to edit its properties. Add content from the <b>Add</b> menu.</p>
            {timeline.subtitles.some((cue, index, all) => all.some((other, j) => index !== j && cue.start < other.end && cue.end > other.start)) && <p className="editor-error">Overlapping subtitle cues: review timing before export.</p>}
          </section>}
 
-         {inspector === "multi" && <section className="editor-section editor-inspector">
+          {inspector === "multi" && <section className="editor-section editor-inspector">
            <div className="editor-section-title"><strong>{selectedClipDetails.length} clips selected</strong><span>{selectedTypeSummary}</span></div>
            <p className="editor-muted">Drag any selected clip to move the group. Drag an edge to resize selected clips of the same type. Linked audio and subtitle timing moves together.</p>
            <div className="timeline-batch-actions">
@@ -1487,11 +1647,41 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
              <button className="editor-preview-button danger" disabled={!deletableSelectionCount} onClick={deleteSelectedClips}>Delete selected</button>
            </div>
            <div className="timeline-selection-list" aria-label="Selected clips">
-             {selectedClipDetails.map((item) => <div key={`${item.kind}-${item.id}`}><span className={`timeline-selection-kind ${item.kind}`}>{item.kind === "cue" ? "SUB" : item.kind === "audio" ? "AUD" : "SPN"}</span><span title={item.label}>{item.label}</span><small>{seconds(item.start)}–{seconds(item.end)}{!item.removable ? " · main character" : ""}</small></div>)}
+              {selectedClipDetails.map((item) => <div key={`${item.kind}-${item.id}`}><span className={`timeline-selection-kind ${item.kind}`}>{item.kind === "cue" ? "SUB" : item.kind === "audio" ? "AUD" : item.kind === "animation" ? "ANIM" : "SPN"}</span><span title={item.label}>{item.label}</span><small>{seconds(item.start)}–{seconds(item.end)}{!item.removable ? " · main character" : ""}</small></div>)}
            </div>
-         </section>}
+          </section>}
 
-         {inspector === "layer" && selectedLayer && <section className="editor-section editor-inspector">
+          {inspector === "animation" && selectedAnimationClip && <section className="editor-section editor-inspector">
+            <div className="editor-section-title"><strong>Animation clip</strong><span><i className={`timeline-role-dot ${selectedAnimationClip.layer.role}`} /> {selectedAnimationClip.layer.name}</span></div>
+            <div className="editor-two-fields"><button className="editor-button" onClick={duplicateSelectedAnimationClip}>Duplicate</button><button className="editor-preview-button danger" onClick={deleteSelectedClips}>Delete clip</button></div>
+            <label>Animation<select value={selectedAnimationClip.clip.animation} onChange={(event) => {
+              const animation = event.target.value;
+              const duration = animationDurations[`${selectedAnimationClip.layer.id}:${animation}`] ?? 0;
+              updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, {
+                animation,
+                ...(selectedAnimationClip.clip.endMode !== "manual" && !selectedAnimationClip.clip.loop && duration > 0
+                  ? { end: selectedAnimationClip.clip.start + Math.max(0.01, duration - selectedAnimationClip.clip.animationOffset) }
+                  : {}),
+              });
+            }}><option value="">Auto fallback</option>{(metas[selectedAnimationClip.layer.id]?.animations ?? []).map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
+            <label>Face / secondary animation<select value={selectedAnimationClip.clip.faceAnimation ?? ""} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { faceAnimation: event.target.value })}><option value="">Layer default / none</option>{(metas[selectedAnimationClip.layer.id]?.animations ?? []).map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
+            <div className="editor-two-fields"><label>Start (s)<input type="number" min="0" step="0.001" value={Number(selectedAnimationClip.clip.start.toFixed(3))} onChange={(event) => moveAnimationClipTo(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, Math.max(0, Number(event.target.value) || 0))} /></label><label>End (s)<input type="number" min={selectedAnimationClip.clip.start + 0.01} step="0.001" value={Number(animationClipEnd(selectedAnimationClip.clip, animationDurations[`${selectedAnimationClip.layer.id}:${selectedAnimationClip.clip.animation}`] ?? 0).toFixed(3))} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { endMode: "manual", end: Math.max(selectedAnimationClip.clip.start + 0.01, Number(event.target.value) || selectedAnimationClip.clip.start + 0.01) })} /></label></div>
+            <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAnimationClip.clip.endMode !== "manual"} onChange={(event) => {
+              const duration = animationDurations[`${selectedAnimationClip.layer.id}:${selectedAnimationClip.clip.animation}`] ?? 0;
+              updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { endMode: event.target.checked ? "auto" : "manual", ...(event.target.checked ? { end: animationClipEnd(selectedAnimationClip.clip, duration) } : {}) });
+            }} /> Use Spine animation end</span></label>
+            <div className="editor-two-fields"><label>Animation offset (s)<input type="number" min="0" step="0.001" value={Number(selectedAnimationClip.clip.animationOffset.toFixed(3))} onChange={(event) => {
+              const animationOffset = Math.max(0, Number(event.target.value) || 0);
+              const duration = animationDurations[`${selectedAnimationClip.layer.id}:${selectedAnimationClip.clip.animation}`] ?? 0;
+              updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { animationOffset, ...(selectedAnimationClip.clip.endMode !== "manual" && !selectedAnimationClip.clip.loop && duration > 0 ? { end: selectedAnimationClip.clip.start + Math.max(0.01, duration - animationOffset) } : {}) });
+            }} /></label><label><span>Playback</span><span className="timeline-inline-check"><input type="checkbox" checked={selectedAnimationClip.clip.loop} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { loop: event.target.checked })} /> Loop</span></label></div>
+            {timeline.sequenceId === "opening" && selectedAnimationClip.layer.role === "character" && <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAnimationClip.clip.continueAfterOpening === true} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { continueAfterOpening: event.target.checked })} /> Continue after opening</span><small className="editor-field-hint">Keeps this animation playing through the interaction-idle handoff.</small></label>}
+            {timeline.sequenceId === "opening" && selectedAnimationClip.layer.role === "scene" && <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAnimationClip.clip.hideCharacter === true} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { hideCharacter: event.target.checked })} /> Hide character during this scene clip</span><small className="editor-field-hint">When unchecked, the scene and character play together.</small></label>}
+            <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAnimationClip.clip.enabled !== false} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { enabled: event.target.checked })} /> Enabled</span></label>
+            <div className="editor-two-fields subtitle-actions"><button className="editor-button" onClick={() => previewAnimationClip(selectedAnimationClip.layer, selectedAnimationClip.clip)}><IconPlay /> Preview clip</button><span className="editor-field-hint">Drag the body to move; drag either edge to trim.</span></div>
+          </section>}
+
+          {inspector === "layer" && selectedLayer && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Layer</strong><span><i className={`timeline-role-dot ${selectedLayer.role}`} /> {roleLabel(selectedLayer.role)} <button className="danger" onClick={removeLayer} disabled={selectedLayer.role === "character"}>Remove</button></span></div>
           <label>Name<input value={selectedLayer.name} onChange={(event) => updateLayer(selectedLayer.id, { name: event.target.value })} /></label>
           <div className="editor-two-fields"><label>Role<select value={selectedLayer.role} onChange={(event) => updateLayer(selectedLayer.id, { role: event.target.value as TimelineLayerRole })}><option value="background">Background</option><option value="scene">Scene</option><option value="character">Character</option><option value="overlay">Overlay</option></select></label><label>Order<input type="number" min="0" step="1" value={selectedLayer.order} onChange={(event) => updateLayer(selectedLayer.id, { order: Math.max(0, Number(event.target.value) || 0) })} /></label></div>
@@ -1539,7 +1729,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           <p className="editor-muted" title={selectedAudio.path}>{selectedAudio.path}</p>
         </section>}
 
-        {((inspector === "layer" && !selectedLayer) || (inspector === "cue" && !selectedCue) || (inspector === "audio" && !selectedAudio)) && <div className="timeline-empty timeline-inspector-empty"><strong>Select a clip</strong><span>Choose a layer, subtitle, or audio clip in the timeline.</span></div>}
+        {((inspector === "layer" && !selectedLayer) || (inspector === "animation" && !selectedAnimationClip) || (inspector === "cue" && !selectedCue) || (inspector === "audio" && !selectedAudio)) && <div className="timeline-empty timeline-inspector-empty"><strong>Select a clip</strong><span>Choose a layer, animation, subtitle, or audio clip in the timeline.</span></div>}
       </aside>
     </div>
      <AssetPickerModal open={layerPickerOpen} title="Add Spine layer" eyebrow="TIMELINE LAYER" description="Search the loaded catalog and add another background, scene, character, or overlay set." directories={availableLayerDirectories} emptyLabel="Every available asset set is already on this timeline." renderLabel={(item) => characterDirectoryLabel(item, directoryLabels)} getSearchText={(item) => characterDirectoryLabel(item, directoryLabels)} onClose={() => setLayerPickerOpen(false)} onSelect={(next) => { setLayerPickerOpen(false); addLayer(next); }} />

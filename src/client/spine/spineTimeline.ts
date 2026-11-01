@@ -3,6 +3,22 @@ import type { SpineMeta } from "./spineRuntime";
 export type SpineTimelineLayerRole = "character" | "scene" | "background" | "overlay";
 export type SpineTimelineLanguage = "en" | "ja" | "ko";
 
+export interface SpineTimelineAnimationClip {
+  id: string;
+  animation: string;
+  faceAnimation?: string;
+  start: number;
+  end: number;
+  endMode?: "auto" | "manual";
+  animationOffset: number;
+  loop: boolean;
+  enabled?: boolean;
+  /** Keep this final opening animation running when the opening hands off to interaction idle. */
+  continueAfterOpening?: boolean;
+  /** Scene clips can explicitly hide the character while they are active. */
+  hideCharacter?: boolean;
+}
+
 export interface SpineTimelineLayer {
   id: string;
   name: string;
@@ -11,6 +27,7 @@ export interface SpineTimelineLayer {
   enabled: boolean;
   animation: string;
   faceAnimation?: string;
+  animationClips?: SpineTimelineAnimationClip[];
   /** Use the main character's matching animation and sample clock when available. */
   followMainAnimation?: boolean;
   start: number;
@@ -137,6 +154,11 @@ export function timelineTalkSequenceIds(project: SpineTimelineProject): string[]
     .sort((a, b) => Number(a.match(/\d+$/)?.[0] ?? 0) - Number(b.match(/\d+$/)?.[0] ?? 0));
 }
 
+/** A talk sequence is still playing until its authored idle tail begins. */
+export function timelineTalkInProgress(sequenceId: string, idleMode: "none" | "persistent" | "bridge"): boolean {
+  return /^talk-\d+$/i.test(sequenceId) && idleMode === "none";
+}
+
 export function timelineForSequence(project: SpineTimelineProject, sequenceId: string): SpineTimeline | null {
   if (project.timeline?.sequenceId === sequenceId) return project.timeline;
   return project.sequences?.[sequenceId] ?? null;
@@ -145,33 +167,36 @@ export function timelineForSequence(project: SpineTimelineProject, sequenceId: s
 export function timelinePlaybackDuration(
   timeline: Pick<SpineTimeline, "layers" | "subtitles" | "audio" | "duration"> & { sequenceId?: string; durationMode?: SpineTimeline["durationMode"] },
   openingMinimumDuration = 0,
-  layerEndFor: (layer: SpineTimelineLayer) => number = (layer) => layer.end,
+  layerEndFor: (layer: SpineTimelineLayer) => number = (layer) => layer.animationClips?.length ? Math.max(0, ...layer.animationClips.map((clip) => clip.end)) : layer.end,
 ): number {
   const allLayerEnd = Math.max(0, ...timeline.layers.map(layerEndFor));
-  const layerEnd = timeline.sequenceId === "opening" && timeline.durationMode !== "auto"
-    ? Math.max(0, ...timeline.layers.filter((layer) => layer.endMode === "manual").map(layerEndFor))
+  const selectedLayerEnd = timeline.sequenceId === "opening" && timeline.durationMode !== "auto"
+    ? Math.max(0, ...timeline.layers.flatMap((layer) => layer.animationClips?.length
+      ? [layerEndFor(layer)]
+      : layer.endMode === "manual" ? [layerEndFor(layer)] : []))
     : allLayerEnd;
   const contentEnd = Math.max(0, ...timeline.subtitles.map((cue) => cue.end), ...timeline.audio.map((clip) => clip.end));
   if (timeline.sequenceId === "opening" && timeline.durationMode === "auto" && timeline.layers.length > 0) {
     // Automatic openings end at their last visible/authored endpoint. This
     // removes stale blank tail time left by an older import while the caller
     // can still protect an intro that has not yet reached its idle state.
-    return Math.max(1, openingMinimumDuration, layerEnd, contentEnd);
+    return Math.max(1, openingMinimumDuration, selectedLayerEnd, contentEnd);
   }
-  return Math.max(1, timeline.duration, layerEnd, contentEnd);
+  return Math.max(1, timeline.duration, selectedLayerEnd, contentEnd);
 }
 
 /** Resolve an automatic opening's meaningful endpoint for both UIs. */
 export function timelineOpeningDuration(
   timeline: Pick<SpineTimeline, "layers" | "subtitles" | "audio"> & { openingMode?: SpineTimeline["openingMode"]; sceneDuration?: number },
   introDuration: number,
-  layerEndFor: (layer: SpineTimelineLayer) => number = (layer) => layer.end,
+  layerEndFor: (layer: SpineTimelineLayer) => number = (layer) => layer.animationClips?.length ? Math.max(0, ...layer.animationClips.map((clip) => clip.end)) : layer.end,
 ): number {
   const character = timeline.layers.find((layer) => layer.role === "character");
+  const hasAnimationClips = Array.isArray(character?.animationClips);
   const introStart = character
     ? Math.max(0, character.start)
     : timeline.openingMode === "scene-first" ? Math.max(0, timeline.sceneDuration ?? 0) : 0;
-  const introEnd = introStart + (timeline.openingMode === "skip" ? 0 : Math.max(0, introDuration));
+  const introEnd = hasAnimationClips ? 0 : introStart + (timeline.openingMode === "skip" ? 0 : Math.max(0, introDuration));
   const layerEnd = Math.max(0, ...timeline.layers.map(layerEndFor));
   const contentEnd = Math.max(0, ...timeline.subtitles.map((cue) => cue.end), ...timeline.audio.map((clip) => clip.end));
   return Math.max(1, introEnd, layerEnd, contentEnd);
@@ -208,6 +233,77 @@ export function timelineLayerPlaybackEnd(layer: Pick<SpineTimelineLayer, "start"
   return Math.max(layer.start + 0.01, layer.start + Math.max(0.01, animationDuration - Math.max(0, layer.animationOffset)));
 }
 
+export function timelineAnimationClipPlaybackEnd(clip: Pick<SpineTimelineAnimationClip, "start" | "end" | "endMode" | "loop" | "animationOffset">, animationDuration: number): number {
+  if (clip.loop || clip.endMode === "manual" || !Number.isFinite(animationDuration) || animationDuration <= 0) return clip.end;
+  return Math.max(clip.start + 0.01, clip.start + Math.max(0.01, animationDuration - Math.max(0, clip.animationOffset)));
+}
+
+export function timelineAnimationClipSampleTime(clip: Pick<SpineTimelineAnimationClip, "start" | "animationOffset" | "loop">, currentTime: number, animationDuration: number, forceLoop = false): number {
+  const elapsed = Math.max(0, currentTime - clip.start) + clip.animationOffset;
+  if (!animationDuration) return elapsed;
+  return forceLoop || clip.loop ? elapsed % animationDuration : Math.min(elapsed, animationDuration);
+}
+
+function fallbackAnimation(layer: SpineTimelineLayer, meta: Pick<SpineMeta, "animations" | "idleAnimation">): string {
+  return layer.animation || meta.idleAnimation || meta.animations[0] || "";
+}
+
+/** Return authored clips, or a virtual equivalent for older single-animation timelines. */
+export function timelineLayerAnimationClips(
+  layer: SpineTimelineLayer,
+  meta: Pick<SpineMeta, "animations" | "introAnimation" | "idleAnimation"> | null,
+  sequenceId: string,
+  openingMode: SpineTimeline["openingMode"],
+  introDuration: number,
+): SpineTimelineAnimationClip[] {
+  if (Array.isArray(layer.animationClips)) return [...layer.animationClips].sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+  const fallback = meta ? fallbackAnimation(layer, meta) : layer.animation;
+  if (sequenceId === "opening" && layer.role === "character") {
+    const intro = openingMode !== "skip" ? meta?.introAnimation ?? "" : "";
+    if (intro && introDuration > 0) {
+      const introEnd = layer.start + introDuration;
+      return [
+        { id: `${layer.id}-legacy-intro`, animation: intro, start: layer.start, end: introEnd, endMode: "auto", animationOffset: 0, loop: false },
+        { id: `${layer.id}-legacy-idle`, animation: fallback, start: introEnd, end: Math.max(introEnd + 0.01, layer.end), endMode: "auto", animationOffset: layer.animationOffset, loop: layer.loop, continueAfterOpening: true },
+      ];
+    }
+    return [{ id: `${layer.id}-legacy-opening`, animation: fallback, start: layer.start, end: Math.max(layer.start + 0.01, layer.end), endMode: layer.endMode, animationOffset: layer.animationOffset, loop: layer.loop, continueAfterOpening: true }];
+  }
+  return [{ id: `${layer.id}-legacy`, animation: fallback, start: layer.start, end: Math.max(layer.start + 0.01, layer.end), endMode: layer.endMode, animationOffset: layer.animationOffset, loop: layer.loop }];
+}
+
+/** Find the active clip on a layer; later-starting clips win if ranges overlap. */
+export function timelineActiveAnimationClip(
+  layer: SpineTimelineLayer,
+  meta: Pick<SpineMeta, "animations" | "introAnimation" | "idleAnimation"> | null,
+  currentTime: number,
+  sequenceId: string,
+  openingMode: SpineTimeline["openingMode"],
+  introDuration: number,
+  continueAfterOpening = false,
+): SpineTimelineAnimationClip | null {
+  const clips = timelineLayerAnimationClips(layer, meta, sequenceId, openingMode, introDuration);
+  if (continueAfterOpening && sequenceId === "opening") {
+    const continuation = clips.filter((clip) => clip.enabled !== false && clip.continueAfterOpening && currentTime >= clip.start)
+      .sort((a, b) => b.start - a.start)[0];
+    if (continuation) return continuation;
+  }
+  return clips.filter((clip) => clip.enabled !== false && currentTime >= clip.start && currentTime < clip.end)
+    .sort((a, b) => b.start - a.start)[0] ?? null;
+}
+
+/** Scene-track clip metadata controls whether the character is visible alongside it. */
+export function timelineSceneHidesCharacter(timeline: Pick<SpineTimeline, "layers">, currentTime: number): boolean {
+  return timeline.layers.some((layer) => layer.role === "scene" && layer.enabled
+    && timelineActiveAnimationClip(layer, null, currentTime, "opening", "direct", 0)?.hideCharacter === true);
+}
+
+export function timelineOpeningContinuationStart(timeline: SpineTimeline, layer: SpineTimelineLayer, meta: Pick<SpineMeta, "animations" | "introAnimation" | "idleAnimation"> | null, introDuration: number): number {
+  const clips = timelineLayerAnimationClips(layer, meta, timeline.sequenceId, timeline.openingMode, introDuration);
+  return clips.filter((clip) => clip.enabled !== false && clip.continueAfterOpening).sort((a, b) => b.start - a.start)[0]?.start
+    ?? layer.start + (timeline.openingMode === "skip" ? 0 : introDuration);
+}
+
 /** Talk tracks retain the character's idle body underneath the authored motion. */
 export function timelineAnimationNeedsIdleUnderlay(animation: string): boolean {
   return /^talk/i.test(animation);
@@ -219,10 +315,18 @@ function exactAnimation(animations: readonly string[], requested: string): strin
 }
 
 /** Resolve the animation used by a timeline layer in both the editor and viewer. */
-export function timelineLayerAnimation(layer: SpineTimelineLayer, meta: Pick<SpineMeta, "animations" | "introAnimation" | "idleAnimation">, mainAnimation: string | undefined, currentTime: number, sequenceId: string, openingMode: SpineTimeline["openingMode"], introDuration: number): string {
+export function timelineLayerAnimation(layer: SpineTimelineLayer, meta: Pick<SpineMeta, "animations" | "introAnimation" | "idleAnimation">, mainAnimation: string | undefined, currentTime: number, sequenceId: string, openingMode: SpineTimeline["openingMode"], introDuration: number, continueAfterOpening = false): string {
+  const activeClip = timelineActiveAnimationClip(layer, meta, currentTime, sequenceId, openingMode, introDuration, continueAfterOpening);
+  const clipDriven = Array.isArray(layer.animationClips);
+  const fallback = fallbackAnimation(layer, meta);
+  if (clipDriven) {
+    if (!activeClip) return "";
+    return (layer.followMainAnimation && mainAnimation ? exactAnimation(meta.animations, mainAnimation) : null)
+      ?? exactAnimation(meta.animations, activeClip.animation)
+      ?? fallback;
+  }
   const openingCharacter = sequenceId === "opening" && layer.role === "character";
   const useIntro = openingCharacter && openingMode !== "skip" && Boolean(meta.introAnimation) && currentTime >= layer.start && currentTime - layer.start < introDuration;
-  const fallback = layer.animation || meta.idleAnimation || meta.animations[0] || "";
   const followed = layer.followMainAnimation && mainAnimation ? exactAnimation(meta.animations, mainAnimation) : null;
   if (followed) return followed;
   if (useIntro && meta.introAnimation) return exactAnimation(meta.animations, meta.introAnimation) ?? fallback;
@@ -237,7 +341,17 @@ export interface TimelineMainAnimationState {
 }
 
 /** Resolve the main character animation and clock shared by all following layers. */
-export function timelineMainAnimation(layer: SpineTimelineLayer, meta: Pick<SpineMeta, "animations" | "introAnimation" | "idleAnimation">, currentTime: number, sequenceId: string, openingMode: SpineTimeline["openingMode"], introDuration: number, animationDuration: number): TimelineMainAnimationState {
+export function timelineMainAnimation(layer: SpineTimelineLayer, meta: Pick<SpineMeta, "animations" | "introAnimation" | "idleAnimation">, currentTime: number, sequenceId: string, openingMode: SpineTimeline["openingMode"], introDuration: number, animationDuration: number, continueAfterOpening = false): TimelineMainAnimationState {
+  const clipDriven = Array.isArray(layer.animationClips);
+  if (clipDriven) {
+    const clip = timelineActiveAnimationClip(layer, meta, currentTime, sequenceId, openingMode, introDuration, continueAfterOpening);
+    if (clip) {
+      const time = timelineAnimationClipSampleTime(clip, currentTime, animationDuration, continueAfterOpening && clip.continueAfterOpening === true);
+      const talkCharacter = sequenceId.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
+      return { animation: clip.animation || fallbackAnimation(layer, meta), time, loop: continueAfterOpening && clip.continueAfterOpening ? true : talkCharacter ? false : clip.loop, useIntro: false };
+    }
+    return { animation: "", time: 0, loop: false, useIntro: false };
+  }
   const openingCharacter = sequenceId === "opening" && layer.role === "character";
   const useIntro = openingCharacter && openingMode !== "skip" && Boolean(meta.introAnimation) && currentTime >= layer.start && currentTime - layer.start < introDuration;
   const animation = useIntro && meta.introAnimation ? meta.introAnimation : layer.animation || meta.idleAnimation || meta.animations[0] || "";
@@ -292,6 +406,7 @@ function normalizeLayer(value: unknown, index: number, duration: number): SpineT
     enabled: layer.enabled !== false,
     animation: stringValue(layer.animation),
     ...(typeof layer.faceAnimation === "string" ? { faceAnimation: layer.faceAnimation } : {}),
+    ...(Array.isArray(layer.animationClips) ? { animationClips: layer.animationClips.map((value, clipIndex) => normalizeAnimationClip(value, index, clipIndex)).filter((clip): clip is SpineTimelineAnimationClip => clip !== null) } : {}),
     followMainAnimation: layer.followMainAnimation === undefined ? role === "background" : layer.followMainAnimation === true,
     start,
     end: Math.max(start + 0.01, finiteNumber(layer.end, duration)),
@@ -303,6 +418,25 @@ function normalizeLayer(value: unknown, index: number, duration: number): SpineT
     scale: Math.max(0.01, finiteNumber(layer.scale, 1)),
     opacity: Math.max(0, Math.min(1, finiteNumber(layer.opacity, 1))),
     order: Math.max(0, finiteNumber(layer.order, index)),
+  };
+}
+
+function normalizeAnimationClip(value: unknown, layerIndex: number, clipIndex: number): SpineTimelineAnimationClip | null {
+  if (!value || typeof value !== "object") return null;
+  const clip = value as Partial<SpineTimelineAnimationClip>;
+  const start = nonNegative(clip.start, 0);
+  return {
+    id: stringValue(clip.id, `timeline-layer-${layerIndex + 1}-clip-${clipIndex + 1}`),
+    animation: stringValue(clip.animation),
+    ...(typeof clip.faceAnimation === "string" ? { faceAnimation: clip.faceAnimation } : {}),
+    start,
+    end: Math.max(start + 0.01, finiteNumber(clip.end, start + 1)),
+    ...(clip.endMode === "manual" ? { endMode: "manual" as const } : clip.endMode === "auto" ? { endMode: "auto" as const } : {}),
+    animationOffset: nonNegative(clip.animationOffset, 0),
+    loop: clip.loop === true,
+    ...(typeof clip.enabled === "boolean" ? { enabled: clip.enabled } : {}),
+    ...(typeof clip.continueAfterOpening === "boolean" ? { continueAfterOpening: clip.continueAfterOpening } : {}),
+    ...(typeof clip.hideCharacter === "boolean" ? { hideCharacter: clip.hideCharacter } : {}),
   };
 }
 

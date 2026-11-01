@@ -62,6 +62,36 @@ test("background timeline layers follow the main animation by default and keep e
   expect(legacy?.timeline.layers.find((layer) => layer.role === "background")?.followMainAnimation).toBe(true);
 });
 
+test("clip-based opening timelines survive editor save and reopen normalization", () => {
+  const raw = {
+    schemaVersion: 2,
+    assetDirectory: "CH0184_home",
+    interactions: [],
+    timeline: {
+      sequenceId: "opening",
+      openingMode: "direct",
+      durationMode: "auto",
+      layers: [{
+        id: "character",
+        directory: "CH0184_home",
+        role: "character",
+        animationClips: [
+          { id: "start-idle", animation: "Start_Idle", start: 0, end: 1.2, animationOffset: 0, loop: false },
+          { id: "scene", animation: "Scene", start: 1.2, end: 2.8, animationOffset: 0, loop: false },
+          { id: "start-idle-2", animation: "Start_Idle_2", start: 2.8, end: 4, animationOffset: 0, loop: false },
+          { id: "idle", animation: "Idle_01", start: 4, end: 7, animationOffset: 0, loop: true, continueAfterOpening: true },
+        ],
+      }],
+    },
+  };
+  const saved = normalizeProject(raw, "CH0184_home")!;
+  const reopened = normalizeProject(JSON.parse(JSON.stringify(saved)), "CH0184_home")!;
+  expect(reopened.timeline.layers[0]?.animationClips?.map((clip) => [clip.animation, clip.start, clip.end])).toEqual([
+    ["Start_Idle", 0, 1.2], ["Scene", 1.2, 2.8], ["Start_Idle_2", 2.8, 4], ["Idle_01", 4, 7],
+  ]);
+  expect(reopened.timeline.layers[0]?.animationClips?.at(-1)).toMatchObject({ continueAfterOpening: true, loop: true });
+});
+
 describe("Spine editor project model", () => {
   test("an intentionally empty project survives save/load", () => {
     const empty = normalizeProject({ schemaVersion: 1, interactions: [] }, "test");

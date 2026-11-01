@@ -763,18 +763,9 @@ export class SpineRenderer {
 
   triggerTalk(requestedAnimation?: string) {
     if (this.interactionMode !== "interaction" || !this.interactionReady || !this.bundle || this.bundle.interaction.talks.length === 0) return;
-    if (this.interactionState !== "idle") {
-      // Choosing a specific dialogue is an explicit request to interrupt the
-      // current talk. A plain Talk click still waits for the authored gesture
-      // to finish, preserving the original manual interaction behavior.
-      if (!requestedAnimation || this.interactionState !== "talk") return;
-      this.clearOverlay(5);
-      this.clearOverlay(6);
-      this.interactionState = "idle";
-      this.interactionTrackName = null;
-      this.talkAudioPending = false;
-      this.talkFadeQueued = false;
-    }
+    // Do not let manual or programmatic Talk requests replace an active
+    // dialogue; its animation and voice should finish before another begins.
+    if (this.interactionState !== "idle") return;
     const requested = requestedAnimation
       ? this.bundle.interaction.talks.findIndex((talk) => {
         const wanted = basename(requestedAnimation).toLocaleLowerCase();

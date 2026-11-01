@@ -1,5 +1,6 @@
-import { ensureTimelineLayers, type EditorAudioClip, type EditorProject, type EditorSubtitleCue, type EditorTimeline, type EditorTimelineLayer } from "./editorModel";
-import { timelineLayerPlaybackEnd, timelineOpeningDuration } from "../../../src/client/spine/spineTimeline";
+import { ensureTimelineLayers, type EditorAnimationClip, type EditorAudioClip, type EditorProject, type EditorSubtitleCue, type EditorTimeline, type EditorTimelineLayer } from "./editorModel";
+import { timelineAnimationClipPlaybackEnd, timelineLayerAnimationClips, timelineLayerPlaybackEnd, timelineOpeningDuration } from "../../../src/client/spine/spineTimeline";
+import type { SpineMeta } from "../../../src/client/spine/spineRuntime";
 
 export type OpeningPhaseId = "scene" | "intro" | "idle";
 
@@ -7,6 +8,75 @@ export interface OpeningPhaseTiming {
   id: OpeningPhaseId;
   start: number;
   end: number;
+}
+
+export function effectiveAnimationClips(layer: EditorTimelineLayer, timeline: EditorTimeline, meta: SpineMeta | null, introDuration: number): EditorAnimationClip[] {
+  return timelineLayerAnimationClips(layer, meta, timeline.sequenceId ?? "legacy", timeline.openingMode ?? "direct", introDuration) as EditorAnimationClip[];
+}
+
+export function animationClipEnd(clip: EditorAnimationClip, animationDuration: number): number {
+  return timelineAnimationClipPlaybackEnd(clip, animationDuration);
+}
+
+/** Reposition a clip and ripple the later sequence; moving left through a clip inserts before it. */
+export function moveAnimationClipRipple(clips: readonly EditorAnimationClip[], clipId: string, requestedStart: number, snap = 0, targets: number[] = []): EditorAnimationClip[] {
+  const original = [...clips].sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+  const selectedIndex = original.findIndex((clip) => clip.id === clipId);
+  if (selectedIndex < 0) return [...clips];
+  const selected = original[selectedIndex]!;
+  const start = Math.max(0, snapToTargets(requestedStart, snap, targets));
+  const delta = start - selected.start;
+  if (Math.abs(delta) < 0.000001) return [...clips];
+  const length = Math.max(0.01, selected.end - selected.start);
+  if (delta > 0) {
+    return original.map((clip, index) => index < selectedIndex ? clip : {
+      ...clip,
+      start: Math.max(0, clip.start + delta),
+      end: Math.max(0.01, clip.end + delta),
+    });
+  }
+
+  const remaining = original.filter((clip) => clip.id !== clipId);
+  const collisionIndex = remaining.findIndex((clip) => clip.start < start + length && clip.end > start);
+  const insertAt = collisionIndex < 0
+    ? remaining.findIndex((clip) => clip.start >= start)
+    : collisionIndex;
+  const index = insertAt < 0 ? remaining.length : insertAt;
+  const ordered = [...remaining.slice(0, index), selected, ...remaining.slice(index)];
+  let previousEnd = 0;
+  return ordered.map((clip) => {
+    const duration = Math.max(0.01, clip.end - clip.start);
+    const originalIndex = original.findIndex((item) => item.id === clip.id);
+    const requested = clip.id === clipId ? start : clip.start + (originalIndex > selectedIndex ? delta : 0);
+    const nextStart = clip.id === clipId ? start : Math.max(0, requested, previousEnd);
+    previousEnd = nextStart + duration;
+    return { ...clip, start: nextStart, end: previousEnd };
+  });
+}
+
+export function insertAnimationClipRipple(clips: readonly EditorAnimationClip[], clip: EditorAnimationClip): EditorAnimationClip[] {
+  const length = Math.max(0.01, clip.end - clip.start);
+  const shifted = clips.map((item) => item.start >= clip.start
+    ? { ...item, start: item.start + length, end: item.end + length }
+    : item);
+  return [...shifted, clip].sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+}
+
+export function duplicateAnimationClipRipple(clips: readonly EditorAnimationClip[], clipId: string, nextId: string): EditorAnimationClip[] {
+  const source = clips.find((clip) => clip.id === clipId);
+  if (!source) return [...clips];
+  const length = Math.max(0.01, source.end - source.start);
+  const duplicate = { ...source, id: nextId, start: source.end, end: source.end + length };
+  return insertAnimationClipRipple(clips, duplicate);
+}
+
+export function deleteAnimationClipRipple(clips: readonly EditorAnimationClip[], clipId: string): EditorAnimationClip[] {
+  const removed = clips.find((clip) => clip.id === clipId);
+  if (!removed) return [...clips];
+  const length = Math.max(0.01, removed.end - removed.start);
+  return clips.filter((clip) => clip.id !== clipId).map((clip) => clip.start >= removed.end
+    ? { ...clip, start: Math.max(0, clip.start - length), end: Math.max(0.01, clip.end - length) }
+    : clip);
 }
 
 /** Resolve a non-looping layer's visible end from the actual Spine animation. */

@@ -47,7 +47,7 @@ import {
   type SpineVoiceLine,
 } from "./spine/spineVoicelines";
 import { SpineCompositionViewport, type SpineCompositionViewportHandle } from "./spine/SpineCompositionViewport";
-import { timelineForSequence, timelinePlaybackDuration, timelineSequenceIds, timelineTalkSequenceIds } from "./spine/spineTimeline";
+import { timelineForSequence, timelinePlaybackDuration, timelineSequenceIds, timelineTalkInProgress, timelineTalkSequenceIds } from "./spine/spineTimeline";
 
 const bundledCharacterIndex = characterIndexJson as CharacterIndex;
 
@@ -1080,6 +1080,11 @@ export function Spine() {
 
   const playTalk = (line?: SpineVoiceLine, preserveAutoplay = false) => {
     if (!interactionReady) return;
+    const rendererTalkActive = compositionActive
+      ? compositionRef.current?.isTalkActive() === true
+      : viewportRef.current?.isTalkActive() === true;
+    const authoredTalkActive = compositionActive && timelineTalkInProgress(compositionSequenceId, idleMode);
+    if (rendererTalkActive || authoredTalkActive) return;
     stopVoice(true, !preserveAutoplay);
     if (compositionActive && selectedInteractionProject && authoredTalkSequenceIds.length > 0) {
       const requestedNumber = line ? Number((line.animation || line.id).match(/(?:Talk_|talk-|_)(\d+)/i)?.[1]) : null;

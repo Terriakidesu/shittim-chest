@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { createProject, normalizeProject } from "./editorModel";
-import { animationEndForLayer, authoredTimelineEnd, extendTimelineDuration, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAudioClip, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
+import { animationClipEnd, animationEndForLayer, authoredTimelineEnd, deleteAnimationClipRipple, duplicateAnimationClipRipple, effectiveAnimationClips, extendTimelineDuration, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAnimationClipRipple, moveAudioClip, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
+import type { SpineMeta } from "../../../src/client/spine/spineRuntime";
 
 test("talk sequences pair body and face and isolate subtitle clocks", () => {
   const animations = ["Idle_01", "Talk_01_M", "Talk_01_A", "Talk_02_M", "Talk_02_A"];
@@ -186,4 +187,44 @@ test("opening phases follow the character clip start instead of a fixed lead-in"
     { id: "intro", start: 1.5, end: 4 },
     { id: "idle", start: 4, end: 10 },
   ]);
+});
+
+test("legacy opening data migrates to intro and idle clips without shifting its timing", () => {
+  const project = createProject("Airi_home", [], []);
+  project.timeline.sequenceId = "opening";
+  project.timeline.openingMode = "scene-first";
+  project.timeline.layers[0] = { ...project.timeline.layers[0]!, start: 2, end: 9, animation: "Idle_01", animationOffset: 0.2 };
+  const meta = { animations: ["Start_Idle", "Idle_01"], introAnimation: "Start_Idle", idleAnimation: "Idle_01" } as SpineMeta;
+  const clips = effectiveAnimationClips(project.timeline.layers[0]!, project.timeline, meta, 2.5);
+  expect(clips.map(({ animation, start, end }) => ({ animation, start, end }))).toEqual([
+    { animation: "Start_Idle", start: 2, end: 4.5 },
+    { animation: "Idle_01", start: 4.5, end: 9 },
+  ]);
+  expect(clips[1]).toMatchObject({ animationOffset: 0.2, loop: true, continueAfterOpening: true });
+  expect(animationClipEnd(clips[0]!, 2.5)).toBe(4.5);
+});
+
+test("animation clip movement snaps and ripples later clips without overlaps", () => {
+  const clips = [
+    { id: "a", animation: "Start_Idle", start: 0, end: 1, animationOffset: 0, loop: false },
+    { id: "b", animation: "Scene", start: 1, end: 2, animationOffset: 0, loop: false },
+    { id: "c", animation: "Idle", start: 2, end: 3, animationOffset: 0, loop: true },
+  ];
+  const forward = moveAnimationClipRipple(clips, "b", 1.96, 0.1, [2]);
+  expect(forward.map(({ id, start, end }) => [id, start, end])).toEqual([["a", 0, 1], ["b", 2, 3], ["c", 3, 4]]);
+  const backward = moveAnimationClipRipple(clips, "b", 0, 0, []);
+  expect(backward.map(({ id, start, end }) => [id, start, end])).toEqual([["b", 0, 1], ["a", 1, 2], ["c", 2, 3]]);
+  expect(backward.slice(1).every((clip, index) => clip.start >= backward[index]!.end)).toBe(true);
+});
+
+test("duplicating and deleting animation clips ripple the sequence around them", () => {
+  const clips = [
+    { id: "a", animation: "Start_Idle", start: 0, end: 1, animationOffset: 0, loop: false },
+    { id: "b", animation: "Scene", start: 1, end: 2, animationOffset: 0, loop: false },
+    { id: "c", animation: "Idle", start: 2, end: 3, animationOffset: 0, loop: true },
+  ];
+  const duplicated = duplicateAnimationClipRipple(clips, "b", "b-copy");
+  expect(duplicated.map(({ id, start, end }) => [id, start, end])).toEqual([["a", 0, 1], ["b", 1, 2], ["b-copy", 2, 3], ["c", 3, 4]]);
+  const deleted = deleteAnimationClipRipple(duplicated, "b-copy");
+  expect(deleted.map(({ id, start, end }) => [id, start, end])).toEqual([["a", 0, 1], ["b", 1, 2], ["c", 2, 3]]);
 });

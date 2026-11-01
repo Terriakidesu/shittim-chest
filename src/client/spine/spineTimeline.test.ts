@@ -1,17 +1,17 @@
 import { expect, test } from "bun:test";
-import { timelineIdleAnimation, timelineTalkIdleStart } from "./spineTimeline";
+import { timelineIdleAnimation, timelineTalkIdleStart, timelineTalkInProgress } from "./spineTimeline";
 
 test("idle playback selects Idle_XX, never the opening or talk animation", () => {
   expect(timelineIdleAnimation({ idleAnimation: "Idle_01", animations: ["Start_Idle_01", "Idle_01", "Talk_01_M"] })).toBe("Idle_01");
   expect(timelineIdleAnimation({ idleAnimation: null, animations: ["Start_Idle_01", "Idle_02"] })).toBe("Idle_02");
   expect(timelineIdleAnimation({ idleAnimation: null, animations: ["Start_Idle_01"] })).toBe("");
 });
-import { advanceSpineTimeline, normalizeSpineTimeline, timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineAudioPlaybackDecision, timelineAudioPreloadsReady, timelineForSequence, timelineLayerAnimation, timelineLayerPlaybackEnd, timelineLayerSampleTime, timelineMainAnimation, timelinePlaybackDuration, timelineSequenceIds, timelineTalkSequenceIds, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
+import { advanceSpineTimeline, normalizeSpineTimeline, timelineActiveAnimationClip, timelineActiveSubtitleTexts, timelineAnimationNeedsIdleUnderlay, timelineAudioPlaybackDecision, timelineAudioPreloadsReady, timelineForSequence, timelineLayerAnimation, timelineLayerPlaybackEnd, timelineLayerSampleTime, timelineMainAnimation, timelinePlaybackDuration, timelineSceneHidesCharacter, timelineSequenceIds, timelineTalkSequenceIds, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
 
 const character = { start: 1, animationOffset: 0.25, loop: false, role: "character" as const };
 
 const meta = {
-  animations: ["Idle", "Talk_01_M", "Intro"],
+  animations: ["Idle", "Talk_01_M", "Intro", "Start_Idle", "Scene", "Start_Idle_2"],
   introAnimation: "Intro",
   idleAnimation: "Idle",
 };
@@ -19,6 +19,12 @@ const meta = {
 test("Aru's shortened talk layer does not truncate its body animation before the idle tail", () => {
   expect(timelineTalkIdleStart(layer({ start: 0, end: 15.1 }), 15.333)).toBe(15.333);
   expect(timelineTalkIdleStart(layer({ start: 0, end: 16 }), 15.333)).toBe(16);
+});
+
+test("authored talks remain in progress until the idle tail starts", () => {
+  expect(timelineTalkInProgress("talk-1", "none")).toBe(true);
+  expect(timelineTalkInProgress("talk-1", "persistent")).toBe(false);
+  expect(timelineTalkInProgress("opening", "none")).toBe(false);
 });
 
 function layer(overrides: Partial<SpineTimelineLayer> = {}): SpineTimelineLayer {
@@ -109,6 +115,15 @@ test("background layers follow the main animation by name and clock", () => {
   const background = layer({ role: "background", animation: "Fallback", followMainAnimation: true, directory: "Layer_bg" });
   expect(timelineLayerAnimation(background, meta, "talk_01_m", 2, "talk-1", "direct", 0)).toBe("Talk_01_M");
   expect(timelineMainAnimation(layer({ animation: "Talk_01_M" }), meta, 2, "talk-1", "direct", 0, 3)).toMatchObject({ animation: "Talk_01_M", time: 2, loop: false });
+  const clipMain = layer({ animationClips: [
+    { id: "main", animation: "Start_Idle_2", start: 2, end: 3, animationOffset: 0.1, loop: false },
+  ] });
+  const clipBackground = layer({ role: "background", directory: "Layer_bg", followMainAnimation: true, animationClips: [
+    { id: "bg", animation: "Idle", start: 0, end: 4, animationOffset: 0, loop: true },
+  ] });
+  const mainState = timelineMainAnimation(clipMain, meta, 2.5, "opening", "direct", 0, 1);
+  expect(timelineLayerAnimation(clipBackground, meta, mainState.animation, 2.5, "opening", "direct", 0)).toBe("Start_Idle_2");
+  expect(mainState.time).toBeCloseTo(0.6);
 });
 
 test("opening intro and post-intro clocks are shared by the main layer", () => {
@@ -116,6 +131,39 @@ test("opening intro and post-intro clocks are shared by the main layer", () => {
   expect(opening).toMatchObject({ animation: "Intro", time: 1, useIntro: true });
   const idle = timelineMainAnimation(layer({ animation: "Idle" }), meta, 3, "opening", "direct", 2, 3);
   expect(idle).toMatchObject({ animation: "Idle", time: 1, useIntro: false });
+});
+
+test("clip-based openings resolve a CH0184-style sequence and continue its final idle", () => {
+  const clips = [
+    { id: "start-idle", animation: "Start_Idle", start: 0, end: 1, animationOffset: 0, loop: false },
+    { id: "scene", animation: "Scene", start: 1, end: 2, animationOffset: 0, loop: false },
+    { id: "start-idle-2", animation: "Start_Idle_2", start: 2, end: 3, animationOffset: 0, loop: false },
+    { id: "idle", animation: "Idle", start: 3, end: 4, animationOffset: 0, loop: true, continueAfterOpening: true },
+  ];
+  const main = layer({ animationClips: clips });
+  expect([0.5, 1.5, 2.5, 3.5].map((time) => timelineLayerAnimation(main, meta, undefined, time, "opening", "direct", 0))).toEqual([
+    "Start_Idle", "Scene", "Start_Idle_2", "Idle",
+  ]);
+  expect(timelineActiveAnimationClip(main, meta, 2.5, "opening", "direct", 0)?.id).toBe("start-idle-2");
+  expect(timelineMainAnimation(main, meta, 3.5, "opening", "direct", 0, 2)).toMatchObject({ animation: "Idle", time: 0.5, loop: true });
+  expect(timelineMainAnimation(main, meta, 5.5, "opening", "direct", 0, 2, true)).toMatchObject({ animation: "Idle", time: 0.5, loop: true });
+  expect(timelinePlaybackDuration({ sequenceId: "opening", durationMode: "auto", duration: 9, layers: [main], subtitles: [], audio: [] })).toBe(4);
+});
+
+test("legacy opening layers synthesize their previous intro-to-idle timing", () => {
+  const oldLayer = layer({ start: 1, end: 5, animation: "Idle", animationOffset: 0.25, loop: true });
+  expect(timelineLayerAnimation(oldLayer, meta, undefined, 2, "opening", "direct", 2)).toBe("Intro");
+  expect(timelineLayerAnimation(oldLayer, meta, undefined, 3.5, "opening", "direct", 2)).toBe("Idle");
+  expect(timelineActiveAnimationClip(oldLayer, meta, 3.5, "opening", "direct", 2)).toMatchObject({ start: 3, end: 5, animationOffset: 0.25, continueAfterOpening: true });
+});
+
+test("scene clips explicitly hide the character only while active", () => {
+  const scene = layer({
+    role: "scene",
+    animationClips: [{ id: "scene", animation: "Scene", start: 1, end: 3, animationOffset: 0, loop: false, hideCharacter: true }],
+  });
+  expect(timelineSceneHidesCharacter({ layers: [scene] }, 2)).toBe(true);
+  expect(timelineSceneHidesCharacter({ layers: [scene] }, 3)).toBe(false);
 });
 
 test("non-looping layer endpoints use the authored animation offset", () => {

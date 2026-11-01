@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { SpineRenderer, type SpineCameraPose, type SpineFiles, type SpineInteractionOverlay, type SpineLoadProgress, type SpineMeta } from "./spineRuntime";
 import type { SpineInteractionProject } from "./spineInteraction";
-import { timelineIdleAnimation, timelineTalkIdleStart, timelineAnimationNeedsIdleUnderlay, timelineLayerAnimation, timelineLayerPlaybackEnd, timelineLayerSampleTime, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
+import { timelineActiveAnimationClip, timelineAnimationClipPlaybackEnd, timelineAnimationClipSampleTime, timelineIdleAnimation, timelineTalkIdleStart, timelineAnimationNeedsIdleUnderlay, timelineLayerAnimation, timelineLayerAnimationClips, timelineLayerPlaybackEnd, timelineLayerSampleTime, type SpineTimeline, type SpineTimelineLayer } from "./spineTimeline";
 
 export interface SpineTimelineLayerCanvasProps {
   layer: SpineTimelineLayer;
@@ -13,6 +13,7 @@ export interface SpineTimelineLayerCanvasProps {
   openingMode?: SpineTimeline["openingMode"];
   sequenceId?: string;
   idleMode?: "none" | "persistent" | "bridge";
+  characterHidden?: boolean;
   interactionEnabled?: boolean;
   interactionProject?: SpineInteractionProject | null;
   showInteractionPoints?: boolean;
@@ -42,7 +43,7 @@ export interface SpineTimelineLayerCanvasProps {
  * interaction preservation, and visibility in this component. The two UIs
  * should provide state and callbacks, not fork playback rules.
  */
-export function SpineTimelineLayerCanvas({ layer, files, currentTime, mainAnimation, mainAnimationTime, mainAnimationLoop, openingMode = "direct", sequenceId = "legacy", idleMode = "none", interactionEnabled = false, interactionProject = null, showInteractionPoints = false, effectsStrength, resetCameraSignal = 0, sharedCameraPose, referenceCamera, onMeta, onCameraPose, onAnimationDuration, onMarkers, onInteractionPoints, onRenderer, onTalk, onTalkClip, onIntro, onIntroClip, onRendererLoading, onLoadProgress, onError }: SpineTimelineLayerCanvasProps) {
+export function SpineTimelineLayerCanvas({ layer, files, currentTime, mainAnimation, mainAnimationTime, mainAnimationLoop, openingMode = "direct", sequenceId = "legacy", idleMode = "none", characterHidden = false, interactionEnabled = false, interactionProject = null, showInteractionPoints = false, effectsStrength, resetCameraSignal = 0, sharedCameraPose, referenceCamera, onMeta, onCameraPose, onAnimationDuration, onMarkers, onInteractionPoints, onRenderer, onTalk, onTalkClip, onIntro, onIntroClip, onRendererLoading, onLoadProgress, onError }: SpineTimelineLayerCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<SpineRenderer | null>(null);
   const [meta, setMeta] = useState<SpineMeta | null>(null);
@@ -143,24 +144,44 @@ export function SpineTimelineLayerCanvas({ layer, files, currentTime, mainAnimat
     if (resetCameraSignal > 0) rendererRef.current?.resetCamera();
   }, [resetCameraSignal]);
 
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !meta) return;
+    const introDuration = meta.introAnimation ? renderer.getEditorAnimationInfo(meta.introAnimation).duration : 0;
+    for (const clip of timelineLayerAnimationClips(layer, meta, sequenceId, openingMode, introDuration)) {
+      if (!clip.animation || !meta.animations.includes(clip.animation)) continue;
+      const duration = renderer.getEditorAnimationInfo(clip.animation).duration;
+      if (duration > 0) onAnimationDurationRef.current(layer.id, clip.animation, duration);
+    }
+  }, [layer, meta, openingMode, sequenceId]);
+
   const intro = meta?.introAnimation;
   const introDuration = intro ? rendererRef.current?.getEditorAnimationInfo(intro).duration ?? 0 : 0;
-  const authoredAnimation = meta ? timelineLayerAnimation(layer, meta, mainAnimation, currentTime, sequenceId, openingMode, introDuration) : "";
+  const activeClip = meta ? timelineActiveAnimationClip(layer, meta, currentTime, sequenceId, openingMode, introDuration, idleMode !== "none") : null;
+  const continuedClip = idleMode !== "none" && sequenceId === "opening" && activeClip?.continueAfterOpening === true;
+  const followedAnimation = idleMode !== "none" && layer.followMainAnimation && mainAnimation
+    ? meta?.animations.find((name) => name.toLocaleLowerCase() === mainAnimation.toLocaleLowerCase()) ?? ""
+    : "";
+  const followedContinuation = Boolean(followedAnimation);
+  const authoredAnimation = meta ? followedAnimation || timelineLayerAnimation(layer, meta, mainAnimation, currentTime, sequenceId, openingMode, introDuration, idleMode !== "none") : "";
   const authoredDuration = authoredAnimation ? rendererRef.current?.getEditorAnimationInfo(authoredAnimation).duration ?? 0 : 0;
   const talkLayer = sequenceId.startsWith("talk-") && (layer.role === "character" || layer.role === "background");
   const idleTailStart = timelineTalkIdleStart(layer, authoredDuration);
   const idleTail = talkLayer && currentTime >= idleTailStart;
-  const idle = idleMode !== "none" || idleTail;
+  const idle = idleMode !== "none" && !continuedClip && !followedContinuation || idleTail;
   const animation = meta ? idle ? timelineIdleAnimation(meta) : authoredAnimation : "";
   const animationDuration = animation ? rendererRef.current?.getEditorAnimationInfo(animation).duration ?? 0 : 0;
+  const clipDuration = activeClip?.animation ? rendererRef.current?.getEditorAnimationInfo(activeClip.animation).duration ?? 0 : 0;
   const talkCharacter = sequenceId.startsWith("talk-") && layer.role === "character" && layer.endMode !== "manual";
   const followMainClock = Boolean(layer.followMainAnimation && mainAnimationTime !== undefined);
-  const effectiveLoop = idle || (followMainClock && mainAnimationLoop !== undefined ? mainAnimationLoop : talkCharacter ? false : layer.loop);
+  const effectiveLoop = idle || continuedClip || (followMainClock && mainAnimationLoop !== undefined ? mainAnimationLoop : talkCharacter ? false : activeClip?.loop ?? layer.loop);
   const time = idle
     ? idleTail && idleMode === "none" ? currentTime - idleTailStart : currentTime
     : followMainClock
       ? mainAnimationTime!
-      : timelineLayerSampleTime(layer, currentTime, sequenceId, openingMode, introDuration, animationDuration);
+      : activeClip
+        ? timelineAnimationClipSampleTime(activeClip, currentTime, clipDuration, continuedClip)
+        : timelineLayerSampleTime(layer, currentTime, sequenceId, openingMode, introDuration, animationDuration);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -171,9 +192,9 @@ export function SpineTimelineLayerCanvas({ layer, files, currentTime, mainAnimat
   useEffect(() => {
     if (!meta || !animation) return;
     const renderer = rendererRef.current;
-    renderer?.sampleEditorAnimation(animation, idle ? "" : layer.faceAnimation ?? "", time, effectiveLoop, timelineAnimationNeedsIdleUnderlay(animation), interactionEnabled);
+    renderer?.sampleEditorAnimation(animation, idle ? "" : activeClip?.faceAnimation ?? layer.faceAnimation ?? "", time, effectiveLoop, timelineAnimationNeedsIdleUnderlay(animation), interactionEnabled);
     if (referenceCamera) onMarkersRef.current?.(renderer?.getEditorAnimationInfo(animation).markers ?? []);
-  }, [animation, effectiveLoop, followMainClock, idle, interactionEnabled, layer.faceAnimation, mainAnimationLoop, mainAnimationTime, meta, openingMode, referenceCamera, sequenceId, talkCharacter, time]);
+  }, [activeClip?.faceAnimation, animation, effectiveLoop, followMainClock, idle, interactionEnabled, layer.faceAnimation, mainAnimationLoop, mainAnimationTime, meta, openingMode, referenceCamera, sequenceId, talkCharacter, time]);
 
   useEffect(() => {
     if (animationDuration > 0 && animation) onAnimationDurationRef.current(layer.id, animation, animationDuration);
@@ -183,8 +204,13 @@ export function SpineTimelineLayerCanvas({ layer, files, currentTime, mainAnimat
     if (!referenceCamera && sharedCameraPose) rendererRef.current?.setCameraPose(sharedCameraPose);
   }, [referenceCamera, sharedCameraPose]);
 
-  const layerEnd = timelineLayerPlaybackEnd(talkCharacter ? { ...layer, loop: false } : layer, animationDuration);
-  const visible = layer.enabled && (idle ? layer.role === "character" || layer.role === "background" : currentTime >= layer.start && (talkLayer || currentTime <= layerEnd));
+  const layerEnd = activeClip
+    ? timelineAnimationClipPlaybackEnd(talkCharacter && !Array.isArray(layer.animationClips) ? { ...activeClip, loop: false } : activeClip, clipDuration)
+    : timelineLayerPlaybackEnd(talkCharacter ? { ...layer, loop: false } : layer, animationDuration);
+  const clipDriven = Array.isArray(layer.animationClips) || sequenceId === "opening";
+  const visible = layer.enabled
+    && !(layer.role === "character" && characterHidden)
+    && (idle ? layer.role === "character" || layer.role === "background" : clipDriven ? Boolean(activeClip) || followedContinuation : currentTime >= layer.start && (talkLayer || currentTime <= layerEnd));
   const style: CSSProperties = {
     position: "absolute",
     inset: 0,

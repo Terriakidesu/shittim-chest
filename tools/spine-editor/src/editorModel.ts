@@ -1,3 +1,4 @@
+import type { SpineTimelineAnimationClip } from "../../../src/client/spine/spineTimeline";
 import type { SpineEditorBone } from "../../../src/client/spine/spineRuntime";
 import { findInteractionProfile } from "../../../src/client/spine/spineInteraction";
 import { cheekControlNames } from "../../../src/client/spine/spinePinch";
@@ -51,6 +52,8 @@ export interface EditorInteraction {
 export type TimelineLayerRole = "character" | "scene" | "background" | "overlay";
 export type TimelineLanguage = "en" | "ja" | "ko";
 
+export interface EditorAnimationClip extends SpineTimelineAnimationClip {}
+
 export interface EditorTimelineLayer {
   endMode?: "auto" | "manual";
   faceAnimation?: string;
@@ -61,6 +64,7 @@ export interface EditorTimelineLayer {
   directory: string;
   enabled: boolean;
   animation: string;
+  animationClips?: EditorAnimationClip[];
   start: number;
   end: number;
   animationOffset: number;
@@ -452,6 +456,7 @@ function normalizeTimelineLayer(value: Partial<EditorTimelineLayer>, index: numb
     directory,
     enabled: value.enabled !== false,
     animation: stringValue(value.animation, ""),
+    ...(Array.isArray(value.animationClips) ? { animationClips: value.animationClips.filter((clip) => Boolean(clip && typeof clip === "object")).map((clip, clipIndex) => normalizeAnimationClip(clip, index, clipIndex)) } : {}),
     faceAnimation: stringValue(value.faceAnimation, ""),
     followMainAnimation: value.followMainAnimation === undefined ? role === "background" : value.followMainAnimation === true,
     start,
@@ -464,6 +469,24 @@ function normalizeTimelineLayer(value: Partial<EditorTimelineLayer>, index: numb
     scale: finiteNumber(value.scale, 1, 0.01),
     opacity: Math.max(0, Math.min(1, finiteNumber(value.opacity, 1, 0))),
     order: finiteNumber(value.order, index, 0),
+  };
+}
+
+function normalizeAnimationClip(value: unknown, layerIndex: number, clipIndex: number): EditorAnimationClip {
+  const clip = value as Partial<EditorAnimationClip>;
+  const start = finiteNumber(clip.start, 0, 0);
+  return {
+    id: stringValue(clip.id, `timeline-layer-${layerIndex + 1}-clip-${clipIndex + 1}`),
+    animation: stringValue(clip.animation, ""),
+    ...(typeof clip.faceAnimation === "string" ? { faceAnimation: clip.faceAnimation } : {}),
+    start,
+    end: Math.max(start + 0.01, finiteNumber(clip.end, start + 1, 0)),
+    endMode: clip.endMode === "manual" ? "manual" : "auto",
+    animationOffset: finiteNumber(clip.animationOffset, 0, 0),
+    loop: clip.loop === true,
+    ...(typeof clip.enabled === "boolean" ? { enabled: clip.enabled } : {}),
+    ...(typeof clip.continueAfterOpening === "boolean" ? { continueAfterOpening: clip.continueAfterOpening } : {}),
+    ...(typeof clip.hideCharacter === "boolean" ? { hideCharacter: clip.hideCharacter } : {}),
   };
 }
 

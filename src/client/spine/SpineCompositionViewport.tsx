@@ -3,7 +3,7 @@ import { SpineRenderer, type SpineCameraPose, type SpineFiles, type SpineInterac
 import type { AssetSource } from "./spineAssets";
 import type { SpineInteractionProject } from "./spineInteraction";
 import { spineAudioPathCandidates } from "./spineAudio";
-import { advanceSpineTimeline, timelineActiveSubtitleTexts, timelineAudioPlaybackDecision, timelineAudioPreloadsReady, timelineMainAnimation, timelinePlaybackDuration, type SpineTimeline, type SpineTimelineAudioPreloadState } from "./spineTimeline";
+import { advanceSpineTimeline, timelineActiveSubtitleTexts, timelineAudioPlaybackDecision, timelineAudioPreloadsReady, timelineLayerAnimation, timelineMainAnimation, timelineOpeningContinuationStart, timelinePlaybackDuration, timelineSceneHidesCharacter, type SpineTimeline, type SpineTimelineAudioPreloadState } from "./spineTimeline";
 import { SpineTimelineLayerCanvas } from "./SpineTimelineLayerCanvas";
 
 export interface SpineCompositionViewportHandle {
@@ -79,18 +79,21 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
   const introDuration = characterLayer && introAnimation
     ? animationDurations[`${characterLayer.id}:${introAnimation}`] ?? 0
     : 0;
-  const mainAnimationName = characterLayer
-    ? characterLayer.animation || characterMeta?.idleAnimation || characterMeta?.animations[0] || ""
+  const hasAnimationClips = Array.isArray(characterLayer?.animationClips);
+  const mainAnimationName = characterLayer && characterMeta
+    ? timelineLayerAnimation(characterLayer, characterMeta, undefined, currentTime, timeline.sequenceId, timeline.openingMode, introDuration, idleMode !== "none")
+    : characterLayer
+      ? characterLayer.animation || characterMeta?.idleAnimation || characterMeta?.animations[0] || ""
     : "";
   const mainAnimationDuration = characterLayer && mainAnimationName
     ? animationDurations[`${characterLayer.id}:${mainAnimationName}`] ?? 0
     : 0;
   const openingMinimumDuration = timeline.sequenceId === "opening" && characterLayer
-    ? characterLayer.start + (timeline.openingMode === "skip" ? 0 : introDuration)
+    ? hasAnimationClips ? 0 : characterLayer.start + (timeline.openingMode === "skip" ? 0 : introDuration)
     : 0;
   const playbackDuration = idleMode !== "none" ? Math.max(0.01, timeline.openingIdleDuration) : timelinePlaybackDuration(timeline, openingMinimumDuration);
   const openingIdleStart = idleMode === "none" && timeline.sequenceId === "opening" && characterLayer
-    ? characterLayer.start + (timeline.openingMode === "skip" ? 0 : introDuration)
+    ? timelineOpeningContinuationStart(timeline, characterLayer, characterMeta, introDuration)
     : 0;
   const openingIdleActive = idleMode !== "none";
   const effectiveCurrentTime = idleMode === "persistent" && openingIdleActive
@@ -99,8 +102,9 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
       ? Math.max(currentTime, openingIdleStart)
       : currentTime;
   const mainAnimationState = characterLayer && characterMeta
-    ? timelineMainAnimation(characterLayer, characterMeta, effectiveCurrentTime, timeline.sequenceId, timeline.openingMode, introDuration, mainAnimationDuration)
+    ? timelineMainAnimation(characterLayer, characterMeta, effectiveCurrentTime, timeline.sequenceId, timeline.openingMode, introDuration, mainAnimationDuration, idleMode !== "none")
     : null;
+  const characterHidden = timelineSceneHidesCharacter(timeline, effectiveCurrentTime);
   const progressAnimation = mainAnimationState?.animation ?? null;
   // Do not consume an opening while the saved composition is still loading.
   // The page starts in autoplay mode, so advancing the shared playhead before
@@ -376,7 +380,7 @@ export const SpineCompositionViewport = forwardRef<SpineCompositionViewportHandl
     : {};
   const interactionColors = { pat: "#ff668f", pinch: "#28c7ed", touch: "#ffc857" } as const;
   return <div ref={stageRef} className={`spine-stage spine-stage-composition${interactionMode === "interaction" ? " spine-stage-interaction" : ""}`}>
-     {layers.map((layer) => <SpineTimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} interactionEnabled={interactionMode === "interaction" && layer.id === referenceLayerId} interactionProject={layer.id === referenceLayerId ? interactionProject : null} showInteractionPoints={showInteractionPoints} currentTime={effectiveCurrentTime} mainAnimation={mainAnimationState?.animation} mainAnimationTime={mainAnimationState?.time} mainAnimationLoop={mainAnimationState?.loop} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} idleMode={idleMode} sharedCameraPose={sharedCameraPose} referenceCamera={layer.id === referenceLayerId} effectsStrength={effectsStrength} resetCameraSignal={resetCameraSignal} onMeta={(id, value) => { setMetas((current) => current[id] === value ? current : { ...current, [id]: value }); if (id === referenceLayerId) onMeta(value); }} onAnimationDuration={(id, animation, duration) => setAnimationDurations((current) => current[`${id}:${animation}`] === duration ? current : { ...current, [`${id}:${animation}`]: duration })} onInteractionPoints={(id, value) => { if (id === referenceLayerId) setInteractionOverlay(value); }} onRenderer={(id, value) => { if (id === referenceLayerId) talkRendererRef.current = value; }} onRendererLoading={(id, loading) => setLoadingLayers((current) => { const next = new Set(current); if (loading) next.add(id); else next.delete(id); return next; })} onLoadProgress={(_id, value) => onLoadProgressRef.current(value)} onCameraPose={setSharedCameraPose} onTalk={onTalk} onTalkClip={onTalkClip} onIntro={onIntro} onIntroClip={onIntroClip} onError={(value) => onError(value ? new Error(value) : null)} />)}
+     {layers.map((layer) => <SpineTimelineLayerCanvas key={layer.id} layer={layer} files={files[layer.directory] ?? null} interactionEnabled={interactionMode === "interaction" && layer.id === referenceLayerId} interactionProject={layer.id === referenceLayerId ? interactionProject : null} showInteractionPoints={showInteractionPoints} currentTime={effectiveCurrentTime} mainAnimation={mainAnimationState?.animation} mainAnimationTime={mainAnimationState?.time} mainAnimationLoop={mainAnimationState?.loop} sequenceId={timeline.sequenceId} openingMode={timeline.openingMode} idleMode={idleMode} characterHidden={characterHidden} sharedCameraPose={sharedCameraPose} referenceCamera={layer.id === referenceLayerId} effectsStrength={effectsStrength} resetCameraSignal={resetCameraSignal} onMeta={(id, value) => { setMetas((current) => current[id] === value ? current : { ...current, [id]: value }); if (id === referenceLayerId) onMeta(value); }} onAnimationDuration={(id, animation, duration) => setAnimationDurations((current) => current[`${id}:${animation}`] === duration ? current : { ...current, [`${id}:${animation}`]: duration })} onInteractionPoints={(id, value) => { if (id === referenceLayerId) setInteractionOverlay(value); }} onRenderer={(id, value) => { if (id === referenceLayerId) talkRendererRef.current = value; }} onRendererLoading={(id, loading) => setLoadingLayers((current) => { const next = new Set(current); if (loading) next.add(id); else next.delete(id); return next; })} onLoadProgress={(_id, value) => onLoadProgressRef.current(value)} onCameraPose={setSharedCameraPose} onTalk={onTalk} onTalkClip={onTalkClip} onIntro={onIntro} onIntroClip={onIntroClip} onError={(value) => onError(value ? new Error(value) : null)} />)}
     {showInteractionPoints && interactionOverlay.points.length > 0 && interactionOverlay.canvasWidth > 0 && interactionOverlay.canvasHeight > 0 && <svg className="spine-interaction-overlay" style={interactionOverlayStyle} viewBox={`0 0 ${interactionOverlay.canvasWidth} ${interactionOverlay.canvasHeight}`} preserveAspectRatio="none" aria-hidden="true">
       {interactionOverlay.points.map((point, index) => {
         const color = interactionColors[point.kind];

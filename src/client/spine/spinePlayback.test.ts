@@ -234,7 +234,7 @@ describe("Spine restart playback", () => {
     expect(clips).toEqual([0]);
   });
 
-  test("a requested talk can interrupt an existing talk", () => {
+  test("Talk requests cannot interrupt an active talk", () => {
     const data = new SkeletonData();
     data.bones.push(new BoneData(0, "root", null));
     data.animations.push(new Animation("Talk_01_M", [], 1), new Animation("Talk_02_M", [], 1));
@@ -246,14 +246,20 @@ describe("Spine restart playback", () => {
       interactionState: "talk",
       interactionTrackName: "Talk_01_M",
       interactionReady: true,
-      talkIndex: 0,
+      talkIndex: 1,
+      activeTalkIndex: 0,
       talkAudioPending: true,
       talkFadeQueued: false,
     }) as any;
     state.setAnimation(5, "Talk_01_M", false);
+
+    renderer.triggerTalk();
     renderer.triggerTalk("Talk_02_M");
-    expect(state.getCurrent(5)?.animation?.name).toBe("Talk_02_M");
+
+    expect(state.getCurrent(5)?.animation?.name).toBe("Talk_01_M");
     expect(renderer.interactionState).toBe("talk");
+    expect(renderer.activeTalkIndex).toBe(0);
+    expect(renderer.talkIndex).toBe(1);
   });
 
   test("switches a loaded lobby from intro to idle when skip intro is enabled", () => {
