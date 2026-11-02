@@ -27,6 +27,9 @@ import { characterDirectoryLabel, type CharacterDirectoryInfo, type CharacterDir
 import { isTextEditingTarget } from "./editorKeyboard";
 import { panStageView, resetStageView, zoomStageView, type StageView } from "./stageView";
 import { zoomTimelineAtCursor } from "./timelineView";
+import { SubtitleTextEditor } from "./SubtitleTextEditor";
+import { TimelineSplitHandle } from "./TimelineSplitHandle";
+import { DEFAULT_TIMELINE_PREVIEW_SHARE, normalizeTimelinePreviewShare, TIMELINE_LAYOUT_PREFERENCES_KEY } from "./timelineLayout";
 import "./timelineSnapFeedback.css";
 import { IconChevronDown, IconChevronLeft, IconChevronRight, IconExpand, IconLink, IconMinus, IconPause, IconPlay, IconPlus, IconSkipBack, IconSkipForward, IconSound, IconSync, IconUnlink } from "../../../src/client/components/icons";
 
@@ -94,6 +97,17 @@ function seconds(value: number): string {
 function snapTime(value: number, snap: number, duration: number): number {
   const next = snap > 0 ? Math.round(value / snap) * snap : value;
   return Math.max(0, Math.min(duration, Number(next.toFixed(3))));
+}
+
+function readTimelinePreviewShare(): number {
+  try {
+    const stored = localStorage.getItem(TIMELINE_LAYOUT_PREFERENCES_KEY);
+    if (!stored) return DEFAULT_TIMELINE_PREVIEW_SHARE;
+    const preferences = JSON.parse(stored) as { previewShare?: unknown };
+    return normalizeTimelinePreviewShare(preferences.previewShare);
+  } catch {
+    return DEFAULT_TIMELINE_PREVIEW_SHARE;
+  }
 }
 
 type TimelineClipKind = "layer" | "animation" | "cue" | "audio";
@@ -247,12 +261,14 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const [files, setFiles] = useState<Record<string, SpineFiles | null>>({});
   const [animationDurations, setAnimationDurations] = useState<Record<string, number>>({});
   const [zoom, setZoom] = useState(1);
+  const [previewShare, setPreviewShare] = useState(readTimelinePreviewShare);
   const [stageView, setStageView] = useState<StageView>(() => resetStageView());
   const [stagePanning, setStagePanning] = useState(false);
   const [markers, setMarkers] = useState<number[]>([]);
   const [dragSnapFeedback, setDragSnapFeedback] = useState<TimelineSnapFeedback | null>(null);
   const [inspector, setInspector] = useState<"sequence" | "layer" | "animation" | "cue" | "audio" | "multi">("sequence");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const stageWrapRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const stagePanRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const addMenuRef = useRef<HTMLDetailsElement>(null);
@@ -291,6 +307,12 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   directoryRef.current = directory;
   onMutateRef.current = onMutate;
   onRegisterSaveRef.current = onRegisterSave;
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TIMELINE_LAYOUT_PREFERENCES_KEY, JSON.stringify({ previewShare }));
+    } catch { /* The split remains adjustable for this session. */ }
+  }, [previewShare]);
 
   function pauseAudioElement(id: string) {
     const audio = audioElementsRef.current[id];
@@ -1627,7 +1649,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
               </button>;
             })}
           </div>}
-         <div className="timeline-stage-wrap">
+         <div className="timeline-stage-wrap" ref={stageWrapRef} style={{ flex: `${previewShare} 1 0` }}>
            <div
              ref={stageRef}
              className={`timeline-stage${stagePanning ? " is-panning" : ""}`}
@@ -1672,7 +1694,9 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           <span className="editor-time">{seconds(currentTime)} / {seconds(duration)}</span>
         </div>
 
-          <div className="timeline-editor-scroll" ref={scrollRef} onWheel={scrollTimeline}>
+          <TimelineSplitHandle value={previewShare} onChange={setPreviewShare} getFlexibleHeight={() => (stageWrapRef.current?.getBoundingClientRect().height ?? 0) + (scrollRef.current?.getBoundingClientRect().height ?? 0)} />
+
+          <div className="timeline-editor-scroll" ref={scrollRef} style={{ flex: `${100 - previewShare} 1 0` }} onWheel={scrollTimeline}>
         <div className="timeline-ruler-row" style={{ minWidth: trackWidth + 116 }}>
           <div className="timeline-track-label">TRACKS</div>
            <div className="timeline-track timeline-ruler" style={{ width: trackWidth }} onPointerDown={seekFromEvent} onPointerMove={scrubMove} onPointerUp={endScrub} onPointerCancel={endScrub}>
@@ -1833,8 +1857,13 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           <div className="editor-section-title"><strong>Subtitle #{selectedCueIndex + 1}</strong><span>{seconds(selectedCue.start)}–{seconds(selectedCue.end)}</span></div>
           <div className="editor-two-fields subtitle-actions"><button className="editor-button" onClick={() => updateCue(selectedCue.id, { start: Math.min(currentTime, selectedCue.end - 0.01) })}>Start at playhead</button><button className="editor-button" onClick={() => updateCue(selectedCue.id, { end: Math.max(currentTime, selectedCue.start + 0.01) })}>End at playhead</button></div>
            <div className="editor-two-fields"><label>Start (s)<input aria-label="Subtitle start" type="number" min="0" step="0.001" value={Number(selectedCue.start.toFixed(3))} onChange={(event) => updateCue(selectedCue.id, { start: Math.max(0, Math.min(selectedCue.end - 0.01, Number(event.target.value) || 0)) })} /></label><label>End (s)<input aria-label="Subtitle end" type="number" min="0.01" step="0.001" value={Number(selectedCue.end.toFixed(3))} onChange={(event) => updateCue(selectedCue.id, { end: Math.max(selectedCue.start + 0.01, Number(event.target.value) || selectedCue.start + 0.01) })} /></label></div>
-          <div className="subtitle-language-grid">{(["en", "ja", "ko"] as const).map((language) => <label className={`subtitle-language-field subtitle-language-${language}`} key={language}><span>{language.toUpperCase()}</span><textarea aria-label={`${language.toUpperCase()} Subtitle #${selectedCueIndex + 1}`} className="timeline-textarea" value={selectedCue.text[language]} onChange={(event) => updateCue(selectedCue.id, { text: { ...selectedCue.text, [language]: event.target.value } })} /></label>)}</div>
-          <div className="subtitle-preview-language"><span>Preview language</span><div className="timeline-language-tabs">{(["en", "ja", "ko"] as const).map((language) => <button key={language} className={timeline.language === language ? "is-selected" : ""} onClick={() => updateTimeline((value) => ({ ...value, language }))}>{language.toUpperCase()}</button>)}</div></div>
+           <SubtitleTextEditor
+             cueNumber={selectedCueIndex + 1}
+             language={timeline.language}
+             text={selectedCue.text}
+             onLanguageChange={(language) => updateTimeline((value) => ({ ...value, language }))}
+             onTextChange={(language, text) => updateCue(selectedCue.id, { text: { ...selectedCue.text, [language]: text } })}
+           />
           <div className="editor-two-fields subtitle-actions"><button className="editor-button" onClick={() => updateTimeline((value) => splitCue(value, selectedCue.id, currentTime))}>Split (S)</button><button className="editor-button" onClick={duplicateCue}>Duplicate</button><button className="editor-button" onClick={() => { setCurrentTime(selectedCue.start); setPreviewUntil(selectedCue.end); setPlaying(true); }}>Preview cue</button></div>
           <div className="editor-two-fields"><label><span className="timeline-inline-check"><input type="checkbox" checked={selectedCue.enabled} onChange={(event) => updateCue(selectedCue.id, { enabled: event.target.checked })} /> Visible</span></label><button className="editor-preview-button danger" onClick={deleteCue}>Delete cue</button></div>
         </section>}
