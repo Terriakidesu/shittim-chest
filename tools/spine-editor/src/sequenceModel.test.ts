@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createProject, normalizeProject } from "./editorModel";
-import { animationClipEnd, animationEndForLayer, authoredTimelineEnd, deleteAnimationClipRipple, duplicateAnimationClipRipple, effectiveAnimationClips, extendTimelineDuration, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAnimationClipRipple, moveAudioClip, nextTalkSequenceId, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
+import { animationClipEnd, animationEndForLayer, authoredTimelineEnd, deleteAnimationClipRipple, duplicateAnimationClipRipple, effectiveAnimationClips, extendTimelineDuration, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAnimationClipRipple, moveAudioClip, nextTalkSequenceId, openingPhaseTimings, openingTimelineDuration, replaceSubtitleImport, resolveTimelineSnap, snapToTargets, splitCue, switchSequence, talkSequenceDuration, talkSequenceId } from "./sequenceModel";
 import type { SpineMeta } from "../../../src/client/spine/spineRuntime";
 
 test("talk sequences pair body and face and isolate subtitle clocks", () => {
@@ -103,6 +103,9 @@ test("split preserves all languages and snapping favors nearby markers", () => {
   expect(split.subtitles[1]?.text.ko).toBe("네");
   expect(splitCue(timeline, "cue", 5)).toBe(timeline);
   expect(snapToTargets(1.03, 0.1, [1.05])).toBe(1.05);
+  expect(resolveTimelineSnap(1.03, 0.1, [1.05])).toEqual({ value: 1.05, target: 1.05, source: "target" });
+  expect(resolveTimelineSnap(1.03, 0.1, [])).toEqual({ value: 1, target: 1, source: "grid" });
+  expect(resolveTimelineSnap(1.03, 0, [])).toEqual({ value: 1.03, target: null, source: null });
   expect(talkSequenceId("Talk_05_A")).toBe("talk-5");
 });
 

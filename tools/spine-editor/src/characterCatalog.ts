@@ -4,6 +4,7 @@ interface CharacterVariantRecord {
   variant?: unknown;
   directory?: unknown;
   assetId?: unknown;
+  role?: unknown;
 }
 
 interface CharacterExtraRecord {
@@ -14,6 +15,16 @@ interface CharacterExtraRecord {
 interface CharacterRecord {
   variants?: unknown;
   extras?: unknown;
+  role?: unknown;
+}
+
+export type AssetSetKind = "character" | "scene" | "background" | "other";
+
+export interface CharacterDirectoryInfo {
+  label: string;
+  group: string;
+  kind: AssetSetKind;
+  role?: string;
 }
 
 function text(value: unknown): string | null {
@@ -26,13 +37,20 @@ function prettyExtraType(value: string): string {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-/** Build display names for asset directories from a ba-spine character catalog. */
-export function parseCharacterDirectoryLabels(value: unknown): Record<string, string> {
+function kindForExtra(type: string | null): AssetSetKind {
+  const normalized = type?.toLocaleLowerCase().replace(/[-_]+/g, " ") ?? "";
+  if (/scene|cutscene/.test(normalized)) return "scene";
+  if (/background|backdrop|bg/.test(normalized)) return "background";
+  return "other";
+}
+
+/** Parse friendly labels and grouping metadata from a local ba-spine catalog. */
+export function parseCharacterDirectoryCatalog(value: unknown): Record<string, CharacterDirectoryInfo> {
   if (!value || typeof value !== "object") return {};
   const root = value as { characters?: unknown };
   if (!root.characters || typeof root.characters !== "object" || Array.isArray(root.characters)) return {};
 
-  const labels: Record<string, string> = {};
+  const directories: Record<string, CharacterDirectoryInfo> = {};
   for (const [name, rawCharacter] of Object.entries(root.characters as Record<string, unknown>)) {
     if (!rawCharacter || typeof rawCharacter !== "object" || Array.isArray(rawCharacter)) continue;
     const character = rawCharacter as CharacterRecord;
@@ -44,7 +62,13 @@ export function parseCharacterDirectoryLabels(value: unknown): Record<string, st
         if (!directory) continue;
         const assetId = text(variant.assetId);
         const variantName = text(variant.variant);
-        labels[directory] = `${name}${variantName && variantName !== "Base" ? ` ${variantName}` : ""}${assetId ? ` (${assetId})` : ""}`;
+        const role = text(variant.role) ?? text(character.role);
+        directories[directory] = {
+          label: `${name}${variantName && variantName !== "Base" ? ` ${variantName}` : ""}${assetId ? ` (${assetId})` : ""}`,
+          group: name,
+          kind: "character",
+          ...(role ? { role } : {}),
+        };
       }
     }
     if (Array.isArray(character.extras)) {
@@ -54,11 +78,21 @@ export function parseCharacterDirectoryLabels(value: unknown): Record<string, st
         const directory = text(extra.directory);
         if (!directory) continue;
         const type = text(extra.type);
-        labels[directory] = type ? `${name} ${prettyExtraType(type)}` : name;
+        directories[directory] = {
+          label: type ? `${name} ${prettyExtraType(type)}` : name,
+          group: name,
+          kind: kindForExtra(type),
+          ...(type ? { role: prettyExtraType(type) } : {}),
+        };
       }
     }
   }
-  return labels;
+  return directories;
+}
+
+/** Build display names for asset directories from a ba-spine character catalog. */
+export function parseCharacterDirectoryLabels(value: unknown): Record<string, string> {
+  return Object.fromEntries(Object.entries(parseCharacterDirectoryCatalog(value)).map(([directory, info]) => [directory, info.label]));
 }
 
 export function characterDirectoryLabel(directory: string, labels: CharacterDirectoryLabels): string {

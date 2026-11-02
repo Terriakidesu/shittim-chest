@@ -1,7 +1,9 @@
 import type { SpineEditorBone } from "../../../src/client/spine/spineRuntime";
 
+export type BoneTreeBone = Pick<SpineEditorBone, "path" | "name" | "parentPath" | "active">;
+
 export interface BoneTreeRow {
-  bone: SpineEditorBone;
+  bone: BoneTreeBone;
   depth: number;
   hasChildren: boolean;
   isLastSibling: boolean;
@@ -10,8 +12,8 @@ export interface BoneTreeRow {
   contextOnly: boolean;
 }
 
-function ancestorsOf(bone: SpineEditorBone, byPath: Map<string, SpineEditorBone>): SpineEditorBone[] {
-  const ancestors: SpineEditorBone[] = [];
+function ancestorsOf(bone: BoneTreeBone, byPath: Map<string, BoneTreeBone>): BoneTreeBone[] {
+  const ancestors: BoneTreeBone[] = [];
   const visited = new Set<string>([bone.path]);
   let parentPath = bone.parentPath;
   while (parentPath && !visited.has(parentPath)) {
@@ -25,9 +27,9 @@ function ancestorsOf(bone: SpineEditorBone, byPath: Map<string, SpineEditorBone>
 }
 
 /** Spine's bone array is not guaranteed to keep each sibling subtree contiguous. */
-export function depthFirstBones(bones: SpineEditorBone[]): SpineEditorBone[] {
+export function depthFirstBones(bones: readonly BoneTreeBone[]): BoneTreeBone[] {
   const byPath = new Map(bones.map((bone) => [bone.path, bone]));
-  const children = new Map<string, SpineEditorBone[]>();
+  const children = new Map<string, BoneTreeBone[]>();
   for (const bone of bones) {
     if (!bone.parentPath || !byPath.has(bone.parentPath)) continue;
     const siblings = children.get(bone.parentPath) ?? [];
@@ -35,9 +37,9 @@ export function depthFirstBones(bones: SpineEditorBone[]): SpineEditorBone[] {
     children.set(bone.parentPath, siblings);
   }
 
-  const ordered: SpineEditorBone[] = [];
+  const ordered: BoneTreeBone[] = [];
   const visited = new Set<string>();
-  const visit = (bone: SpineEditorBone) => {
+  const visit = (bone: BoneTreeBone) => {
     if (visited.has(bone.path)) return;
     visited.add(bone.path);
     ordered.push(bone);
@@ -54,15 +56,17 @@ export function depthFirstBones(bones: SpineEditorBone[]): SpineEditorBone[] {
 
 /** Build the visible rows for the rig tree while retaining ancestors as context. */
 export function buildBoneTreeRows(
-  bones: SpineEditorBone[],
+  bones: readonly BoneTreeBone[],
   collapsed: ReadonlySet<string>,
   search: string,
   showInactive = false,
+  includedPaths: ReadonlySet<string> | null = null,
+  revealedPath: string | null = null,
 ): BoneTreeRow[] {
   const orderedBones = depthFirstBones(bones);
   const byPath = new Map(orderedBones.map((bone) => [bone.path, bone]));
   const ancestorMap = new Map(orderedBones.map((bone) => [bone.path, ancestorsOf(bone, byPath)]));
-  const eligible = orderedBones.filter((bone) => showInactive || bone.active);
+  const eligible = orderedBones.filter((bone) => (showInactive || bone.active) && (!includedPaths || includedPaths.has(bone.path)));
   const eligiblePaths = new Set(eligible.map((bone) => bone.path));
   const query = search.trim().toLocaleLowerCase();
   const matches = new Set<string>();
@@ -82,8 +86,15 @@ export function buildBoneTreeRows(
     }
   }
 
+  // An explicit reveal may temporarily bypass search/filter membership, but
+  // never changes the user's query or the authored hierarchy.
+  if (revealedPath && byPath.has(revealedPath)) {
+    included.add(revealedPath);
+    for (const ancestor of ancestorMap.get(revealedPath) ?? []) included.add(ancestor.path);
+  }
+
   const candidates = orderedBones.filter((bone) => included.has(bone.path));
-  const children = new Map<string, SpineEditorBone[]>();
+  const children = new Map<string, BoneTreeBone[]>();
   for (const bone of candidates) {
     const parent = bone.parentPath ?? "";
     const siblings = children.get(parent) ?? [];

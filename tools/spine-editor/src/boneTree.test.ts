@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SpineEditorBone } from "../../../src/client/spine/spineRuntime";
 import { buildBoneTreeRows, rankBoneMatches } from "./boneTree";
+import { bonePathsForFilter, initialCollapsedBonePaths } from "./boneNavigatorModel";
 
 function bone(path: string, name: string, parentPath: string | null, active = true): SpineEditorBone {
   return { path, name, parentPath, active } as SpineEditorBone;
@@ -44,6 +45,25 @@ describe("Spine bone hierarchy", () => {
     const searched = buildBoneTreeRows(rig, new Set(["root"]), "needle");
     expect(searched.map((row) => row.bone.name)).toEqual(["root", "A", "needle"]);
     expect(searched.map((row) => row.matches)).toEqual([false, false, true]);
+  });
+
+  test("starts with a collapsed hierarchy and supports pinned reveal without clearing search", () => {
+    const collapsed = buildBoneTreeRows(rig, initialCollapsedBonePaths(rig), "");
+    expect(collapsed.map((row) => row.bone.name)).toEqual(["root", "A", "B"]);
+
+    const revealed = buildBoneTreeRows(rig, new Set(["root", "root/B"]), "needle", false, new Set(["root", "root/A", "root/A/A2"]), "root/B/B1");
+    expect(revealed.map((row) => row.bone.name)).toEqual(["root", "A", "needle", "B", "B1"]);
+    expect(revealed.filter((row) => row.matches).map((row) => row.bone.name)).toEqual(["needle"]);
+  });
+
+  test("limits the tree to task-relevant paths while retaining branch context", () => {
+    const targets = bonePathsForFilter(rig, "interaction-targets", ["root/B/B1"], null);
+    const targetRows = buildBoneTreeRows(rig, new Set(), "", false, targets);
+    expect(targetRows.map((row) => row.bone.name)).toEqual(["root", "B", "B1"]);
+
+    const branch = bonePathsForFilter(rig, "selected-branch", [], "root/A");
+    const branchRows = buildBoneTreeRows(rig, new Set(), "", false, branch);
+    expect(branchRows.map((row) => row.bone.name)).toEqual(["root", "A", "A1", "needle"]);
   });
 
   test("retains inactive ancestors as context when inactive bones are hidden", () => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   SpineRenderer,
   type SpineEditorFrame,
@@ -19,6 +19,7 @@ import {
   projectStorageKey,
   repairPinchRegions,
   validateProject,
+  type EditorValidationWarning,
   type EditorInteraction,
   type EditorProject,
   type EditorRegion,
@@ -34,30 +35,24 @@ import { chooseDesktopProject, chooseDesktopSource, chooseDesktopSourceAt, type 
 import { normalizeRecentFiles, RECENT_FILES_KEY, rememberRecentFile, removeRecentFile, type RecentFile, type RecentFileKind } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
 import { BonePicker } from "./BonePicker";
+import { BoneNavigator, type BoneRevealRequest } from "./BoneNavigator";
+import { CommandPalette, type EditorCommand } from "./CommandPalette";
 import { AnimationPhaseEditor } from "./components/AnimationPhaseEditor";
 import { InteractionSummary } from "./components/InteractionSummary";
 import { NumberField } from "./components/NumberField";
 import { SaveStatus } from "./components/SaveStatus";
 import { WorkspacePresetMenu } from "./components/WorkspacePresetMenu";
 import { suggestInteractionPhases } from "./interactionSuggestions";
-import { buildBoneTreeRows } from "./boneTree";
-import { characterDirectoryLabel, parseCharacterDirectoryLabels, type CharacterDirectoryLabels } from "./characterCatalog";
+import { characterDirectoryLabel, parseCharacterDirectoryCatalog, type CharacterDirectoryInfo, type CharacterDirectoryLabels } from "./characterCatalog";
 import { editorProjectPath } from "./editorStorage";
 import { pendingProjectForDirectory, readSavedEditorProject, saveManifestEditorProject } from "./editorProject";
 import { isTextEditingTarget } from "./editorKeyboard";
+import "./validationIssues.css";
 import { DEFAULT_EDITOR_LAYOUT_PREFERENCES, EDITOR_LAYOUT_PREFERENCES_KEY, normalizeEditorLayoutPreferences, type WorkspaceLayoutPreset } from "./editorLayout";
-import { IconCheck, IconChevronDown, IconChevronRight, IconClose, IconDot, IconExpand, IconFile, IconFolder, IconHand, IconMenu, IconMessage, IconPause, IconPlay, IconPlus, IconSliders, IconSound, IconTarget } from "../../../src/client/components/icons";
+import { IconCheck, IconChevronDown, IconClose, IconExpand, IconFile, IconFolder, IconHand, IconMenu, IconMessage, IconPause, IconPlay, IconPlus, IconSliders, IconSound, IconTarget } from "../../../src/client/components/icons";
 
 function displayName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
-}
-
-function highlightedBoneName(name: string, search: string) {
-  const query = search.trim();
-  const start = query ? name.toLocaleLowerCase().indexOf(query.toLocaleLowerCase()) : -1;
-  if (start < 0) return name;
-  const end = start + query.length;
-  return <>{name.slice(0, start)}<mark>{name.slice(start, end)}</mark>{name.slice(end)}</>;
 }
 
 function nativePath(root: string, relativePath: string): string {
@@ -402,12 +397,15 @@ export function Editor() {
   const [rightHidden, setRightHidden] = useState(storedLayoutPreferences.rightHidden);
   const [help, setHelp] = useState(false);
   const [workspace, setWorkspace] = useState<"interaction" | "timeline">("interaction");
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const validationDetailsRef = useRef<HTMLDetailsElement>(null);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [previewStatus, setPreviewStatus] = useState("Idle");
   const [source, setSource] = useState<DesktopAssetSource | null>(null);
   const [directories, setDirectories] = useState<string[]>([]);
   const [directoryLabels, setDirectoryLabels] = useState<CharacterDirectoryLabels>({});
   const [directory, setDirectory] = useState("");
+  const [directoryInfo, setDirectoryInfo] = useState<Record<string, CharacterDirectoryInfo>>({});
   const [files, setFiles] = useState<SpineFiles | null>(null);
   const [meta, setMeta] = useState<SpineMeta | null>(null);
   const [frame, setFrame] = useState<SpineEditorFrame | null>(null);
@@ -424,9 +422,8 @@ export function Editor() {
   const [viewSettings, setViewSettings] = useState<EditorViewSettings>(() => readStoredViewSettings());
   const [undo, setUndo] = useState<EditorProject[]>([]);
   const [redo, setRedo] = useState<EditorProject[]>([]);
-  const [boneSearch, setBoneSearch] = useState("");
-  const [collapsedBones, setCollapsedBones] = useState<Set<string>>(() => new Set());
-  const boneRowRefs = useRef(new Map<string, HTMLButtonElement>());
+  const [boneRevealRequest, setBoneRevealRequest] = useState<BoneRevealRequest | null>(null);
+  const boneRevealRevisionRef = useRef(0);
   const [interactionSearch, setInteractionSearch] = useState("");
   const [status, setStatus] = useState("Open a Spine asset folder to begin.");
   const [error, setError] = useState<string | null>(null);
@@ -702,14 +699,16 @@ export function Editor() {
   }
 
   async function useSource(next: DesktopAssetSource, preferredDirectory?: string) {
-    const [found, characterLabels] = await Promise.all([
+    const [found, characterCatalog] = await Promise.all([
       next.getDirectories(),
       (async () => {
         for (const path of ["catalog.json", "characters.json", "character.json"]) {
           const content = await next.readText(path).catch(() => null);
           if (!content) continue;
-          try { return parseCharacterDirectoryLabels(JSON.parse(content) as unknown); }
-          catch { return {}; }
+          try {
+            const info = parseCharacterDirectoryCatalog(JSON.parse(content) as unknown);
+            if (Object.keys(info).length) return { info, labels: Object.fromEntries(Object.entries(info).map(([directory, item]) => [directory, item.label])) };
+          } catch { /* Try the next supported character catalog filename. */ }
         }
         return {};
       })(),
@@ -723,7 +722,8 @@ export function Editor() {
     }
     setSource(next);
     setDirectories(found);
-    setDirectoryLabels(characterLabels);
+    setDirectoryLabels(characterCatalog.labels);
+    setDirectoryInfo(characterCatalog.info);
     setDirectory(selectedDirectory);
     recordRecentFile({ kind: "folder", path: next.rootPath, rootPath: next.rootPath, label: displayName(next.rootPath), directory: selectedDirectory });
     setError(null);
@@ -775,6 +775,9 @@ export function Editor() {
       const next = await chooseDesktopSourceAt(item.rootPath);
       if (!next) return;
       if (item.kind === "project") {
+    if (modifier && key === "k") { event.preventDefault(); setCommandPaletteOpen(true); return; }
+    if (key === "escape" && commandPaletteOpen) { event.preventDefault(); setCommandPaletteOpen(false); return; }
+    if (isTextEditingTarget(event.target)) return;
         const content = await next.readText(item.path);
         if (!content) throw new Error(`Recent project file is missing: ${item.path}`);
         const raw = JSON.parse(content) as Record<string, unknown>;
@@ -927,102 +930,21 @@ export function Editor() {
     : null;
   const selectedRegion = selectedInteraction?.regions.find((item) => item.id === project?.selectedRegionId) ?? null;
   const displaySettings = viewSettings;
-  const boneTreeRows = useMemo(
-    () => buildBoneTreeRows(frame?.bones ?? [], collapsedBones, boneSearch, displaySettings.showInactiveBones),
-    [boneSearch, collapsedBones, displaySettings.showInactiveBones, frame],
-  );
-  const selectedBoneAncestors = useMemo(() => {
-    const result = new Set<string>();
-    const byPath = new Map((frame?.bones ?? []).map((bone) => [bone.path, bone]));
-    let current = project?.selectedBonePath ? byPath.get(project.selectedBonePath) : undefined;
-    while (current?.parentPath) {
-      result.add(current.parentPath);
-      current = byPath.get(current.parentPath);
+  const interactionTargetPaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const interaction of project?.interactions ?? []) {
+      if (interaction.followTargetBone) paths.add(interaction.followTargetBone);
+      for (const region of interaction.regions) if (region.anchorBone) paths.add(region.anchorBone);
     }
-    return result;
-  }, [frame, project?.selectedBonePath]);
-  const rovingBonePath = boneTreeRows.some((row) => row.bone.path === project?.selectedBonePath)
-    ? project?.selectedBonePath ?? null
-    : boneTreeRows[0]?.bone.path ?? null;
+    return [...paths].sort();
+  }, [project?.interactions]);
   const visibleInteractions = project?.interactions.filter((item) => !interactionSearch.trim() || item.name.toLocaleLowerCase().includes(interactionSearch.trim().toLocaleLowerCase())) ?? [];
   const validationWarnings = useMemo(() => project && meta && frame ? validateProject(project, meta.animations, frame.bones) : [], [frame, meta, project]);
   const renderedViewSettings = testing ? { ...displaySettings, showBones: false, showConstraints: false } : displaySettings;
 
-  function toggleBone(path: string) {
-    setCollapsedBones((value) => {
-      const next = new Set(value);
-      if (next.has(path)) next.delete(path); else next.add(path);
-      return next;
-    });
-  }
-
-  function revealSelectedBone() {
-    const path = project?.selectedBonePath;
-    if (path) revealBonePath(path, false);
-  }
-
   function revealBonePath(path: string, select = true) {
-    const byPath = new Map((frame?.bones ?? []).map((bone) => [bone.path, bone]));
-    setCollapsedBones((value) => {
-      const next = new Set(value);
-      let current = byPath.get(path);
-      while (current) {
-        next.delete(current.path);
-        current = current.parentPath ? byPath.get(current.parentPath) : undefined;
-      }
-      return next;
-    });
-    setBoneSearch("");
     if (select) live((current) => ({ ...current, selectedBonePath: path }));
-    requestAnimationFrame(() => {
-      const button = boneRowRefs.current.get(path);
-      button?.scrollIntoView({ block: "nearest" });
-      button?.focus();
-    });
-  }
-
-  function selectHierarchyBone(path: string, focus = false) {
-    live((current) => ({ ...current, selectedBonePath: path }));
-    if (focus) requestAnimationFrame(() => boneRowRefs.current.get(path)?.focus());
-  }
-
-  function handleBoneTreeKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, path: string) {
-    const index = boneTreeRows.findIndex((row) => row.bone.path === path);
-    const row = boneTreeRows[index];
-    if (!row) return;
-    const moveTo = (next: number) => {
-      const target = boneTreeRows[next];
-      if (!target) return;
-      event.preventDefault();
-      selectHierarchyBone(target.bone.path, true);
-    };
-
-    if (event.key === "ArrowDown") moveTo(Math.min(boneTreeRows.length - 1, index + 1));
-    else if (event.key === "ArrowUp") moveTo(Math.max(0, index - 1));
-    else if (event.key === "ArrowRight" && row.hasChildren) {
-      event.preventDefault();
-      const collapsed = !boneSearch.trim() && collapsedBones.has(path);
-      if (collapsed) toggleBone(path);
-      else {
-        const childIndex = boneTreeRows.findIndex((candidate) => candidate.bone.parentPath === path);
-        if (childIndex >= 0) moveTo(childIndex);
-      }
-    } else if (event.key === "ArrowLeft") {
-      const collapsed = !boneSearch.trim() && collapsedBones.has(path);
-      if (row.hasChildren && !collapsed) {
-        event.preventDefault();
-        setBoneSearch("");
-        setCollapsedBones((value) => new Set(value).add(path));
-      } else if (row.bone.parentPath) {
-        const parentIndex = boneTreeRows.findIndex((candidate) => candidate.bone.path === row.bone.parentPath);
-        if (parentIndex >= 0) moveTo(parentIndex);
-      }
-    }
-  }
-
-  function collapseAllBones() {
-    const parents = new Set((frame?.bones ?? []).map((bone) => bone.parentPath).filter((path): path is string => Boolean(path)));
-    setCollapsedBones(parents);
+    setBoneRevealRequest({ path, revision: ++boneRevealRevisionRef.current });
   }
 
   function updateInteraction(field: keyof EditorInteraction, value: string | number | boolean | null) {
@@ -1341,9 +1263,10 @@ export function Editor() {
           <button className="editor-button" onClick={() => setHelp((value) => !value)} title="Keyboard shortcuts (?)">? Help</button>
         </div>
       </header>
-      <AssetPickerModal open={assetPickerOpen} title="Switch character or asset set" eyebrow="CHARACTER / ASSET SET" description="Search the loaded Spine catalog, then choose the set to edit." directories={directories} selected={directory} renderLabel={(item) => characterDirectoryLabel(item, directoryLabels)} getSearchText={(item) => characterDirectoryLabel(item, directoryLabels)} onClose={() => setAssetPickerOpen(false)} onSelect={(next) => { setAssetPickerOpen(false); void changeDirectory(next); }} />
+      <AssetPickerModal open={assetPickerOpen} title="Switch character or asset set" eyebrow="CHARACTER / ASSET SET" description="Search the loaded Spine catalog, then choose the set to edit." directories={directories} selected={directory} assetRoot={source?.rootPath ?? ""} directoryInfo={directoryInfo} renderLabel={(item) => characterDirectoryLabel(item, directoryLabels)} getSearchText={(item) => characterDirectoryLabel(item, directoryLabels)} onClose={() => setAssetPickerOpen(false)} onSelect={(next) => { setAssetPickerOpen(false); void changeDirectory(next); }} />
+      <CommandPalette open={commandPaletteOpen} commands={commandPaletteCommands} onClose={() => setCommandPaletteOpen(false)} />
 
-        {help && <div className="editor-help" role="region" aria-label="Editor help"><strong>Shortcuts</strong>{workspace === "timeline" ? <span>Space Play/pause · Left/right Frame · Shift+Left/right 10 frames · Home/End · S Split subtitle · Ctrl/⌘ D Duplicate · Delete Remove · F Fit timeline · Ctrl/⌘ S Save</span> : <><span>Draw a hit region, choose animations, then test it with press, hold, drag, and release.</span><span>V Select · H Pan · R Draw · T Test · F Fit canvas · B Bones · Space Play/pause · Esc Idle/Edit</span><span>Ctrl/⌘ Z Undo · Shift Z Redo · Ctrl/⌘ D Duplicate · Delete Remove region · Ctrl/⌘ S Save</span></>}<button className="editor-button" onClick={() => setHelp(false)}><IconClose /> Close</button></div>}
+        {help && <div className="editor-help" role="region" aria-label="Editor help"><strong>Shortcuts</strong>{workspace === "timeline" ? <span>Ctrl/⌘ K Commands · Space Play/pause · Left/right Frame · Shift+Left/right 10 frames · Home/End · S Split subtitle · Ctrl/⌘ D Duplicate · Delete Remove · F Fit timeline · Ctrl/⌘ S Save</span> : <><span>Draw a hit region, choose animations, then test it with press, hold, drag, and release.</span><span>Ctrl/⌘ K Commands · V Select · H Pan · R Draw · T Test · F Fit canvas · B Bones · Space Play/pause · Esc Idle/Edit</span><span>Ctrl/⌘ Z Undo · Shift Z Redo · Ctrl/⌘ D Duplicate · Delete Remove region · Ctrl/⌘ S Save</span></>}<button className="editor-button" onClick={() => setHelp(false)}><IconClose /> Close</button></div>}
       <main className={`editor-layout${leftHidden ? " hide-left" : ""}${rightHidden ? " hide-right" : ""}${!assetLoaded ? " is-loading" : ""}`} style={{ position: workspace === "timeline" ? "absolute" : undefined, visibility: workspace === "timeline" ? "hidden" : undefined, inset: workspace === "timeline" ? "100px 0 40px" : undefined, pointerEvents: workspace === "timeline" ? "none" : undefined, gridTemplateColumns: `${leftHidden ? "" : `${leftWidth}px `}minmax(180px, 1fr)${rightHidden ? "" : ` ${rightWidth}px`}` }}>
         {assetLoaded && (["left", "right"] as const).filter((side) => side === "left" ? !leftHidden : !rightHidden).map((side) => <div key={side} className={`editor-panel-resizer ${side}`} role="separator" aria-label={`Resize ${side} panel`} aria-orientation="vertical" tabIndex={0} style={side === "left" ? { left: leftWidth + 7 } : { right: rightWidth + 7 }} onDoubleClick={() => { setLayoutPreset("custom"); side === "left" ? setLeftWidth(220) : setRightWidth(320); }} onKeyDown={(event) => {
            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -1357,35 +1280,16 @@ export function Editor() {
           drag.side === "left" ? setLeftWidth(Math.max(160, Math.min(380, drag.width + dx))) : setRightWidth(Math.max(260, Math.min(460, drag.width - dx)));
         }} onPointerUp={() => { panelDragRef.current = null; }} onPointerCancel={() => { panelDragRef.current = null; }} />)}
         <aside className="editor-panel editor-left-panel" hidden={!assetLoaded || leftHidden}>
-          <section className="editor-section editor-bone-section">
-            <div className="editor-section-title"><strong>Rig hierarchy</strong><span>{boneSearch.trim() ? `${boneTreeRows.filter((row) => row.matches).length} matches` : `${boneTreeRows.filter((row) => !row.contextOnly).length} bones`}</span></div>
-            <div className="editor-bone-actions" aria-label="Hierarchy actions">
-              <button type="button" title="Expand every branch" onClick={() => setCollapsedBones(new Set())}>Expand all</button>
-              <button type="button" title="Collapse every branch" onClick={collapseAllBones}>Collapse all</button>
-              <button type="button" title="Reveal the selected bone" disabled={!project?.selectedBonePath} onClick={revealSelectedBone}>Reveal selected</button>
-            </div>
-            <label className="editor-bone-search"><span className="sr-only">Search bones by name or path</span><input className="editor-search" value={boneSearch} onChange={(event) => setBoneSearch(event.target.value)} placeholder="Search bones…" /></label>
-            {boneSearch.trim() && boneTreeRows.length > 0 && <div className="editor-bone-search-hint">Matches highlighted · ancestors shown</div>}
-            <div className="editor-bone-list" role="tree" aria-label="Rig hierarchy">
-              {boneTreeRows.map((row) => {
-                const { bone } = row;
-                const collapsed = !boneSearch.trim() && collapsedBones.has(bone.path);
-                const selected = project?.selectedBonePath === bone.path;
-                const ancestor = selectedBoneAncestors.has(bone.path);
-                return <div key={bone.path} className={`editor-bone-row${selected ? " is-selected" : ""}${ancestor ? " is-selected-ancestor" : ""}${row.matches ? " is-match" : ""}${row.contextOnly ? " is-context-only" : ""}`} role="treeitem" aria-level={row.depth + 1} aria-expanded={row.hasChildren ? !collapsed : undefined} aria-selected={selected}>
-                  {row.depth > 0 && <span className="editor-bone-guides" aria-hidden="true">
-                    {row.ancestorContinues.map((continues, index) => <i key={`${bone.path}-guide-${index}`} className={`editor-bone-guide${continues ? " is-continuing" : ""}`} />)}
-                    <i className={`editor-bone-guide is-branch${row.isLastSibling ? " is-last" : ""}`} />
-                  </span>}
-                  <button className="editor-bone-toggle" tabIndex={-1} disabled={!row.hasChildren} aria-label={`${collapsed ? "Expand" : "Collapse"} ${bone.name}`} aria-expanded={row.hasChildren ? !collapsed : undefined} onClick={() => toggleBone(bone.path)}>{row.hasChildren ? collapsed ? <IconChevronRight /> : <IconChevronDown /> : <IconDot />}</button>
-                  <button ref={(element) => { if (element) boneRowRefs.current.set(bone.path, element); else boneRowRefs.current.delete(bone.path); }} className="editor-bone-item" tabIndex={rovingBonePath === bone.path ? 0 : -1} title={bone.path} onClick={() => selectHierarchyBone(bone.path)} onKeyDown={(event) => handleBoneTreeKeyDown(event, bone.path)}>
-                    <span className="editor-bone-name">{highlightedBoneName(bone.name, row.matches ? boneSearch : "")}</span>
-                  </button>
-                </div>;
-              })}
-              {boneTreeRows.length === 0 && <p className="editor-muted editor-bone-empty">No bones match this search.</p>}
-            </div>
-          </section>
+          <BoneNavigator
+            assetRoot={source?.rootPath ?? ""}
+            directory={directory}
+            bones={frame?.bones ?? []}
+            selectedPath={project?.selectedBonePath ?? null}
+            interactionTargetPaths={interactionTargetPaths}
+            showInactive={displaySettings.showInactiveBones}
+            revealRequest={boneRevealRequest}
+            onSelect={(path) => live((current) => ({ ...current, selectedBonePath: path }))}
+          />
            <details className="editor-section editor-constraints">
              <summary className="editor-section-title"><strong>Constraints</strong><span>{frame?.constraints.length ?? 0}</span><IconPlus className="editor-details-icon" /></summary>
             <div className="editor-constraint-list">
@@ -1412,6 +1316,35 @@ export function Editor() {
               {recentFiles.length > 0 && <section className="editor-recent-start"><div className="editor-section-title"><strong>Recently opened</strong><button onClick={() => { recentFilesRef.current = []; setRecentFiles([]); try { localStorage.removeItem(RECENT_FILES_KEY); } catch { /* optional */ } }}>Clear</button></div>{recentList(5)}</section>}
             </div>
           </div>}
+  function navigateToValidationIssue(warning: EditorValidationWarning) {
+    const current = projectRef.current;
+    if (!current) return;
+    const interaction = current.interactions.find((item) => item.id === warning.interactionId);
+    if (!interaction) return;
+    const regionId = warning.regionId && interaction.regions.some((region) => region.id === warning.regionId)
+      ? warning.regionId
+      : interaction.regions[0]?.id ?? null;
+    const next = { ...current, selectedInteractionId: interaction.id, selectedRegionId: regionId };
+    projectRef.current = next;
+    setProject(next);
+    setWorkspace("interaction");
+    setLayoutPreset("custom");
+    setRightHidden(false);
+    setInspectorTab(warning.kind === "missing-animation" ? "animation" : warning.kind === "missing-bone" && !warning.regionId ? "movement" : "region");
+    setStatus(`Reviewing ${warning.kind.replaceAll("-", " ")}: ${warning.message}`);
+  }
+
+  function showProjectIssues() {
+    setWorkspace("interaction");
+    setRightHidden(false);
+    requestAnimationFrame(() => {
+      const details = validationDetailsRef.current;
+      if (!details) return;
+      details.open = true;
+      details.scrollIntoView({ block: "nearest" });
+    });
+  }
+
           <div className="editor-toolbar" role="toolbar" aria-label="Canvas tools">
               <button className="editor-button" onClick={() => { setLayoutPreset("custom"); setLeftHidden((value) => !value); }} title="Toggle bone panel"><IconMenu /> Bones</button>
              <button className={`editor-button${!testing && tool === "select" ? " active" : ""}`} onClick={() => { setTesting(false); setTool("select"); }} title="Select and transform regions (V)"><IconTarget /> Select</button>
@@ -1509,12 +1442,12 @@ export function Editor() {
               {visibleInteractions.map((item) => <button key={item.id} className={item.id === project?.selectedInteractionId ? "is-selected" : ""} onClick={() => selectInteraction(item.id)}><i style={{ background: item.color }} />{item.name}<small>{item.regions.length} region{item.regions.length === 1 ? "" : "s"}</small></button>)}
             </div>
           </section>
-          <details className={`editor-section editor-validation${validationWarnings.length ? " has-warnings" : ""}`}>
+          <details ref={validationDetailsRef} className={`editor-section editor-validation${validationWarnings.length ? " has-warnings" : ""}`}>
              <summary>{validationWarnings.length ? `${validationWarnings.length} checks to review` : <><IconCheck /> Project checks passed</>}</summary>
             <div className="editor-section-title"><strong>Validation</strong><span>{validationWarnings.length ? `${validationWarnings.length} warning${validationWarnings.length === 1 ? "" : "s"}` : "Ready"}</span></div>
             {validationWarnings.length === 0
               ? <p className="editor-muted">No missing animations, bones, or overlapping regions.</p>
-              : <div className="editor-validation-list">{validationWarnings.map((warning) => <div key={warning.id}><b>{warning.kind.replace("-", " ")}</b><span>{warning.message}</span></div>)}</div>}
+              : <div className="editor-validation-list">{validationWarnings.map((warning) => <button key={warning.id} type="button" className="editor-validation-issue" onClick={() => navigateToValidationIssue(warning)} title="Select this interaction and open the relevant inspector section"><b>{warning.kind.replaceAll("-", " ")}</b><span>{warning.message}</span><small>Go to issue →</small></button>)}</div>}
           </details>
             {selectedInteraction && <section className="editor-section editor-inspector">
               <div className="editor-section-title"><strong>Interaction</strong><span><button onClick={duplicateInteraction} title="Duplicate interaction and its regions">Duplicate</button> <button className="danger" onClick={() => { if (confirm("Delete this interaction and all its regions?")) deleteInteraction(); }}>Delete</button></span></div>
@@ -1528,6 +1461,28 @@ export function Editor() {
                <div className="editor-subheading">Press, hold, and release</div>
                <p className="editor-muted">Body and face tracks play together. The hold phase loops; blend duration controls each transition.</p>
                <div className={`editor-phase-suggestion${phaseSuggestion ? " has-suggestion" : ""}`}>
+  const commandPaletteCommands: EditorCommand[] = [
+    { id: "workspace-interactions", title: "Switch to Interactions", description: "Open the interaction authoring workspace", group: "Workspace", keywords: ["edit", "studio"], run: () => setWorkspace("interaction") },
+    { id: "workspace-timeline", title: "Switch to Timeline", description: "Open the sequence composer", group: "Workspace", keywords: ["sequence", "composer"], disabled: !assetLoaded, run: () => setWorkspace("timeline") },
+    { id: "choose-asset-set", title: "Choose character or asset set", description: directory ? `Current set: ${characterDirectoryLabel(directory, directoryLabels)}` : "Open a local set from the loaded catalog", group: "Assets", keywords: ["character", "switch"], disabled: !directories.length, run: () => setAssetPickerOpen(true) },
+    { id: "open-asset-folder", title: "Open asset folder…", description: "Choose a local Spine asset root", group: "Assets", keywords: ["browse", "root"], run: () => { void openFolder(); } },
+    { id: "open-project-file", title: "Open project file…", description: "Load a saved editor project", group: "Project", keywords: ["interaction", "timeline", "json"], run: () => { void openProjectFile(); } },
+    { id: "layout-balanced", title: "Layout: Balanced", description: "Show navigation, canvas, and inspector", group: "Layout", keywords: ["workspace preset"], run: () => applyWorkspacePreset("balanced") },
+    { id: "layout-canvas", title: "Layout: Canvas focus", description: "Hide both side panels", group: "Layout", keywords: ["workspace preset", "preview"], run: () => applyWorkspacePreset("canvas-focus") },
+    { id: "layout-timeline", title: "Layout: Timeline focus", description: "Open the sequence timeline", group: "Layout", keywords: ["workspace preset", "sequence"], disabled: !assetLoaded, run: () => applyWorkspacePreset("timeline-focus") },
+    { id: "toggle-navigation", title: "Toggle interaction navigator", description: "Show or hide the left-side bone and constraint panels", group: "Layout", keywords: ["left panel", "bones"], run: () => { setWorkspace("interaction"); setLayoutPreset("custom"); setLeftHidden((value) => !value); } },
+    { id: "toggle-inspector", title: "Toggle inspector panel", description: "Show or hide the right-side properties panel", group: "Layout", keywords: ["right panel", "properties"], run: () => { setWorkspace("interaction"); setLayoutPreset("custom"); setRightHidden((value) => !value); } },
+    { id: "fit-canvas", title: "Fit canvas", description: "Frame the loaded artwork in the preview", group: "View", keywords: ["zoom", "preview"], disabled: !assetLoaded, run: () => { setWorkspace("interaction"); rendererRef.current?.resetCamera(); } },
+    { id: "save-project", title: "Save to asset root", description: "Write the project and linked subtitles to disk", group: "Project", keywords: ["persist", "save files"], disabled: !assetLoaded || saveState === "saving", run: () => { void saveProject(); } },
+    { id: "undo", title: "Undo", description: "Undo the last project edit", group: "Edit", keywords: ["revert"], disabled: undo.length === 0, run: undoProject },
+    { id: "redo", title: "Redo", description: "Redo the last undone project edit", group: "Edit", keywords: ["repeat"], disabled: redo.length === 0, run: redoProject },
+    { id: "test-interaction", title: testing ? "Exit interaction test" : "Test selected interaction", description: "Preview the selected interaction without saving", group: "Preview", keywords: ["play", "hit region"], disabled: !selectedInteraction || !frame, run: toggleTest },
+    { id: "add-interaction", title: "Add interaction", description: "Create a new local interaction", group: "Edit", keywords: ["new", "hit target"], disabled: !project || !frame || !meta, run: addInteraction },
+    { id: "add-region", title: "Add hit region", description: "Add a region to the selected interaction", group: "Edit", keywords: ["new", "target"], disabled: !selectedInteraction || !frame, run: addRegion },
+    { id: "project-issues", title: "Show project checks", description: validationWarnings.length ? `${validationWarnings.length} items need review` : "No current validation warnings", group: "Project", keywords: ["issues", "warnings", "validation"], disabled: !assetLoaded, run: showProjectIssues },
+    { id: "keyboard-help", title: "Show keyboard shortcuts", description: "Open editor shortcut help", group: "Help", keywords: ["shortcuts", "keys"], run: () => setHelp(true) },
+  ];
+
                  <span aria-hidden="true"><IconTarget /></span>
                  <p>{phaseSuggestion ? <><b>{phaseSuggestion.kind} profile detected.</b> {phaseSuggestion.reason} Applying fills the phase tracks only.</> : "No local profile matches this press animation. Choose a detected Pat, Touch, or Pinch press to preview a mapping."}</p>
                  <button type="button" className="editor-preview-button" disabled={!phaseSuggestion} onClick={detectPhases}>Apply suggestion</button>
@@ -1540,6 +1495,7 @@ export function Editor() {
                  facePress={selectedInteraction.faceStartAnimation}
                  faceHold={selectedInteraction.faceFollowAnimation}
                  faceRelease={selectedInteraction.faceEndAnimation}
+          <button className="editor-button editor-command-trigger" type="button" aria-keyshortcuts="Control+K Meta+K" title="Search commands (Ctrl/⌘ K)" onClick={() => setCommandPaletteOpen(true)}>⌘ K</button>
                  mixPress={selectedInteraction.startMixDuration}
                  mixHold={selectedInteraction.followMixDuration}
                  mixRelease={selectedInteraction.releaseMixDuration}
@@ -1617,7 +1573,7 @@ export function Editor() {
           </section>}
         </aside>
       </main>
-      {workspace === "timeline" && assetLoaded && <TimelineWorkspace source={source} directory={directory} directories={directories} directoryLabels={directoryLabels} project={project} initialSubtitlePath={pendingSubtitlePath} onSubtitleOpened={() => setPendingSubtitlePath(null)} initialAudioPaths={pendingAudioPaths} onAudioOpened={() => setPendingAudioPaths(null)} onRecentFile={recordRecentFile} onMutate={mutate} onLive={live} onBeginEdit={beginTimelineEdit} onSave={() => saveProject()} onRegisterSave={(callback) => { timelineSaveRef.current = callback; }} onStatus={setStatus} onError={setError} />}
+      {workspace === "timeline" && assetLoaded && <TimelineWorkspace source={source} directory={directory} directories={directories} directoryLabels={directoryLabels} directoryInfo={directoryInfo} project={project} initialSubtitlePath={pendingSubtitlePath} onSubtitleOpened={() => setPendingSubtitlePath(null)} initialAudioPaths={pendingAudioPaths} onAudioOpened={() => setPendingAudioPaths(null)} onRecentFile={recordRecentFile} onMutate={mutate} onLive={live} onBeginEdit={beginTimelineEdit} onSave={() => saveProject()} onRegisterSave={(callback) => { timelineSaveRef.current = callback; }} onStatus={setStatus} onError={setError} />}
       <footer className="editor-statusbar">
         <span className={error ? "editor-error" : ""}>{error ?? status}</span>
         <span>{directory ? `${displayName(directory)} · ${files?.size ?? 0} files` : "No asset loaded"} · {testing ? "TEST MODE" : workspace === "timeline" ? "TIMELINE" : "EDIT MODE"}</span>

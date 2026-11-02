@@ -275,7 +275,22 @@ export function splitCue(timeline: EditorTimeline, id: string, time: number): Ed
   return { ...timeline, subtitles: timeline.subtitles.flatMap((item) => item.id === id ? [{ ...item, end: time }, { ...item, id: crypto.randomUUID(), start: time, text: { ...item.text } }] : [item]) };
 }
 
+export interface TimelineSnapResolution {
+  value: number;
+  target: number | null;
+  source: "target" | "grid" | null;
+}
+
+export function resolveTimelineSnap(value: number, interval: number, targets: readonly number[], tolerance = 0.08): TimelineSnapResolution {
+  const closest = targets.reduce((best, target) => Math.abs(target - value) < Math.abs(best - value) ? target : best, Number.POSITIVE_INFINITY);
+  if (Number.isFinite(closest) && Math.abs(closest - value) <= tolerance) return { value: closest, target: closest, source: "target" };
+  if (interval > 0) {
+    const snapped = Math.round(value / interval) * interval;
+    return { value: snapped, target: snapped, source: "grid" };
+  }
+  return { value, target: null, source: null };
+}
+
 export function snapToTargets(value: number, interval: number, targets: number[], tolerance = 0.08): number {
-  const closest = targets.reduce((best, target) => Math.abs(target - value) < Math.abs(best - value) ? target : best, Infinity);
-  return Math.abs(closest - value) <= tolerance ? closest : interval > 0 ? Math.round(value / interval) * interval : value;
+  return resolveTimelineSnap(value, interval, targets, tolerance).value;
 }

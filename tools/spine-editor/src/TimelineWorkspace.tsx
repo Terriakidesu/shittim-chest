@@ -16,17 +16,18 @@ import {
 import type { DesktopAssetSource } from "./desktopSource";
 import { manifestReferenceCandidates } from "../../../src/client/spine/spineManifest";
 import { audioPlaybackDecision, clampAudioEnd, clampAudioStart, decodedAudioTiming } from "./audioModel";
-import { animationClipEnd, animationEndForLayer, authoredTimelineEnd, deleteAnimationClipRipple, duplicateAnimationClipRipple, effectiveAnimationClips, extendTimelineDuration, insertAnimationClipRipple, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAnimationClipRipple, nextTalkSequenceId, openingTimelineDuration, replaceSubtitleImport, snapToTargets, splitCue, switchSequence, talkSequenceId } from "./sequenceModel";
+import { animationClipEnd, animationEndForLayer, authoredTimelineEnd, deleteAnimationClipRipple, duplicateAnimationClipRipple, effectiveAnimationClips, extendTimelineDuration, insertAnimationClipRipple, linkAudioToSubtitle, linkedSubtitleForAudio, matchAudioAndSubtitleLength, moveAnimationClipRipple, nextTalkSequenceId, openingTimelineDuration, replaceSubtitleImport, resolveTimelineSnap, snapToTargets, splitCue, switchSequence, talkSequenceId } from "./sequenceModel";
 import { advanceSpineTimeline, timelineActiveSubtitleTexts, timelineAudioPreloadsReady, timelineLayerAnimation, timelineMainAnimation, timelinePlaybackDuration, timelineSceneHidesCharacter, type SpineTimelineAudioPreloadState } from "../../../src/client/spine/spineTimeline";
 import { SpineTimelineLayerCanvas } from "../../../src/client/spine/SpineTimelineLayerCanvas";
 import { spineAudioPathCandidates } from "../../../src/client/spine/spineAudio";
 import { serializeSubtitleDocument } from "./subtitleDocument";
 import type { RecentFile } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
-import { characterDirectoryLabel, type CharacterDirectoryLabels } from "./characterCatalog";
+import { characterDirectoryLabel, type CharacterDirectoryInfo, type CharacterDirectoryLabels } from "./characterCatalog";
 import { isTextEditingTarget } from "./editorKeyboard";
 import { panStageView, resetStageView, zoomStageView, type StageView } from "./stageView";
 import { zoomTimelineAtCursor } from "./timelineView";
+import "./timelineSnapFeedback.css";
 import { IconChevronDown, IconChevronLeft, IconChevronRight, IconExpand, IconLink, IconMinus, IconPause, IconPlay, IconPlus, IconSkipBack, IconSkipForward, IconSound, IconSync, IconUnlink } from "../../../src/client/components/icons";
 
 const TIMELINE_SCALE = 96;
@@ -70,6 +71,7 @@ interface TimelineWorkspaceProps {
   directory: string;
   directories: string[];
   directoryLabels?: CharacterDirectoryLabels;
+  directoryInfo?: Readonly<Record<string, CharacterDirectoryInfo>>;
   project: EditorProject | null;
   initialSubtitlePath?: string | null;
   onSubtitleOpened: () => void;
@@ -106,6 +108,7 @@ interface TimelineDragState {
   end: number;
   items: TimelineDragItem[];
 }
+interface TimelineSnapFeedback { time: number; delta: number; source: "target" | "grid" }
 interface SelectedClipDetail extends TimelineSelection {
   label: string;
   start: number;
@@ -230,7 +233,7 @@ async function findAudioFile(source: DesktopAssetSource, path: string): Promise<
   return null;
 }
 
-export function TimelineWorkspace({ source, directory, directories, directoryLabels = {}, project, initialSubtitlePath, onSubtitleOpened, initialAudioPaths, onAudioOpened, onRecentFile, onMutate, onLive, onBeginEdit, onSave, onRegisterSave, onStatus, onError }: TimelineWorkspaceProps) {
+export function TimelineWorkspace({ source, directory, directories, directoryLabels = {}, directoryInfo = {}, project, initialSubtitlePath, onSubtitleOpened, initialAudioPaths, onAudioOpened, onRecentFile, onMutate, onLive, onBeginEdit, onSave, onRegisterSave, onStatus, onError }: TimelineWorkspaceProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -247,6 +250,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const [stageView, setStageView] = useState<StageView>(() => resetStageView());
   const [stagePanning, setStagePanning] = useState(false);
   const [markers, setMarkers] = useState<number[]>([]);
+  const [dragSnapFeedback, setDragSnapFeedback] = useState<TimelineSnapFeedback | null>(null);
   const [inspector, setInspector] = useState<"sequence" | "layer" | "animation" | "cue" | "audio" | "multi">("sequence");
   const scrollRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -1308,6 +1312,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
 
   function beginDrag(event: ReactPointerEvent<HTMLElement>, kind: TimelineDragKind, id: string, start: number, end: number, selection: TimelineSelection[] = selectedClips) {
     event.stopPropagation();
+    setDragSnapFeedback(null);
     const captureTarget = event.currentTarget.closest(".timeline-track-rows") as HTMLElement | null;
     (captureTarget ?? event.currentTarget).setPointerCapture(event.pointerId);
     const clipKind = dragClipKind(kind);
@@ -1327,13 +1332,16 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     const resizeKind = dragClipKind(drag.kind);
     const selectedCueIds = new Set(drag.items.filter((item) => item.kind === "cue" && !item.linked).map((item) => item.id));
     const selectedAnimationIds = new Set(drag.items.filter((item) => item.kind === "animation").map((item) => item.id));
+    const selectedAudioIds = new Set(drag.items.filter((item) => item.kind === "audio").map((item) => item.id));
     const animationTargets = timeline.layers.flatMap((layer) => layerAnimationClips(layer).filter((clip) => !selectedAnimationIds.has(clip.id)).flatMap((clip) => [clip.start, clip.end]));
-    const targets = [...markers, ...animationTargets, ...timeline.subtitles.filter((cue) => !selectedCueIds.has(cue.id)).flatMap((cue) => [cue.start, cue.end])];
-    const snap = (value: number) => Math.max(0, snapToTargets(value, event.altKey ? 0 : timeline.snap, event.altKey ? [] : targets));
+    const audioTargets = timeline.audio.filter((clip) => !selectedAudioIds.has(clip.id)).flatMap((clip) => [clip.start, clip.end]);
+    const targets = [...markers, currentTime, ...animationTargets, ...audioTargets, ...timeline.subtitles.filter((cue) => !selectedCueIds.has(cue.id)).flatMap((cue) => [cue.start, cue.end])];
     const resizeAnchor = drag.kind.endsWith("-end") ? drag.end : drag.start;
-    const snappedDelta = snap(resizeAnchor + delta) - resizeAnchor;
+    const snapResolution = resolveTimelineSnap(resizeAnchor + delta, event.altKey ? 0 : timeline.snap, event.altKey ? [] : targets);
+    const snappedDelta = snapResolution.value - resizeAnchor;
     const moveItems = drag.items.filter((item) => !item.linked || !resize);
     const moveDelta = resize ? snappedDelta : Math.max(-Math.min(...moveItems.map((item) => item.start)), snappedDelta);
+    setDragSnapFeedback(snapResolution.source ? { time: snapResolution.value, delta: resize ? snappedDelta : moveDelta, source: snapResolution.source } : null);
 
     updateTimeline((value) => {
       let layers = value.layers;
@@ -1406,6 +1414,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   function endDrag(event: ReactPointerEvent<HTMLDivElement>) {
     if (dragRef.current && event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     dragRef.current = null;
+    setDragSnapFeedback(null);
   }
 
   function seekFromEvent(event: ReactPointerEvent<HTMLDivElement>) {
@@ -1706,6 +1715,9 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
                 <i className="timeline-playhead" style={{ left: currentTime * TIMELINE_SCALE * zoom }} />
               </div>
             </div>
+             {dragSnapFeedback && <div className={"timeline-snap-feedback is-" + dragSnapFeedback.source} aria-hidden="true" style={{ left: 116 + dragSnapFeedback.time * TIMELINE_SCALE * zoom }}>
+               <span>{dragSnapFeedback.source === "target" ? "SNAP" : "GRID"} {seconds(dragSnapFeedback.time)} · Δ {dragSnapFeedback.delta < 0 ? "−" : "+"}{Math.abs(dragSnapFeedback.delta).toFixed(3)}s</span>
+             </div>}
           </div>
          </div>
          <div className="timeline-bottom-tools">
@@ -1853,6 +1865,6 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
         {((inspector === "layer" && !selectedLayer) || (inspector === "animation" && !selectedAnimationClip) || (inspector === "cue" && !selectedCue) || (inspector === "audio" && !selectedAudio)) && <div className="timeline-empty timeline-inspector-empty"><strong>Select a clip</strong><span>Choose a layer, animation, subtitle, or audio clip in the timeline.</span></div>}
       </aside>
     </div>
-     <AssetPickerModal open={layerPickerOpen} title="Add Spine layer" eyebrow="TIMELINE LAYER" description="Search the loaded catalog and add another background, scene, character, or overlay set." directories={availableLayerDirectories} emptyLabel="Every available asset set is already on this timeline." renderLabel={(item) => characterDirectoryLabel(item, directoryLabels)} getSearchText={(item) => characterDirectoryLabel(item, directoryLabels)} onClose={() => setLayerPickerOpen(false)} onSelect={(next) => { setLayerPickerOpen(false); addLayer(next); }} />
+     <AssetPickerModal open={layerPickerOpen} title="Add Spine layer" eyebrow="TIMELINE LAYER" description="Search the loaded catalog and add another background, scene, character, or overlay set." directories={availableLayerDirectories} assetRoot={source?.rootPath ?? ""} directoryInfo={directoryInfo} emptyLabel="Every available asset set is already on this timeline." renderLabel={(item) => characterDirectoryLabel(item, directoryLabels)} getSearchText={(item) => characterDirectoryLabel(item, directoryLabels)} onClose={() => setLayerPickerOpen(false)} onSelect={(next) => { setLayerPickerOpen(false); addLayer(next); }} />
   </>;
 }
