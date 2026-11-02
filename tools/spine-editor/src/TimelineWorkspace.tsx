@@ -23,13 +23,15 @@ import { spineAudioPathCandidates } from "../../../src/client/spine/spineAudio";
 import { serializeSubtitleDocument } from "./subtitleDocument";
 import type { RecentFile } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
+import { NumberField } from "./components/NumberField";
 import { characterDirectoryLabel, type CharacterDirectoryInfo, type CharacterDirectoryLabels } from "./characterCatalog";
 import { isTextEditingTarget } from "./editorKeyboard";
 import { panStageView, resetStageView, zoomStageView, type StageView } from "./stageView";
 import { zoomTimelineAtCursor } from "./timelineView";
 import { SubtitleTextEditor } from "./SubtitleTextEditor";
+import { TimelinePanelResizer } from "./TimelinePanelResizer";
 import { TimelineSplitHandle } from "./TimelineSplitHandle";
-import { DEFAULT_TIMELINE_PREVIEW_SHARE, normalizeTimelinePreviewShare, TIMELINE_LAYOUT_PREFERENCES_KEY } from "./timelineLayout";
+import { DEFAULT_TIMELINE_LAYOUT_PREFERENCES, normalizeTimelineLayoutPreferences, TIMELINE_LAYOUT_PREFERENCES_KEY, type TimelineLayoutPreferences } from "./timelineLayout";
 import "./timelineSnapFeedback.css";
 import { IconChevronDown, IconChevronLeft, IconChevronRight, IconExpand, IconLink, IconMinus, IconPause, IconPlay, IconPlus, IconSkipBack, IconSkipForward, IconSound, IconSync, IconUnlink } from "../../../src/client/components/icons";
 
@@ -99,14 +101,13 @@ function snapTime(value: number, snap: number, duration: number): number {
   return Math.max(0, Math.min(duration, Number(next.toFixed(3))));
 }
 
-function readTimelinePreviewShare(): number {
+function readTimelineLayoutPreferences(): TimelineLayoutPreferences {
   try {
     const stored = localStorage.getItem(TIMELINE_LAYOUT_PREFERENCES_KEY);
-    if (!stored) return DEFAULT_TIMELINE_PREVIEW_SHARE;
-    const preferences = JSON.parse(stored) as { previewShare?: unknown };
-    return normalizeTimelinePreviewShare(preferences.previewShare);
+    if (!stored) return DEFAULT_TIMELINE_LAYOUT_PREFERENCES;
+    return normalizeTimelineLayoutPreferences(JSON.parse(stored) as unknown);
   } catch {
-    return DEFAULT_TIMELINE_PREVIEW_SHARE;
+    return DEFAULT_TIMELINE_LAYOUT_PREFERENCES;
   }
 }
 
@@ -261,7 +262,8 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
   const [files, setFiles] = useState<Record<string, SpineFiles | null>>({});
   const [animationDurations, setAnimationDurations] = useState<Record<string, number>>({});
   const [zoom, setZoom] = useState(1);
-  const [previewShare, setPreviewShare] = useState(readTimelinePreviewShare);
+  const [timelineLayout, setTimelineLayout] = useState(readTimelineLayoutPreferences);
+  const { previewShare, sequencePanelWidth, inspectorPanelWidth, sequencePanelCollapsed, inspectorPanelCollapsed } = timelineLayout;
   const [stageView, setStageView] = useState<StageView>(() => resetStageView());
   const [stagePanning, setStagePanning] = useState(false);
   const [markers, setMarkers] = useState<number[]>([]);
@@ -310,9 +312,13 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
 
   useEffect(() => {
     try {
-      localStorage.setItem(TIMELINE_LAYOUT_PREFERENCES_KEY, JSON.stringify({ previewShare }));
-    } catch { /* The split remains adjustable for this session. */ }
-  }, [previewShare]);
+      localStorage.setItem(TIMELINE_LAYOUT_PREFERENCES_KEY, JSON.stringify(timelineLayout));
+    } catch { /* View preferences remain adjustable for this session. */ }
+  }, [timelineLayout]);
+
+  function updateTimelineLayout(patch: Partial<TimelineLayoutPreferences>) {
+    setTimelineLayout((current) => normalizeTimelineLayoutPreferences({ ...current, ...patch }));
+  }
 
   function pauseAudioElement(id: string) {
     const audio = audioElementsRef.current[id];
@@ -1624,8 +1630,8 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
     : 0;
 
   return <>
-    <div className="timeline-workspace">
-      <aside className="editor-panel sequence-browser">
+    <div className="timeline-workspace" style={{ gridTemplateColumns: `${sequencePanelCollapsed ? "" : `${sequencePanelWidth}px 7px `}minmax(0, 1fr)${inspectorPanelCollapsed ? "" : ` 7px ${inspectorPanelWidth}px`}` }}>
+      <aside id="timeline-sequence-browser" className="editor-panel sequence-browser" hidden={sequencePanelCollapsed}>
         <div className="editor-section">
           <div className="editor-section-title"><strong>Sequences</strong><span>{sequenceIds.length}</span></div>
           <div className="timeline-talk-playlist-actions">
@@ -1639,8 +1645,9 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           </div>
         </div>
       </aside>
+      {!sequencePanelCollapsed && <TimelinePanelResizer side="sequences" value={sequencePanelWidth} onChange={(sequencePanelWidth) => updateTimelineLayout({ sequencePanelWidth })} />}
        <section className="timeline-main">
-          <div className="sequence-heading"><div><strong>{timeline.sequenceId === "opening" ? "Opening / Intro" : timeline.sequenceId?.startsWith("talk-") ? `Talk ${timeline.sequenceId.replace("talk-", "")}` : "Recovered composition"}</strong><small>{timeline.sequenceId === "opening" ? "Arrange character and scene animation clips on their own tracks." : "Synchronized Spine composition"}</small></div>{(timeline.sequenceId === "opening" || isTalkSequence) && <span className="opening-duration-badge">{timeline.durationMode === "auto" ? "AUTO" : "MANUAL"} · {seconds(duration)}</span>}</div>
+          <div className="sequence-heading"><div><strong>{timeline.sequenceId === "opening" ? "Opening / Intro" : timeline.sequenceId?.startsWith("talk-") ? `Talk ${timeline.sequenceId.replace("talk-", "")}` : "Recovered composition"}</strong><small>{timeline.sequenceId === "opening" ? "Arrange character and scene animation clips on their own tracks." : "Synchronized Spine composition"}</small></div><div className="sequence-heading-actions"><button type="button" className="editor-button timeline-panel-toggle" aria-controls="timeline-sequence-browser" aria-expanded={!sequencePanelCollapsed} onClick={() => updateTimelineLayout({ sequencePanelCollapsed: !sequencePanelCollapsed })}>{sequencePanelCollapsed ? "Show sequences" : "Hide sequences"}</button>{(timeline.sequenceId === "opening" || isTalkSequence) && <span className="opening-duration-badge">{timeline.durationMode === "auto" ? "AUTO" : "MANUAL"} · {seconds(duration)}</span>}<button type="button" className="editor-button timeline-panel-toggle" aria-controls="timeline-inspector" aria-expanded={!inspectorPanelCollapsed} onClick={() => updateTimelineLayout({ inspectorPanelCollapsed: !inspectorPanelCollapsed })}>{inspectorPanelCollapsed ? "Show inspector" : "Hide inspector"}</button></div></div>
           {timeline.sequenceId === "opening" && <div className="opening-phase-strip" aria-label="Opening animation clips">
             {openingCharacterClips.map((clip, index) => {
               const end = animationClipEnd(clip, animationDurations[`${characterLayer?.id}:${clip.animation}`] ?? 0);
@@ -1694,7 +1701,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           <span className="editor-time">{seconds(currentTime)} / {seconds(duration)}</span>
         </div>
 
-          <TimelineSplitHandle value={previewShare} onChange={setPreviewShare} getFlexibleHeight={() => (stageWrapRef.current?.getBoundingClientRect().height ?? 0) + (scrollRef.current?.getBoundingClientRect().height ?? 0)} />
+          <TimelineSplitHandle value={previewShare} onChange={(previewShare) => updateTimelineLayout({ previewShare })} getFlexibleHeight={() => (stageWrapRef.current?.getBoundingClientRect().height ?? 0) + (scrollRef.current?.getBoundingClientRect().height ?? 0)} />
 
           <div className="timeline-editor-scroll" ref={scrollRef} style={{ flex: `${100 - previewShare} 1 0` }} onWheel={scrollTimeline}>
         <div className="timeline-ruler-row" style={{ minWidth: trackWidth + 116 }}>
@@ -1761,20 +1768,21 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
          </div>
       </section>
 
-      <aside className="editor-panel timeline-inspector">
+      {!inspectorPanelCollapsed && <TimelinePanelResizer side="inspector" value={inspectorPanelWidth} onChange={(inspectorPanelWidth) => updateTimelineLayout({ inspectorPanelWidth })} />}
+      <aside id="timeline-inspector" className="editor-panel timeline-inspector" hidden={inspectorPanelCollapsed}>
          {inspector === "sequence" && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Sequence settings</strong><span>{seconds(duration)}</span></div>
-            <label>{timeline.sequenceId === "opening" ? "Total duration (s)" : isTalkSequence ? "Total Talk playback (s)" : "Length (s)"}<input type="number" min="1" step="0.1" value={Number(duration.toFixed(3))} disabled={(timeline.sequenceId === "opening" || isTalkSequence) && timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: value.sequenceId === "opening" || /^talk-\d+$/i.test(value.sequenceId ?? "") ? "manual" : value.durationMode, duration: Math.max(1, (Number(event.target.value) || 1) - (isTalkSequence ? talkMixDuration : 0)) }))} /></label>
+            <NumberField label={timeline.sequenceId === "opening" ? "Total duration" : isTalkSequence ? "Total Talk playback" : "Length"} value={Number(duration.toFixed(3))} min={1} step={0.1} precision={3} unit="s" disabled={(timeline.sequenceId === "opening" || isTalkSequence) && timeline.durationMode === "auto"} onCommit={(totalDuration) => updateTimeline((value) => ({ ...value, durationMode: value.sequenceId === "opening" || /^talk-\d+$/i.test(value.sequenceId ?? "") ? "manual" : value.durationMode, duration: Math.max(1, totalDuration - (isTalkSequence ? talkMixDuration : 0)) }))} />
             <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop sequence</span></label>
             {isTalkSequence && <>
               <div className="editor-subheading">Talk playback</div>
               <label><span className="timeline-inline-check"><input type="checkbox" checked={timeline.durationMode === "auto"} onChange={(event) => updateTimeline((value) => ({ ...value, durationMode: event.target.checked ? "auto" : "manual", duration: Math.max(1, autoTalkDuration - talkMixDuration) }))} /> Automatic total duration</span><small className="editor-field-hint">{timeline.durationMode === "auto" ? `Fits enabled animation, voice, and subtitle endpoints: ${seconds(autoTalkDuration)}.` : "Manual override"}</small></label>
               <label><span className="timeline-inline-check"><input type="checkbox" checked={talkAutoplayActive} onChange={(event) => event.target.checked ? startTalkAutoplay() : stopTalkAutoplay()} /> Autoplay numbered Talks</span><small className="editor-field-hint">Waits for the animation, enabled voice clips, and subtitles to finish before advancing.</small></label>
               <div className="editor-two-fields">
-                <label>Pause between Talks (s)<input type="number" min="0" max="10" step="0.1" value={pauseBetweenTalks} onChange={(event) => setPauseBetweenTalks(Math.max(0, Math.min(10, Number(event.target.value) || 0)))} /></label>
+                <NumberField label="Pause between Talks" value={pauseBetweenTalks} min={0} max={10} step={0.1} precision={1} unit="s" onCommit={setPauseBetweenTalks} />
                 <label><span className="timeline-inline-check"><input type="checkbox" checked={loopTalkList} onChange={(event) => setLoopTalkList(event.target.checked)} /> Loop Talk list</span></label>
               </div>
-              <label>Talk blend in / out (s)<input aria-label="Talk animation blend duration in seconds" type="number" min="0" max="2" step="0.05" value={project?.talkMixDuration ?? DEFAULT_TALK_MIX_DURATION} onChange={(event) => updateTalkMixDuration(Number(event.target.value))} /><small className="editor-field-hint">Shared by runtime Talk playback and the timeline preview.</small></label>
+              <div><NumberField label="Talk blend in / out" value={project?.talkMixDuration ?? DEFAULT_TALK_MIX_DURATION} min={0} max={2} step={0.05} precision={2} unit="s" onCommit={updateTalkMixDuration} /><small className="editor-field-hint">Shared by runtime Talk playback and the timeline preview.</small></div>
             </>}
              {timeline.sequenceId === "opening" && <div className="opening-flow-editor">
               <div className="editor-subheading">Animation clips</div>
@@ -1822,16 +1830,15 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
               });
             }}><option value="">Auto fallback</option>{(metas[selectedAnimationClip.layer.id]?.animations ?? []).map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
             <label>Face / secondary animation<select value={selectedAnimationClip.clip.faceAnimation ?? ""} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { faceAnimation: event.target.value })}><option value="">Layer default / none</option>{(metas[selectedAnimationClip.layer.id]?.animations ?? []).map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
-            <div className="editor-two-fields"><label>Start (s)<input type="number" min="0" step="0.001" value={Number(selectedAnimationClip.clip.start.toFixed(3))} onChange={(event) => moveAnimationClipTo(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, Math.max(0, Number(event.target.value) || 0))} /></label><label>End (s)<input type="number" min={selectedAnimationClip.clip.start + 0.01} step="0.001" value={Number(animationClipEnd(selectedAnimationClip.clip, animationDurations[`${selectedAnimationClip.layer.id}:${selectedAnimationClip.clip.animation}`] ?? 0).toFixed(3))} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { endMode: "manual", end: Math.max(selectedAnimationClip.clip.start + 0.01, Number(event.target.value) || selectedAnimationClip.clip.start + 0.01) })} /></label></div>
+            <div className="editor-two-fields"><NumberField label="Start" value={Number(selectedAnimationClip.clip.start.toFixed(3))} min={0} step={0.001} precision={3} unit="s" onCommit={(value) => moveAnimationClipTo(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, value)} /><NumberField label="End" value={Number(animationClipEnd(selectedAnimationClip.clip, animationDurations[`${selectedAnimationClip.layer.id}:${selectedAnimationClip.clip.animation}`] ?? 0).toFixed(3))} min={selectedAnimationClip.clip.start + 0.01} step={0.001} precision={3} unit="s" onCommit={(value) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { endMode: "manual", end: Math.max(selectedAnimationClip.clip.start + 0.01, value) })} /></div>
             <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAnimationClip.clip.endMode !== "manual"} onChange={(event) => {
               const duration = animationDurations[`${selectedAnimationClip.layer.id}:${selectedAnimationClip.clip.animation}`] ?? 0;
               updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { endMode: event.target.checked ? "auto" : "manual", ...(event.target.checked ? { end: animationClipEnd(selectedAnimationClip.clip, duration) } : {}) });
             }} /> Use Spine animation end</span></label>
-            <div className="editor-two-fields"><label>Animation offset (s)<input type="number" min="0" step="0.001" value={Number(selectedAnimationClip.clip.animationOffset.toFixed(3))} onChange={(event) => {
-              const animationOffset = Math.max(0, Number(event.target.value) || 0);
+            <div className="editor-two-fields"><NumberField label="Animation offset" value={Number(selectedAnimationClip.clip.animationOffset.toFixed(3))} min={0} step={0.001} precision={3} unit="s" onCommit={(animationOffset) => {
               const duration = animationDurations[`${selectedAnimationClip.layer.id}:${selectedAnimationClip.clip.animation}`] ?? 0;
               updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { animationOffset, ...(selectedAnimationClip.clip.endMode !== "manual" && !selectedAnimationClip.clip.loop && duration > 0 ? { end: selectedAnimationClip.clip.start + Math.max(0.01, duration - animationOffset) } : {}) });
-            }} /></label><label><span>Playback</span><span className="timeline-inline-check"><input type="checkbox" checked={selectedAnimationClip.clip.loop} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { loop: event.target.checked })} /> Loop</span></label></div>
+            }} /><label><span>Playback</span><span className="timeline-inline-check"><input type="checkbox" checked={selectedAnimationClip.clip.loop} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { loop: event.target.checked })} /> Loop</span></label></div>
             {timeline.sequenceId === "opening" && selectedAnimationClip.layer.role === "character" && <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAnimationClip.clip.continueAfterOpening === true} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { continueAfterOpening: event.target.checked })} /> Continue after opening</span><small className="editor-field-hint">Keeps this animation playing through the interaction-idle handoff.</small></label>}
             {timeline.sequenceId === "opening" && selectedAnimationClip.layer.role === "scene" && <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAnimationClip.clip.hideCharacter === true} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { hideCharacter: event.target.checked })} /> Hide character during this scene clip</span><small className="editor-field-hint">When unchecked, the scene and character play together.</small></label>}
             <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAnimationClip.clip.enabled !== false} onChange={(event) => updateAnimationClip(selectedAnimationClip.layer.id, selectedAnimationClip.clip.id, { enabled: event.target.checked })} /> Enabled</span></label>
@@ -1841,14 +1848,14 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           {inspector === "layer" && selectedLayer && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Layer</strong><span><i className={`timeline-role-dot ${selectedLayer.role}`} /> {roleLabel(selectedLayer.role)} <button className="danger" onClick={removeLayer} disabled={selectedLayer.role === "character"}>Remove</button></span></div>
           <label>Name<input value={selectedLayer.name} onChange={(event) => updateLayer(selectedLayer.id, { name: event.target.value })} /></label>
-          <div className="editor-two-fields"><label>Role<select value={selectedLayer.role} onChange={(event) => updateLayer(selectedLayer.id, { role: event.target.value as TimelineLayerRole })}><option value="background">Background</option><option value="scene">Scene</option><option value="character">Character</option><option value="overlay">Overlay</option></select></label><label>Order<input type="number" min="0" step="1" value={selectedLayer.order} onChange={(event) => updateLayer(selectedLayer.id, { order: Math.max(0, Number(event.target.value) || 0) })} /></label></div>
+          <div className="editor-two-fields"><label>Role<select value={selectedLayer.role} onChange={(event) => updateLayer(selectedLayer.id, { role: event.target.value as TimelineLayerRole })}><option value="background">Background</option><option value="scene">Scene</option><option value="character">Character</option><option value="overlay">Overlay</option></select></label><NumberField label="Order" value={selectedLayer.order} min={0} step={1} onCommit={(order) => updateLayer(selectedLayer.id, { order: Math.max(0, Math.round(order)) })} /></div>
           <label>{selectedLayer.followMainAnimation ? "Fallback animation" : "Animation"}<select value={selectedLayer.animation || metas[selectedLayer.id]?.idleAnimation || ""} onChange={(event) => updateLayer(selectedLayer.id, { animation: event.target.value })}><option value="">Auto idle</option>{(metas[selectedLayer.id]?.animations ?? []).map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
           {selectedLayer.role !== "character" && <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.followMainAnimation === true} onChange={(event) => updateLayer(selectedLayer.id, { followMainAnimation: event.target.checked })} /> Follow main character animation</span><small className="editor-field-hint">Uses a matching animation and clock when available.</small></label>}
           <label>Face / secondary animation<select value={selectedLayer.faceAnimation ?? ""} onChange={(event) => updateLayer(selectedLayer.id, { faceAnimation: event.target.value })}><option value="">None</option>{(metas[selectedLayer.id]?.animations ?? []).map((name) => <option key={name}>{name}</option>)}</select></label>
-          <div className="editor-two-fields"><label>Start (s)<input type="number" min="0" step="0.001" value={Number(selectedLayer.start.toFixed(3))} onChange={(event) => updateLayer(selectedLayer.id, { start: Math.max(0, Number(event.target.value) || 0) })} /></label><label>End (s)<input type="number" min="0.01" step="0.001" value={Number(selectedLayer.end.toFixed(3))} onChange={(event) => updateLayer(selectedLayer.id, { endMode: "manual", end: Math.max(selectedLayer.start + 0.01, Number(event.target.value) || selectedLayer.start + 0.01) })} /></label></div>
+          <div className="editor-two-fields"><NumberField label="Start" value={Number(selectedLayer.start.toFixed(3))} min={0} step={0.001} precision={3} unit="s" disabled={selectedLayer.locked} onCommit={(value) => updateLayer(selectedLayer.id, { start: Math.max(0, value) })} /><NumberField label="End" value={Number(selectedLayer.end.toFixed(3))} min={selectedLayer.start + 0.01} step={0.001} precision={3} unit="s" disabled={selectedLayer.locked} onCommit={(value) => updateLayer(selectedLayer.id, { endMode: "manual", end: Math.max(selectedLayer.start + 0.01, value) })} /></div>
           <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.endMode !== "manual"} onChange={(event) => updateLayer(selectedLayer.id, { endMode: event.target.checked ? "auto" : "manual" })} /> Use Spine animation end</span></label>
-          <div className="editor-two-fields"><label>Animation offset (s)<input type="number" min="0" step="0.001" value={Number(selectedLayer.animationOffset.toFixed(3))} onChange={(event) => updateLayer(selectedLayer.id, { animationOffset: Math.max(0, Number(event.target.value) || 0) })} /></label><label><span>Playback</span><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.loop} onChange={(event) => updateLayer(selectedLayer.id, { loop: event.target.checked })} /> Loop</span></label></div>
-          <details><summary>Advanced transforms</summary><div className="editor-three-fields"><label>X<input type="number" step="1" value={selectedLayer.x} onChange={(event) => updateLayer(selectedLayer.id, { x: Number(event.target.value) || 0 })} /></label><label>Y<input type="number" step="1" value={selectedLayer.y} onChange={(event) => updateLayer(selectedLayer.id, { y: Number(event.target.value) || 0 })} /></label><label>Scale<input type="number" min="0.01" step="0.01" value={selectedLayer.scale} onChange={(event) => updateLayer(selectedLayer.id, { scale: Math.max(0.01, Number(event.target.value) || 0.01) })} /></label></div></details>
+          <div className="editor-two-fields"><NumberField label="Animation offset" value={Number(selectedLayer.animationOffset.toFixed(3))} min={0} step={0.001} precision={3} unit="s" disabled={selectedLayer.locked} onCommit={(value) => updateLayer(selectedLayer.id, { animationOffset: Math.max(0, value) })} /><label><span>Playback</span><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.loop} onChange={(event) => updateLayer(selectedLayer.id, { loop: event.target.checked })} /> Loop</span></label></div>
+          <details><summary>Advanced transforms</summary><div className="editor-three-fields"><NumberField label="X" value={selectedLayer.x} step={1} precision={2} unit="units" disabled={selectedLayer.locked} onCommit={(value) => updateLayer(selectedLayer.id, { x: value })} /><NumberField label="Y" value={selectedLayer.y} step={1} precision={2} unit="units" disabled={selectedLayer.locked} onCommit={(value) => updateLayer(selectedLayer.id, { y: value })} /><NumberField label="Scale" value={selectedLayer.scale} min={0.01} step={0.01} precision={3} disabled={selectedLayer.locked} onCommit={(value) => updateLayer(selectedLayer.id, { scale: Math.max(0.01, value) })} /></div></details>
           <label>Opacity · {Math.round(selectedLayer.opacity * 100)}%<input type="range" min="0" max="1" step="0.01" value={selectedLayer.opacity} onChange={(event) => updateLayer(selectedLayer.id, { opacity: Number(event.target.value) })} /></label>
           <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.enabled} onChange={(event) => updateLayer(selectedLayer.id, { enabled: event.target.checked })} /> Visible</span></label>
         </section>}
@@ -1856,7 +1863,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
         {inspector === "cue" && selectedCue && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Subtitle #{selectedCueIndex + 1}</strong><span>{seconds(selectedCue.start)}–{seconds(selectedCue.end)}</span></div>
           <div className="editor-two-fields subtitle-actions"><button className="editor-button" onClick={() => updateCue(selectedCue.id, { start: Math.min(currentTime, selectedCue.end - 0.01) })}>Start at playhead</button><button className="editor-button" onClick={() => updateCue(selectedCue.id, { end: Math.max(currentTime, selectedCue.start + 0.01) })}>End at playhead</button></div>
-           <div className="editor-two-fields"><label>Start (s)<input aria-label="Subtitle start" type="number" min="0" step="0.001" value={Number(selectedCue.start.toFixed(3))} onChange={(event) => updateCue(selectedCue.id, { start: Math.max(0, Math.min(selectedCue.end - 0.01, Number(event.target.value) || 0)) })} /></label><label>End (s)<input aria-label="Subtitle end" type="number" min="0.01" step="0.001" value={Number(selectedCue.end.toFixed(3))} onChange={(event) => updateCue(selectedCue.id, { end: Math.max(selectedCue.start + 0.01, Number(event.target.value) || selectedCue.start + 0.01) })} /></label></div>
+           <div className="editor-two-fields"><NumberField label="Start" value={Number(selectedCue.start.toFixed(3))} min={0} step={0.001} precision={3} unit="s" onCommit={(value) => updateCue(selectedCue.id, { start: Math.max(0, Math.min(selectedCue.end - 0.01, value)) })} /><NumberField label="End" value={Number(selectedCue.end.toFixed(3))} min={selectedCue.start + 0.01} step={0.001} precision={3} unit="s" onCommit={(value) => updateCue(selectedCue.id, { end: Math.max(selectedCue.start + 0.01, value) })} /></div>
            <SubtitleTextEditor
              cueNumber={selectedCueIndex + 1}
              language={timeline.language}
@@ -1871,7 +1878,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
         {inspector === "audio" && selectedAudio && <section className="editor-section editor-inspector">
           <div className="editor-section-title"><strong>Audio clip</strong><span>{seconds(selectedAudio.start)}–{seconds(selectedAudio.end)}</span></div>
           <label>Name<input value={selectedAudio.name} onChange={(event) => updateAudio(selectedAudio.id, { name: event.target.value })} /></label>
-             <div className="editor-two-fields"><label>Start (s)<input type="number" min={selectedAudioMinimumStart} step="0.001" value={Number(selectedAudio.start.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { start: selectedAudioDuration !== undefined ? clampAudioStart(selectedAudio.end, Number(event.target.value) || 0, selectedAudioDuration) : Math.min(selectedAudio.end - 0.01, Math.max(0, Number(event.target.value) || 0)) })} /></label><label>End (s)<input type="number" min="0.01" max={selectedAudioMaximumEnd} step="0.001" value={Number(selectedAudio.end.toFixed(3))} onChange={(event) => updateAudio(selectedAudio.id, { autoEnd: false, end: selectedAudioDuration !== undefined ? clampAudioEnd(selectedAudio.start, Number(event.target.value) || selectedAudio.start + 0.01, selectedAudioDuration) : Math.max(selectedAudio.start + 0.01, Number(event.target.value) || selectedAudio.start + 0.01) })} /></label></div>
+             <div className="editor-two-fields"><NumberField label="Start" value={Number(selectedAudio.start.toFixed(3))} min={selectedAudioMinimumStart} step={0.001} precision={3} unit="s" onCommit={(value) => updateAudio(selectedAudio.id, { start: selectedAudioDuration !== undefined ? clampAudioStart(selectedAudio.end, value, selectedAudioDuration) : Math.min(selectedAudio.end - 0.01, Math.max(0, value)) })} /><NumberField label="End" value={Number(selectedAudio.end.toFixed(3))} min={selectedAudio.start + 0.01} max={selectedAudioMaximumEnd} step={0.001} precision={3} unit="s" onCommit={(value) => updateAudio(selectedAudio.id, { autoEnd: false, end: selectedAudioDuration !== undefined ? clampAudioEnd(selectedAudio.start, value, selectedAudioDuration) : Math.max(selectedAudio.start + 0.01, value) })} /></div>
              {selectedAudioDuration !== undefined && <small className="editor-field-hint">Source duration: {seconds(selectedAudioDuration)}. The clip cannot be extended past its source.</small>}
            <label>Volume · {Math.round(selectedAudio.volume * 100)}%<input type="range" min="0" max="1" step="0.01" value={selectedAudio.volume} onChange={(event) => updateAudio(selectedAudio.id, { volume: Number(event.target.value) })} /></label>
            <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAudio.enabled} onChange={(event) => updateAudio(selectedAudio.id, { enabled: event.target.checked })} /> Enabled</span></label>
