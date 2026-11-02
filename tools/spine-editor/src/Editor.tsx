@@ -38,6 +38,7 @@ import { BonePicker } from "./BonePicker";
 import { BoneNavigator, type BoneRevealRequest } from "./BoneNavigator";
 import { CommandPalette, type EditorCommand } from "./CommandPalette";
 import { AnimationPhaseEditor } from "./components/AnimationPhaseEditor";
+import { BoundedSliderField } from "./components/BoundedSliderField";
 import { InteractionSummary } from "./components/InteractionSummary";
 import { NumberField } from "./components/NumberField";
 import { SaveStatus } from "./components/SaveStatus";
@@ -1426,7 +1427,7 @@ export function Editor() {
               <select aria-label="Preview animation" value={selectedAnimation} onChange={(event) => { setSelectedAnimation(event.target.value); rendererRef.current?.setAnimation(event.target.value, true); }} disabled={!meta || testing}>
                 {meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}
               </select>
-              <label className="editor-speed">Speed <input type="number" min="0.1" max="3" step="0.1" value={speed} onChange={(event) => setSpeed(Number(event.target.value))} /></label>
+              <NumberField label="Speed" value={speed} min={0.1} max={3} step={0.1} precision={1} unit="×" scrub={false} compact onCommit={setSpeed} />
               <span className="editor-time">{progress.time.toFixed(2)} / {progress.duration.toFixed(2)}s</span>
             </div>
             <input aria-label="Animation position" className="editor-range" type="range" min="0" max={Math.max(0.001, progress.duration)} step="0.001" value={Math.min(progress.time, progress.duration)} onChange={(event) => { setPlaying(false); rendererRef.current?.seek(Number(event.target.value)); }} disabled={!frame || testing} />
@@ -1519,7 +1520,8 @@ export function Editor() {
                 onChange={(path) => updateInteraction("followTargetBone", path)}
                 onReveal={(path) => revealBonePath(path)}
               />
-               <div className="editor-three-fields"><NumberField label="Sensitivity" value={selectedInteraction.sensitivity} min={0} max={2} step={0.05} onCommit={(value) => updateInteraction("sensitivity", value)} /><NumberField label="Limit X" value={selectedInteraction.limitX} min={0} step={1} unit="units" onCommit={(value) => updateInteraction("limitX", value)} /><NumberField label="Limit Y" value={selectedInteraction.limitY} min={0} step={1} unit="units" onCommit={(value) => updateInteraction("limitY", value)} /></div>
+               <BoundedSliderField label="Sensitivity" value={selectedInteraction.sensitivity} defaultValue={0.25} min={0} max={2} step={0.05} precision={2} onCommit={(value) => updateInteraction("sensitivity", value)} />
+                <div className="editor-two-fields"><NumberField label="Limit X" value={selectedInteraction.limitX} min={0} step={1} unit="units" onCommit={(value) => updateInteraction("limitX", value)} /><NumberField label="Limit Y" value={selectedInteraction.limitY} min={0} step={1} unit="units" onCommit={(value) => updateInteraction("limitY", value)} /></div>
               <div className="editor-subheading">Local bone constraints</div>
               <p className="editor-muted">Translation uses the target parent’s local axes. Rotation is relative to the animated bone pose.</p>
               <div className="editor-axis-checks" aria-label="Translation axes">
@@ -1532,7 +1534,7 @@ export function Editor() {
                 <label>Rotation input<select value={selectedInteraction.rotationAxis} disabled={!selectedInteraction.rotationEnabled} onChange={(event) => updateInteraction("rotationAxis", event.target.value)}><option value="x">Local X drag</option><option value="y">Local Y drag</option></select></label>
               </div>
               <div className="editor-two-fields"><NumberField label="Min rotation" value={selectedInteraction.rotationMin} min={-180} max={0} step={1} unit="°" disabled={!selectedInteraction.rotationEnabled} onCommit={(value) => updateInteraction("rotationMin", value)} /><NumberField label="Max rotation" value={selectedInteraction.rotationMax} min={0} max={180} step={1} unit="°" disabled={!selectedInteraction.rotationEnabled} onCommit={(value) => updateInteraction("rotationMax", value)} /></div>
-               <label>Follow smoothing · {selectedInteraction.smoothing.toFixed(1)} (higher = faster response)<input type="range" min="1" max="24" step="0.5" value={selectedInteraction.smoothing} onChange={(event) => updateInteraction("smoothing", Number(event.target.value))} /></label>
+               <div><BoundedSliderField label="Follow smoothing" value={selectedInteraction.smoothing} defaultValue={8} min={1} max={24} step={0.5} precision={1} onCommit={(value) => updateInteraction("smoothing", value)} /><small className="editor-field-hint">Higher values follow the target faster.</small></div>
                <div className="editor-subheading">Release return</div>
                <p className="editor-muted">When released, the target eases from its current offset back to the animated bone pose while the End phase plays.</p>
                  <div className="editor-two-fields"><NumberField label="Return duration" value={selectedInteraction.returnDuration} min={0.05} max={2} step={0.05} unit="s" onCommit={(value) => updateInteraction("returnDuration", value)} /><label>Return easing<select aria-label="Return easing" value={selectedInteraction.returnEasing} onChange={(event) => updateInteraction("returnEasing", event.target.value as EditorInteraction["returnEasing"])}><option value="linear">Linear</option><option value="ease-out">Ease out</option><option value="ease-in-out">Ease in / out</option></select></label></div>

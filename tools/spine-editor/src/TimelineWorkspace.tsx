@@ -23,6 +23,7 @@ import { spineAudioPathCandidates } from "../../../src/client/spine/spineAudio";
 import { serializeSubtitleDocument } from "./subtitleDocument";
 import type { RecentFile } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
+import { BoundedSliderField } from "./components/BoundedSliderField";
 import { NumberField } from "./components/NumberField";
 import { characterDirectoryLabel, type CharacterDirectoryInfo, type CharacterDirectoryLabels } from "./characterCatalog";
 import { isTextEditingTarget } from "./editorKeyboard";
@@ -1696,7 +1697,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
               </>}
              {timeline.sequenceId === "opening" && <><button className="editor-button" onClick={() => stepOpeningClip(-1)} disabled={!openingCharacterClips.length}><IconChevronLeft /> Clip</button><button className="editor-button" onClick={() => stepOpeningClip(1)} disabled={!openingCharacterClips.length}>Clip <IconChevronRight /></button></>}
              <button className="editor-button" onClick={() => { setPreviewUntil(null); setCurrentTime(duration); setPlaying(false); }}>End <IconSkipForward /></button>
-          <label className="editor-speed">Speed <input type="number" min="0.1" max="3" step="0.1" value={speed} onChange={(event) => setSpeed(Math.max(0.1, Number(event.target.value) || 1))} /></label>
+          <NumberField label="Speed" value={speed} min={0.1} max={3} step={0.1} precision={1} unit="×" scrub={false} compact onCommit={setSpeed} />
           <label className="timeline-loop"><input type="checkbox" checked={timeline.loop} onChange={(event) => updateTimeline((value) => ({ ...value, loop: event.target.checked }))} /> Loop</label>
           <span className="editor-time">{seconds(currentTime)} / {seconds(duration)}</span>
         </div>
@@ -1753,7 +1754,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
          </div>
          <div className="timeline-bottom-tools">
            <label>Snap <select value={timeline.snap} onChange={(event) => updateTimeline((value) => ({ ...value, snap: Number(event.target.value) }))}><option value="0">Off</option><option value="0.01">10 ms</option><option value="0.1">100 ms</option><option value="0.25">250 ms</option><option value="0.5">500 ms</option></select></label>
-           <label>Timeline scale <input aria-label="Timeline scale" type="range" min="0.1" max="3" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
+           <BoundedSliderField label="Timeline scale" value={zoom} defaultValue={1} min={0.1} max={3} step={0.1} precision={2} unit="×" compact onCommit={setZoom} />
             <button className="editor-button" onClick={fitTimeline} title="Fit the full sequence in the timeline (F)"><IconExpand /> Fit timeline (F)</button>
              <details ref={addMenuRef} className="timeline-add-menu">
                <summary className="editor-button"><IconPlus /> Add <IconChevronDown /></summary>
@@ -1856,7 +1857,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.endMode !== "manual"} onChange={(event) => updateLayer(selectedLayer.id, { endMode: event.target.checked ? "auto" : "manual" })} /> Use Spine animation end</span></label>
           <div className="editor-two-fields"><NumberField label="Animation offset" value={Number(selectedLayer.animationOffset.toFixed(3))} min={0} step={0.001} precision={3} unit="s" disabled={selectedLayer.locked} onCommit={(value) => updateLayer(selectedLayer.id, { animationOffset: Math.max(0, value) })} /><label><span>Playback</span><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.loop} onChange={(event) => updateLayer(selectedLayer.id, { loop: event.target.checked })} /> Loop</span></label></div>
           <details><summary>Advanced transforms</summary><div className="editor-three-fields"><NumberField label="X" value={selectedLayer.x} step={1} precision={2} unit="units" disabled={selectedLayer.locked} onCommit={(value) => updateLayer(selectedLayer.id, { x: value })} /><NumberField label="Y" value={selectedLayer.y} step={1} precision={2} unit="units" disabled={selectedLayer.locked} onCommit={(value) => updateLayer(selectedLayer.id, { y: value })} /><NumberField label="Scale" value={selectedLayer.scale} min={0.01} step={0.01} precision={3} disabled={selectedLayer.locked} onCommit={(value) => updateLayer(selectedLayer.id, { scale: Math.max(0.01, value) })} /></div></details>
-          <label>Opacity · {Math.round(selectedLayer.opacity * 100)}%<input type="range" min="0" max="1" step="0.01" value={selectedLayer.opacity} onChange={(event) => updateLayer(selectedLayer.id, { opacity: Number(event.target.value) })} /></label>
+          <BoundedSliderField label="Opacity" value={selectedLayer.opacity * 100} defaultValue={100} min={0} max={100} step={0.1} precision={1} unit="%" onCommit={(value) => updateLayer(selectedLayer.id, { opacity: value / 100 })} />
           <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedLayer.enabled} onChange={(event) => updateLayer(selectedLayer.id, { enabled: event.target.checked })} /> Visible</span></label>
         </section>}
 
@@ -1880,7 +1881,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
           <label>Name<input value={selectedAudio.name} onChange={(event) => updateAudio(selectedAudio.id, { name: event.target.value })} /></label>
              <div className="editor-two-fields"><NumberField label="Start" value={Number(selectedAudio.start.toFixed(3))} min={selectedAudioMinimumStart} step={0.001} precision={3} unit="s" onCommit={(value) => updateAudio(selectedAudio.id, { start: selectedAudioDuration !== undefined ? clampAudioStart(selectedAudio.end, value, selectedAudioDuration) : Math.min(selectedAudio.end - 0.01, Math.max(0, value)) })} /><NumberField label="End" value={Number(selectedAudio.end.toFixed(3))} min={selectedAudio.start + 0.01} max={selectedAudioMaximumEnd} step={0.001} precision={3} unit="s" onCommit={(value) => updateAudio(selectedAudio.id, { autoEnd: false, end: selectedAudioDuration !== undefined ? clampAudioEnd(selectedAudio.start, value, selectedAudioDuration) : Math.max(selectedAudio.start + 0.01, value) })} /></div>
              {selectedAudioDuration !== undefined && <small className="editor-field-hint">Source duration: {seconds(selectedAudioDuration)}. The clip cannot be extended past its source.</small>}
-           <label>Volume · {Math.round(selectedAudio.volume * 100)}%<input type="range" min="0" max="1" step="0.01" value={selectedAudio.volume} onChange={(event) => updateAudio(selectedAudio.id, { volume: Number(event.target.value) })} /></label>
+           <BoundedSliderField label="Volume" value={selectedAudio.volume * 100} defaultValue={100} min={0} max={100} step={0.1} precision={1} unit="%" onCommit={(value) => updateAudio(selectedAudio.id, { volume: value / 100 })} />
            <label><span className="timeline-inline-check"><input type="checkbox" checked={selectedAudio.enabled} onChange={(event) => updateAudio(selectedAudio.id, { enabled: event.target.checked })} /> Enabled</span></label>
            <label>Linked subtitle<select aria-label="Linked subtitle" value={selectedAudio.subtitleId === null ? "__none__" : selectedAudio.subtitleId ?? selectedAudioLinkedSubtitle?.id ?? "__none__"} onChange={(event) => setAudioSubtitleLink(selectedAudio.id, event.target.value === "__none__" ? null : event.target.value)}>
              <option value="__none__">No linked subtitle</option>

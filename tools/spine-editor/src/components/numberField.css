@@ -12,3 +12,9 @@
 .editor-number-scrub svg { width: 12px; height: 12px; }
 .editor-number-scrub:hover, .editor-number-scrub:focus-visible { border-color: var(--editor-line); color: var(--editor-cyan); outline: 0; }
 .editor-number-error { color: var(--editor-pink); font-size: 9px; font-weight: 500; }
+.editor-number-field.is-compact { display: flex; align-items: center; gap: 6px; width: max-content; }
+.editor-number-field.is-compact .editor-number-heading { flex: none; }
+.editor-number-field.is-compact .editor-number-heading > label { white-space: nowrap; }
+.editor-number-field.is-compact .editor-number-scrub { display: none; }
+.editor-number-field.is-compact .editor-number-input-wrap { width: 72px; flex: none; }
+.editor-number-field.is-compact .editor-number-input-wrap input { height: 28px; padding: 4px 23px 4px 7px; }

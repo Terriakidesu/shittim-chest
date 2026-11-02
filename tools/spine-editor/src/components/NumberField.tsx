@@ -11,6 +11,7 @@ export interface NumberFieldProps extends NumericBounds {
   unit?: string;
   disabled?: boolean;
   scrub?: boolean;
+  compact?: boolean;
   onCommit: (value: number) => void;
 }
 
@@ -21,7 +22,7 @@ interface ScrubGesture {
   multiplier: number;
 }
 
-export function NumberField({ label, value, min, max, step = 1, precision = numericPrecision(step), unit, disabled = false, scrub = true, onCommit }: NumberFieldProps) {
+export function NumberField({ label, value, min, max, step = 1, precision = numericPrecision(step), unit, disabled = false, scrub = true, compact = false, onCommit }: NumberFieldProps) {
   const inputId = useId();
   const errorId = useId();
   const [draft, setDraft] = useState(() => formatNumericValue(value, precision));
@@ -85,7 +86,7 @@ export function NumberField({ label, value, min, max, step = 1, precision = nume
     setDraft(formatNumericValue(value, precision));
   }
 
-  return <div className={`editor-number-field${invalid ? " is-invalid" : ""}`}>
+  return <div className={`editor-number-field${invalid ? " is-invalid" : ""}${compact ? " is-compact" : ""}`}>
     <span className="editor-number-heading">
       <label htmlFor={inputId}>{label}</label>
       {scrub && <button

@@ -4,3 +4,6 @@
 .timeline-panel-resizer:focus-visible { outline: 2px solid var(--editor-cyan); outline-offset: -2px; }
 .timeline-panel-toggle { flex: none; min-height: 27px; padding: 4px 7px; font-size: 9px; white-space: nowrap; }
 .sequence-heading .sequence-heading-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 5px; }
+@media (max-width: 980px) {
+  .timeline-main { overflow-y: auto; }
+}
