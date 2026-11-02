@@ -27,7 +27,6 @@ import {
 import "./editor.css";
 import { InteractionPreview, type InteractionPreviewDebug } from "./preview";
 import { hitRegion, inversePoint, regionMatrix, screenToWorld } from "./geometry";
-import { findInteractionProfile } from "../../../src/client/spine/spineInteraction";
 import { detectHeadRegion, repairPatRegions, type HeadRegion } from "./headRegion";
 import { TimelineWorkspace } from "./TimelineWorkspace";
 import { LEGACY_PROJECT_STORAGE_PREFIX } from "./editorModel";
@@ -35,11 +34,18 @@ import { chooseDesktopProject, chooseDesktopSource, chooseDesktopSourceAt, type 
 import { normalizeRecentFiles, RECENT_FILES_KEY, rememberRecentFile, removeRecentFile, type RecentFile, type RecentFileKind } from "./recentFiles";
 import { AssetPickerModal } from "./AssetPickerModal";
 import { BonePicker } from "./BonePicker";
+import { AnimationPhaseEditor } from "./components/AnimationPhaseEditor";
+import { InteractionSummary } from "./components/InteractionSummary";
+import { NumberField } from "./components/NumberField";
+import { SaveStatus } from "./components/SaveStatus";
+import { WorkspacePresetMenu } from "./components/WorkspacePresetMenu";
+import { suggestInteractionPhases } from "./interactionSuggestions";
 import { buildBoneTreeRows } from "./boneTree";
 import { characterDirectoryLabel, parseCharacterDirectoryLabels, type CharacterDirectoryLabels } from "./characterCatalog";
 import { editorProjectPath } from "./editorStorage";
 import { pendingProjectForDirectory, readSavedEditorProject, saveManifestEditorProject } from "./editorProject";
 import { isTextEditingTarget } from "./editorKeyboard";
+import { DEFAULT_EDITOR_LAYOUT_PREFERENCES, EDITOR_LAYOUT_PREFERENCES_KEY, normalizeEditorLayoutPreferences, type WorkspaceLayoutPreset } from "./editorLayout";
 import { IconCheck, IconChevronDown, IconChevronRight, IconClose, IconDot, IconExpand, IconFile, IconFolder, IconHand, IconMenu, IconMessage, IconPause, IconPlay, IconPlus, IconSliders, IconSound, IconTarget } from "../../../src/client/components/icons";
 
 function displayName(path: string): string {
@@ -65,6 +71,15 @@ function readStoredViewSettings(): EditorViewSettings {
     return (stored ? normalizeViewSettings(JSON.parse(stored) as unknown) : null) ?? DEFAULT_EDITOR_VIEW_SETTINGS;
   } catch {
     return DEFAULT_EDITOR_VIEW_SETTINGS;
+  }
+}
+
+function readStoredLayoutPreferences() {
+  try {
+    const stored = localStorage.getItem(EDITOR_LAYOUT_PREFERENCES_KEY);
+    return (stored ? normalizeEditorLayoutPreferences(JSON.parse(stored) as unknown) : null) ?? DEFAULT_EDITOR_LAYOUT_PREFERENCES;
+  } catch {
+    return DEFAULT_EDITOR_LAYOUT_PREFERENCES;
   }
 }
 
@@ -374,15 +389,17 @@ export function Editor() {
   const editorKeydownRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
   const [drawBox, setDrawBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const panelDragRef = useRef<{ side: "left" | "right"; x: number; width: number } | null>(null);
-  const [leftWidth, setLeftWidth] = useState(220);
-  const [rightWidth, setRightWidth] = useState(320);
+  const [storedLayoutPreferences] = useState(() => readStoredLayoutPreferences());
+  const [leftWidth, setLeftWidth] = useState(storedLayoutPreferences.leftWidth);
+  const [rightWidth, setRightWidth] = useState(storedLayoutPreferences.rightWidth);
+  const [layoutPreset, setLayoutPreset] = useState<WorkspaceLayoutPreset>(storedLayoutPreferences.preset);
   const [testing, setTesting] = useState(false);
   const [tool, setTool] = useState<"select" | "pan" | "draw">("select");
   const [inspectorTab, setInspectorTab] = useState<"region" | "animation" | "movement">("region");
   const [showTestRegions, setShowTestRegions] = useState(true);
   const [previewDebug, setPreviewDebug] = useState<InteractionPreviewDebug>(() => previewRef.current.debug);
-  const [leftHidden, setLeftHidden] = useState(false);
-  const [rightHidden, setRightHidden] = useState(false);
+  const [leftHidden, setLeftHidden] = useState(storedLayoutPreferences.leftHidden);
+  const [rightHidden, setRightHidden] = useState(storedLayoutPreferences.rightHidden);
   const [help, setHelp] = useState(false);
   const [workspace, setWorkspace] = useState<"interaction" | "timeline">("interaction");
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
@@ -631,6 +648,12 @@ export function Editor() {
     window.addEventListener("blur", release);
     return () => window.removeEventListener("blur", release);
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(EDITOR_LAYOUT_PREFERENCES_KEY, JSON.stringify({ preset: layoutPreset, leftWidth, rightWidth, leftHidden, rightHidden }));
+    } catch { /* Workspace layout is still useful for this session. */ }
+  }, [layoutPreset, leftWidth, rightWidth, leftHidden, rightHidden]);
 
   useEffect(() => {
     const move = (event: PointerEvent) => {
@@ -899,6 +922,9 @@ export function Editor() {
   }
 
   const selectedInteraction = project?.interactions.find((item) => item.id === project.selectedInteractionId) ?? null;
+  const phaseSuggestion = selectedInteraction && meta
+    ? suggestInteractionPhases(meta.animations, selectedInteraction.startAnimation)
+    : null;
   const selectedRegion = selectedInteraction?.regions.find((item) => item.id === project?.selectedRegionId) ?? null;
   const displaySettings = viewSettings;
   const boneTreeRows = useMemo(
@@ -1158,11 +1184,17 @@ export function Editor() {
 
   function detectPhases() {
     if (!meta || !selectedInteraction) return;
-    const profile = findInteractionProfile(meta.animations);
-    const action = [profile.pat, profile.touch, profile.pinch].find((item) => item?.start.main === selectedInteraction.startAnimation);
-    if (!action) { setStatus("Choose a detected Pat, Touch, or Pinch start animation first, then detect its phases."); return; }
-    mutate((current) => ({ ...current, interactions: current.interactions.map((item) => item.id === selectedInteraction.id ? { ...item, startAnimation: action.start.main, followAnimation: action.follow.main, endAnimation: action.release?.main ?? "", faceStartAnimation: action.start.face ?? "", faceFollowAnimation: action.follow.face ?? "", faceEndAnimation: action.release?.face ?? "" } : item) }));
-    setStatus("Detected body and face phases. Regions and movement settings were kept.");
+    if (!phaseSuggestion) { setStatus("Choose a press animation that matches a local Pat, Touch, or Pinch profile to see a suggestion."); return; }
+    mutate((current) => ({ ...current, interactions: current.interactions.map((item) => item.id === selectedInteraction.id ? {
+      ...item,
+      startAnimation: phaseSuggestion.startAnimation,
+      followAnimation: phaseSuggestion.followAnimation,
+      endAnimation: phaseSuggestion.endAnimation,
+      faceStartAnimation: phaseSuggestion.faceStartAnimation,
+      faceFollowAnimation: phaseSuggestion.faceFollowAnimation,
+      faceEndAnimation: phaseSuggestion.faceEndAnimation,
+    } : item) }));
+    setStatus(`${phaseSuggestion.kind} phase suggestion applied. Regions, movement, and blend durations were kept.`);
   }
 
   function stagePoint(event: ReactPointerEvent<HTMLElement>) {
@@ -1248,16 +1280,6 @@ export function Editor() {
     finalizing: "Finalizing asset",
     audio: "Loading audio",
   }[loadProgress.stage];
-  const saveLabel = saveState === "saving"
-    ? "Saving…"
-    : saveState === "dirty"
-      ? "Unsaved changes"
-      : saveState === "error"
-        ? "Save failed"
-        : savedAt
-           ? `Saved ${new Date(savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-           : "Ready to save";
-
   function recentPath(item: RecentFile): string {
     return item.kind === "folder" ? item.rootPath : nativePath(item.rootPath, item.path);
   }
@@ -1276,6 +1298,21 @@ export function Editor() {
     </div>;
   }
 
+  function applyWorkspacePreset(preset: Exclude<WorkspaceLayoutPreset, "custom">) {
+    setLayoutPreset(preset);
+    if (preset === "timeline-focus") {
+      setLeftHidden(false);
+      setRightHidden(false);
+      setWorkspace("timeline");
+      return;
+    }
+    setWorkspace("interaction");
+    setLeftHidden(preset === "canvas-focus");
+    setRightHidden(preset === "canvas-focus");
+    setLeftWidth(DEFAULT_EDITOR_LAYOUT_PREFERENCES.leftWidth);
+    setRightWidth(DEFAULT_EDITOR_LAYOUT_PREFERENCES.rightWidth);
+  }
+
   return (
     <div className={`editor-app${testing ? " is-testing" : ""}`}>
       <header className="editor-header">
@@ -1288,6 +1325,7 @@ export function Editor() {
             <button className={`editor-button${workspace === "interaction" ? " active" : ""}`} role="tab" aria-selected={workspace === "interaction"} onClick={() => setWorkspace("interaction")}>Interactions</button>
             <button className={`editor-button${workspace === "timeline" ? " active" : ""}`} role="tab" aria-selected={workspace === "timeline"} onClick={() => setWorkspace("timeline")} disabled={!assetLoaded}>Timeline</button>
           </div>
+          <WorkspacePresetMenu selected={layoutPreset} timelineDisabled={!assetLoaded} onSelect={applyWorkspacePreset} />
            <div className="editor-asset-picker"><span>Set</span><button className="editor-asset-picker-button" type="button" aria-haspopup="dialog" aria-expanded={assetPickerOpen} onClick={() => setAssetPickerOpen(true)} disabled={!directories.length} title={directory || "Open a folder first"}><span>{directory ? characterDirectoryLabel(directory, directoryLabels) : "Open a folder…"}</span><IconChevronDown /></button></div>
           <details className="editor-open-menu">
              <summary className="editor-button"><IconFolder /> Open <IconChevronDown /></summary>
@@ -1298,23 +1336,24 @@ export function Editor() {
               {recentList(8)}
             </div>
           </details>
-           <span className={`editor-save-state is-${saveState}`} aria-live="polite"><IconDot /> {saveLabel}</span>
-          <button className="editor-button editor-save-button" onClick={() => void saveProject()} disabled={!assetLoaded || saveState === "saving"}>Save files</button>
+            <SaveStatus state={saveState} savedAt={savedAt} hasProject={Boolean(project)} />
+           <button className="editor-button editor-save-button" onClick={() => void saveProject()} disabled={!assetLoaded || saveState === "saving"} title="Write the project and linked subtitles to the selected asset root">Save to root</button>
           <button className="editor-button" onClick={() => setHelp((value) => !value)} title="Keyboard shortcuts (?)">? Help</button>
         </div>
       </header>
       <AssetPickerModal open={assetPickerOpen} title="Switch character or asset set" eyebrow="CHARACTER / ASSET SET" description="Search the loaded Spine catalog, then choose the set to edit." directories={directories} selected={directory} renderLabel={(item) => characterDirectoryLabel(item, directoryLabels)} getSearchText={(item) => characterDirectoryLabel(item, directoryLabels)} onClose={() => setAssetPickerOpen(false)} onSelect={(next) => { setAssetPickerOpen(false); void changeDirectory(next); }} />
 
-       {help && <div className="editor-help" role="region" aria-label="Editor help"><strong>Shortcuts</strong>{workspace === "timeline" ? <span>Space Play/pause · Left/right Frame · Shift+Left/right 10 frames · Home/End · S Split subtitle · Ctrl/⌘ D Duplicate · Delete Remove · F Fit · Ctrl/⌘ S Save</span> : <><span>Draw a hit region, choose animations, then test it with press, hold, drag, and release.</span><span>V Select · H Pan · R Draw · T Test · F Fit · B Bones · Space Play/pause · Esc Idle/Edit</span><span>Ctrl/⌘ Z Undo · Shift Z Redo · Ctrl/⌘ D Duplicate · Delete Remove region · Ctrl/⌘ S Save</span></>}<button className="editor-button" onClick={() => setHelp(false)}><IconClose /> Close</button></div>}
+        {help && <div className="editor-help" role="region" aria-label="Editor help"><strong>Shortcuts</strong>{workspace === "timeline" ? <span>Space Play/pause · Left/right Frame · Shift+Left/right 10 frames · Home/End · S Split subtitle · Ctrl/⌘ D Duplicate · Delete Remove · F Fit timeline · Ctrl/⌘ S Save</span> : <><span>Draw a hit region, choose animations, then test it with press, hold, drag, and release.</span><span>V Select · H Pan · R Draw · T Test · F Fit canvas · B Bones · Space Play/pause · Esc Idle/Edit</span><span>Ctrl/⌘ Z Undo · Shift Z Redo · Ctrl/⌘ D Duplicate · Delete Remove region · Ctrl/⌘ S Save</span></>}<button className="editor-button" onClick={() => setHelp(false)}><IconClose /> Close</button></div>}
       <main className={`editor-layout${leftHidden ? " hide-left" : ""}${rightHidden ? " hide-right" : ""}${!assetLoaded ? " is-loading" : ""}`} style={{ position: workspace === "timeline" ? "absolute" : undefined, visibility: workspace === "timeline" ? "hidden" : undefined, inset: workspace === "timeline" ? "100px 0 40px" : undefined, pointerEvents: workspace === "timeline" ? "none" : undefined, gridTemplateColumns: `${leftHidden ? "" : `${leftWidth}px `}minmax(180px, 1fr)${rightHidden ? "" : ` ${rightWidth}px`}` }}>
-        {assetLoaded && (["left", "right"] as const).filter((side) => side === "left" ? !leftHidden : !rightHidden).map((side) => <div key={side} className={`editor-panel-resizer ${side}`} role="separator" aria-label={`Resize ${side} panel`} aria-orientation="vertical" tabIndex={0} style={side === "left" ? { left: leftWidth + 7 } : { right: rightWidth + 7 }} onDoubleClick={() => side === "left" ? setLeftWidth(220) : setRightWidth(320)} onKeyDown={(event) => {
-          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-          event.preventDefault(); const delta = event.key === "ArrowRight" ? 10 : -10;
+        {assetLoaded && (["left", "right"] as const).filter((side) => side === "left" ? !leftHidden : !rightHidden).map((side) => <div key={side} className={`editor-panel-resizer ${side}`} role="separator" aria-label={`Resize ${side} panel`} aria-orientation="vertical" tabIndex={0} style={side === "left" ? { left: leftWidth + 7 } : { right: rightWidth + 7 }} onDoubleClick={() => { setLayoutPreset("custom"); side === "left" ? setLeftWidth(220) : setRightWidth(320); }} onKeyDown={(event) => {
+           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+           event.preventDefault(); setLayoutPreset("custom"); const delta = event.key === "ArrowRight" ? 10 : -10;
           side === "left" ? setLeftWidth((value) => Math.max(160, Math.min(380, value + delta))) : setRightWidth((value) => Math.max(260, Math.min(460, value - delta)));
         }} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); panelDragRef.current = { side, x: event.clientX, width: side === "left" ? leftWidth : rightWidth }; }} onPointerMove={(event) => {
           const drag = panelDragRef.current;
           if (!drag) return;
-          const dx = event.clientX - drag.x;
+           const dx = event.clientX - drag.x;
+           setLayoutPreset("custom");
           drag.side === "left" ? setLeftWidth(Math.max(160, Math.min(380, drag.width + dx))) : setRightWidth(Math.max(260, Math.min(460, drag.width - dx)));
         }} onPointerUp={() => { panelDragRef.current = null; }} onPointerCancel={() => { panelDragRef.current = null; }} />)}
         <aside className="editor-panel editor-left-panel" hidden={!assetLoaded || leftHidden}>
@@ -1374,12 +1413,12 @@ export function Editor() {
             </div>
           </div>}
           <div className="editor-toolbar" role="toolbar" aria-label="Canvas tools">
-             <button className="editor-button" onClick={() => setLeftHidden((value) => !value)} title="Toggle bone panel"><IconMenu /> Bones</button>
+              <button className="editor-button" onClick={() => { setLayoutPreset("custom"); setLeftHidden((value) => !value); }} title="Toggle bone panel"><IconMenu /> Bones</button>
              <button className={`editor-button${!testing && tool === "select" ? " active" : ""}`} onClick={() => { setTesting(false); setTool("select"); }} title="Select and transform regions (V)"><IconTarget /> Select</button>
              <button className={`editor-button${!testing && tool === "pan" ? " active" : ""}`} onClick={() => { setTesting(false); setTool("pan"); }} title="Drag canvas to pan; wheel to zoom (H)"><IconHand /> Pan</button>
              <button className={`editor-button${!testing && tool === "draw" ? " active" : ""}`} disabled={!selectedInteraction} onClick={() => { setTesting(false); setTool("draw"); setStatus("Click and drag on the canvas to draw a hit region."); }} title="Draw a hit region (R)"><IconPlus /> Draw region</button>
              <button className={`editor-button${testing ? " active test" : ""}`} onClick={toggleTest} disabled={!project} title="Run the full authored interaction (T)">{testing ? <><IconPause /> Test</> : <><IconPlay /> Test</>}</button>
-             <button className="editor-button" onClick={() => rendererRef.current?.resetCamera()} title="Fit artwork to canvas (F)"><IconExpand /> Fit</button>
+              <button className="editor-button" onClick={() => rendererRef.current?.resetCamera()} title="Fit artwork to the canvas (F)"><IconExpand /> Fit canvas</button>
              <details className="editor-overlay-menu">
                <summary className="editor-button"><IconSliders /> Overlays <IconChevronDown /></summary>
               <div className="editor-overlay-menu-popover">
@@ -1390,7 +1429,7 @@ export function Editor() {
               </div>
             </details>
             <button className="editor-button" onClick={resetPreview} disabled={!meta}>Reset idle</button>
-             <button className="editor-button" onClick={() => setRightHidden((value) => !value)} title="Toggle inspector">Inspector <IconMenu /></button>
+              <button className="editor-button" onClick={() => { setLayoutPreset("custom"); setRightHidden((value) => !value); }} title="Toggle inspector">Inspector <IconMenu /></button>
           </div>
           <div className="editor-stage" ref={stageRef} onDoubleClick={(event) => { if (!testing && event.target === canvasRef.current) rendererRef.current?.resetCamera(); }}>
             <canvas ref={canvasRef} aria-label="Spine editor canvas" />
@@ -1477,46 +1516,41 @@ export function Editor() {
               ? <p className="editor-muted">No missing animations, bones, or overlapping regions.</p>
               : <div className="editor-validation-list">{validationWarnings.map((warning) => <div key={warning.id}><b>{warning.kind.replace("-", " ")}</b><span>{warning.message}</span></div>)}</div>}
           </details>
-           {selectedInteraction && <section className="editor-section editor-inspector">
-             <div className="editor-section-title"><strong>Interaction</strong><span><button onClick={duplicateInteraction} title="Duplicate interaction and its regions">Duplicate</button> <button className="danger" onClick={() => { if (confirm("Delete this interaction and all its regions?")) deleteInteraction(); }}>Delete</button></span></div>
-             <details className="editor-interaction-settings" open={inspectorTab !== "region"}>
-               <summary>Interaction settings</summary>
-               <div className="editor-settings-body">
-             <label>Name<input value={selectedInteraction.name} onChange={(event) => updateInteraction("name", event.target.value)} /></label>
-             <div className="editor-two-fields"><label>Trigger<select value={selectedInteraction.trigger} onChange={(event) => updateInteraction("trigger", event.target.value)}><option value="press">Press</option><option value="hold">Hold</option><option value="drag">Drag</option></select></label><label>Color<input type="color" value={selectedInteraction.color} onChange={(event) => updateInteraction("color", event.target.value)} /></label></div>
-             <label><input type="checkbox" checked={selectedInteraction.enabled} onChange={(event) => updateInteraction("enabled", event.target.checked)} /> Enabled</label>
-              <div className="editor-animation-fields">
-              <div className="editor-subheading">On press, while held, on release</div>
-              <p className="editor-muted">Body and face tracks play together over idle. Test runs the complete sequence.</p>
-              <button className="editor-preview-button" onClick={detectPhases}>Auto-detect phases from press animation</button>
-              <div className="editor-phase-strip" aria-label="Interaction animation phases">
-                {[
-                   { label: "On press", phase: "starting", body: selectedInteraction.startAnimation, face: selectedInteraction.faceStartAnimation, loop: false },
-                   { label: "While held", phase: "holding", body: selectedInteraction.followAnimation, face: selectedInteraction.faceFollowAnimation, loop: true },
-                   { label: "On release", phase: "releasing", body: selectedInteraction.endAnimation, face: selectedInteraction.faceEndAnimation, loop: false },
-                  ].map((phase) => <article className={`editor-phase-card${testing && previewDebug.interactionName === selectedInteraction.name && previewDebug.phase === phase.phase ? " is-active" : ""}`} key={phase.label}>
-                  <div><strong>{phase.label}</strong><button className="editor-preview-button" disabled={testing || (!phase.body && !phase.face)} onClick={() => previewPhase(phase.label, phase.body, phase.face, phase.loop)}>Preview</button></div>
-                  <span>{phase.body || "No body animation"}</span>
-                  <small>{phase.face ? `Face · ${phase.face}` : "No face track"}{phase.loop ? " · loops" : ""}</small>
-                </article>)}
-              </div>
-              <div className="editor-subheading">Animation blending</div>
-              <p className="editor-muted">Crossfade body and face tracks at each phase transition. This is separate from the pointer return easing.</p>
-              <div className="editor-three-fields">
-                <label>Into press (s)<input aria-label="Blend into press in seconds" type="number" min="0" max="2" step="0.05" value={selectedInteraction.startMixDuration} onChange={(event) => updateInteraction("startMixDuration", Number(event.target.value))} /></label>
-                <label>Into hold (s)<input aria-label="Blend into hold in seconds" type="number" min="0" max="2" step="0.05" value={selectedInteraction.followMixDuration} onChange={(event) => updateInteraction("followMixDuration", Number(event.target.value))} /></label>
-                <label>Into release (s)<input aria-label="Blend into release in seconds" type="number" min="0" max="2" step="0.05" value={selectedInteraction.releaseMixDuration} onChange={(event) => updateInteraction("releaseMixDuration", Number(event.target.value))} /></label>
-              </div>
-              <label>On press<select value={selectedInteraction.startAnimation} onChange={(event) => updateInteraction("startAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
-             <label>While held (loops)<select value={selectedInteraction.followAnimation} onChange={(event) => updateInteraction("followAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
-             <label>On release<select value={selectedInteraction.endAnimation} onChange={(event) => updateInteraction("endAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
-            <details className="editor-advanced-phases"><summary>Face / secondary tracks</summary><div>
-              <label>Start<select value={selectedInteraction.faceStartAnimation} onChange={(event) => updateInteraction("faceStartAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
-              <label>Follow<select value={selectedInteraction.faceFollowAnimation} onChange={(event) => updateInteraction("faceFollowAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
-              <label>End<select value={selectedInteraction.faceEndAnimation} onChange={(event) => updateInteraction("faceEndAnimation", event.target.value)}><option value="">None</option>{meta?.animations.map((animation) => <option key={animation} value={animation}>{animation}</option>)}</select></label>
-            </div></details>
-             <div className="editor-two-fields"><button className="editor-preview-button" disabled={testing} onClick={() => playAnimation(selectedInteraction.startAnimation)}>Preview press</button><button className="editor-preview-button" onClick={toggleTest}>{testing ? "Exit test" : "Test full interaction"}</button></div>
-              </div>
+            {selectedInteraction && <section className="editor-section editor-inspector">
+              <div className="editor-section-title"><strong>Interaction</strong><span><button onClick={duplicateInteraction} title="Duplicate interaction and its regions">Duplicate</button> <button className="danger" onClick={() => { if (confirm("Delete this interaction and all its regions?")) deleteInteraction(); }}>Delete</button></span></div>
+              <InteractionSummary name={selectedInteraction.name} trigger={selectedInteraction.trigger} color={selectedInteraction.color} enabled={selectedInteraction.enabled} onEnabledChange={(enabled) => updateInteraction("enabled", enabled)} />
+              <details className="editor-interaction-settings" open={inspectorTab !== "region"}>
+                <summary>Interaction settings</summary>
+                <div className="editor-settings-body">
+              <label>Name<input value={selectedInteraction.name} onChange={(event) => updateInteraction("name", event.target.value)} /></label>
+              <div className="editor-two-fields"><label>Trigger<select value={selectedInteraction.trigger} onChange={(event) => updateInteraction("trigger", event.target.value)}><option value="press">Press</option><option value="hold">Hold</option><option value="drag">Drag</option></select></label><label>Color<input type="color" value={selectedInteraction.color} onChange={(event) => updateInteraction("color", event.target.value)} /></label></div>
+               <div className="editor-animation-fields">
+               <div className="editor-subheading">Press, hold, and release</div>
+               <p className="editor-muted">Body and face tracks play together. The hold phase loops; blend duration controls each transition.</p>
+               <div className={`editor-phase-suggestion${phaseSuggestion ? " has-suggestion" : ""}`}>
+                 <span aria-hidden="true"><IconTarget /></span>
+                 <p>{phaseSuggestion ? <><b>{phaseSuggestion.kind} profile detected.</b> {phaseSuggestion.reason} Applying fills the phase tracks only.</> : "No local profile matches this press animation. Choose a detected Pat, Touch, or Pinch press to preview a mapping."}</p>
+                 <button type="button" className="editor-preview-button" disabled={!phaseSuggestion} onClick={detectPhases}>Apply suggestion</button>
+               </div>
+               <AnimationPhaseEditor
+                 animations={meta?.animations ?? []}
+                 press={selectedInteraction.startAnimation}
+                 hold={selectedInteraction.followAnimation}
+                 release={selectedInteraction.endAnimation}
+                 facePress={selectedInteraction.faceStartAnimation}
+                 faceHold={selectedInteraction.faceFollowAnimation}
+                 faceRelease={selectedInteraction.faceEndAnimation}
+                 mixPress={selectedInteraction.startMixDuration}
+                 mixHold={selectedInteraction.followMixDuration}
+                 mixRelease={selectedInteraction.releaseMixDuration}
+                 activePhase={testing && previewDebug.interactionName === selectedInteraction.name ? previewDebug.phase : ""}
+                 disabled={testing}
+                 onAnimationChange={(field, value) => updateInteraction(field, value)}
+                 onMixChange={(field, value) => updateInteraction(field, value)}
+                 onPreview={previewPhase}
+               />
+               <button className="editor-preview-button" onClick={toggleTest}>{testing ? "Exit test" : "Test full interaction"}</button>
+               </div>
               <div className="editor-movement-fields">
                <div className="editor-subheading">Drag response</div>
                <p className="editor-muted">Movement is relative to the initial press. Limits are in the target bone's parent space.</p>
@@ -1529,7 +1563,7 @@ export function Editor() {
                 onChange={(path) => updateInteraction("followTargetBone", path)}
                 onReveal={(path) => revealBonePath(path)}
               />
-               <div className="editor-three-fields"><label>Sensitivity<input type="number" min="0" max="2" step="0.05" value={selectedInteraction.sensitivity} onChange={(event) => updateInteraction("sensitivity", Number(event.target.value))} /></label><label>Limit X<input type="number" min="0" step="1" value={selectedInteraction.limitX} onChange={(event) => updateInteraction("limitX", Number(event.target.value))} /></label><label>Limit Y<input type="number" min="0" step="1" value={selectedInteraction.limitY} onChange={(event) => updateInteraction("limitY", Number(event.target.value))} /></label></div>
+               <div className="editor-three-fields"><NumberField label="Sensitivity" value={selectedInteraction.sensitivity} min={0} max={2} step={0.05} onCommit={(value) => updateInteraction("sensitivity", value)} /><NumberField label="Limit X" value={selectedInteraction.limitX} min={0} step={1} unit="units" onCommit={(value) => updateInteraction("limitX", value)} /><NumberField label="Limit Y" value={selectedInteraction.limitY} min={0} step={1} unit="units" onCommit={(value) => updateInteraction("limitY", value)} /></div>
               <div className="editor-subheading">Local bone constraints</div>
               <p className="editor-muted">Translation uses the target parent’s local axes. Rotation is relative to the animated bone pose.</p>
               <div className="editor-axis-checks" aria-label="Translation axes">
@@ -1545,7 +1579,7 @@ export function Editor() {
                <label>Follow smoothing · {selectedInteraction.smoothing.toFixed(1)} (higher = faster response)<input type="range" min="1" max="24" step="0.5" value={selectedInteraction.smoothing} onChange={(event) => updateInteraction("smoothing", Number(event.target.value))} /></label>
                <div className="editor-subheading">Release return</div>
                <p className="editor-muted">When released, the target eases from its current offset back to the animated bone pose while the End phase plays.</p>
-                <div className="editor-two-fields"><label>Return duration (s)<input aria-label="Return duration in seconds" type="number" min="0.05" max="2" step="0.05" value={selectedInteraction.returnDuration} onChange={(event) => updateInteraction("returnDuration", Number(event.target.value))} /></label><label>Return easing<select aria-label="Return easing" value={selectedInteraction.returnEasing} onChange={(event) => updateInteraction("returnEasing", event.target.value as EditorInteraction["returnEasing"])}><option value="linear">Linear</option><option value="ease-out">Ease out</option><option value="ease-in-out">Ease in / out</option></select></label></div>
+                 <div className="editor-two-fields"><NumberField label="Return duration" value={selectedInteraction.returnDuration} min={0.05} max={2} step={0.05} unit="s" onCommit={(value) => updateInteraction("returnDuration", value)} /><label>Return easing<select aria-label="Return easing" value={selectedInteraction.returnEasing} onChange={(event) => updateInteraction("returnEasing", event.target.value as EditorInteraction["returnEasing"])}><option value="linear">Linear</option><option value="ease-out">Ease out</option><option value="ease-in-out">Ease in / out</option></select></label></div>
                </div>
                </div>
              </details>
@@ -1574,8 +1608,8 @@ export function Editor() {
                  onReveal={(path) => revealBonePath(path)}
                />
              </div>
-             <details><summary>Position & size (advanced)</summary><div className="editor-three-fields"><label>Offset X<input type="number" step="1" value={Number(selectedRegion.offsetX.toFixed(2))} onChange={(event) => updateRegion("offsetX", Number(event.target.value))} /></label><label>Offset Y<input type="number" step="1" value={Number(selectedRegion.offsetY.toFixed(2))} onChange={(event) => updateRegion("offsetY", Number(event.target.value))} /></label><label>Rotate °<input type="number" step="1" value={Number(selectedRegion.rotation.toFixed(1))} onChange={(event) => updateRegion("rotation", Number(event.target.value))} /></label></div>
-             <div className="editor-two-fields"><label>Radius X<input type="number" min="1" step="1" value={Number(selectedRegion.radiusX.toFixed(2))} onChange={(event) => updateRegion("radiusX", Math.max(1, Number(event.target.value)))} /></label><label>Radius Y<input type="number" min="1" step="1" value={Number(selectedRegion.radiusY.toFixed(2))} onChange={(event) => updateRegion("radiusY", Math.max(1, Number(event.target.value)))} /></label></div></details>
+              <details><summary>Position & size (advanced)</summary><div className="editor-three-fields"><NumberField label="Offset X" value={selectedRegion.offsetX} step={1} precision={2} unit="units" onCommit={(value) => updateRegion("offsetX", value)} /><NumberField label="Offset Y" value={selectedRegion.offsetY} step={1} precision={2} unit="units" onCommit={(value) => updateRegion("offsetY", value)} /><NumberField label="Rotation" value={selectedRegion.rotation} step={1} precision={1} unit="°" onCommit={(value) => updateRegion("rotation", value)} /></div>
+              <div className="editor-two-fields"><NumberField label="Radius X" value={selectedRegion.radiusX} min={1} step={1} precision={2} unit="units" onCommit={(value) => updateRegion("radiusX", value)} /><NumberField label="Radius Y" value={selectedRegion.radiusY} min={1} step={1} precision={2} unit="units" onCommit={(value) => updateRegion("radiusY", value)} /></div></details>
             <label><input type="checkbox" checked={selectedRegion.enabled} onChange={(event) => updateRegion("enabled", event.target.checked)} /> Enabled</label>
               <button className="editor-preview-button" disabled={!headRegionRef.current} onClick={snapRegionToHead}>Fit region to detected head</button>
              <button className="editor-preview-button" onClick={() => mutate((current) => ({ ...current, interactions: current.interactions.map((item) => item.id === selectedInteraction.id ? { ...item, regions: item.regions.map((region) => region.id === selectedRegion.id ? { ...region, offsetX: 0, offsetY: 0 } : region) } : item) }))}>Center on anchor</button>

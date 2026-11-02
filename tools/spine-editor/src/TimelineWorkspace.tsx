@@ -1643,7 +1643,7 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
                <output className="timeline-stage-scale" aria-label="Preview zoom">{Math.round(stageView.scale * 100)}%</output>
                 <button type="button" className="editor-icon-button" aria-label="Zoom in preview" title="Zoom in" onClick={() => zoomStageBy(1.25)}><IconPlus /></button>
                <button type="button" className="editor-button" onClick={resetStagePan} title="Center the preview without changing zoom">Reset pan</button>
-               <button type="button" className="editor-button" onClick={fitStage} title="Reset zoom and center the preview">Fit</button>
+               <button type="button" className="editor-button" onClick={fitStage} title="Reset preview zoom and center the stage">Fit preview</button>
              </div>
              <span className="timeline-stage-hint" aria-live="polite">{stagePanning ? "Release to stop panning" : "Drag to pan · Wheel to zoom"}</span>
             </div>
@@ -1710,8 +1710,8 @@ export function TimelineWorkspace({ source, directory, directories, directoryLab
          </div>
          <div className="timeline-bottom-tools">
            <label>Snap <select value={timeline.snap} onChange={(event) => updateTimeline((value) => ({ ...value, snap: Number(event.target.value) }))}><option value="0">Off</option><option value="0.01">10 ms</option><option value="0.1">100 ms</option><option value="0.25">250 ms</option><option value="0.5">500 ms</option></select></label>
-           <label>Zoom <input type="range" min="0.1" max="3" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
-            <button className="editor-button" onClick={fitTimeline}><IconExpand /> Fit (F)</button>
+           <label>Timeline scale <input aria-label="Timeline scale" type="range" min="0.1" max="3" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
+            <button className="editor-button" onClick={fitTimeline} title="Fit the full sequence in the timeline (F)"><IconExpand /> Fit timeline (F)</button>
              <details ref={addMenuRef} className="timeline-add-menu">
                <summary className="editor-button"><IconPlus /> Add <IconChevronDown /></summary>
               <div className="timeline-add-menu-popover">
