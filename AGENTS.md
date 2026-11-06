@@ -15,63 +15,15 @@ pass.
 
 **Never add a network call to the client.** It reads only `public/data/*.json` and `public/img/`, which the export commits. No `/api/*` exists.
 
-**Routes are path-based** (`/calendar`, `/simulator`, `/spine`, `/about`), and each route is a real document at the repo root — `index.html`, `calendar.html`, `simulator.html`, `spine.html`, `about.html` — listed as Vite build inputs. **Keep them flat siblings of `index.html`; never move one into a subdirectory.** A trailing slash or a subdirectory makes every relative asset URL (`./assets/...`, `./data/...`) resolve one level too deep, and the failure is silent: the HTML loads, the JS 404s, the page renders blank. `src/client/route.ts` matches on the trailing path segment so both `/calendar` and `/calendar.html` resolve; GitHub Pages serves the former from the latter.
+**Routes are path-based** (`/calendar`, `/simulator`, `/about`), and each route is a real document at the repo root — `index.html`, `calendar.html`, `simulator.html`, `about.html` — listed as Vite build inputs. **Keep them flat siblings of `index.html`; never move one into a subdirectory.** A trailing slash or a subdirectory makes every relative asset URL (`./assets/...`, `./data/...`) resolve one level too deep, and the failure is silent: the HTML loads, the JS 404s, the page renders blank. `src/client/route.ts` matches on the trailing path segment so both `/calendar` and `/calendar.html` resolve; GitHub Pages serves the former from the latter.
 
-**Route metadata is duplicated on purpose, in two places that must stay in sync.** `og:image` has to be an absolute URL and static HTML cannot compute it, so the origin is hardcoded in six files: `index.html`, the four route documents, and `sitemap.xml`. A domain change means editing all six. `src/client/seo.ts` (`ROUTE_META`) holds the same copy and applies it at runtime, resolving against `location.href` so it follows the domain by itself. Nothing checks that the two agree. The cards in `public/og/` are **not** build output — they are prepared offline from `scripts/og/template.html`, so changing a card means re-rendering it, not rebuilding.
+**Route metadata is duplicated on purpose, in two places that must stay in sync.** `og:image` has to be an absolute URL and static HTML cannot compute it, so the origin is hardcoded in five files: `index.html`, the three route documents, and `sitemap.xml`. A domain change means editing all five. `src/client/seo.ts` (`ROUTE_META`) holds the same copy and applies it at runtime, resolving against `location.href` so it follows the domain by itself. Nothing checks that the two agree. The cards in `public/og/` are **not** build output — they are prepared offline from `scripts/og/template.html`, so changing a card means re-rendering it, not rebuilding.
 
 **`redirectLegacyHash()` in `route.ts` must stay wired into `main.tsx`.** Old `/#/simulator` links resolve to a perfectly valid `/`, so `public/404.html` never runs for them — without the JS redirect they silently land on the lobby.
 
 **An exception thrown inside a `useEffect` unmounts the entire app**, because the render root is unguarded. `absoluteFrom` in `seo.ts` is pure and unit-tested precisely because an earlier version silently threw on boot and blanked the page.
 
 **`src/model/` is vendored** from the full-stack `blue-archive-gacha-calendar` project. Keep it free of server/DB code, and keep changes in sync with that repo.
-
-## Private Spine editor and subtitle timelines
-
-`tools/spine-editor/` is private, local-only desktop tooling. It is not part of
-the GitHub Pages build and must not add Electrobun or other desktop dependencies
-to the root workspace. The supported UI is the native host:
-
-```bash
-bun run editor:desktop
-```
-
-- A selected asset root may contain `.editorignore`, using root-relative
-  gitignore-style patterns. Keep generated or unrelated asset-like folders out
-  of the catalog instead of adding ad-hoc exclusions to the native host.
-- Interaction and timeline projects are user data saved in the selected asset
-  root at `.editor/<asset-set>.spine-project.json`. The legacy
-  `.shittim-spine-editor/` directory remains readable for migration, but new
-  writes belong in `.editor/`. These files are not repository source and are
-  ignored by the root `.gitignore`.
-- A linked `audios/voicelines/<character>/subtitles.json` is saved back in place
-  when the project changes. The project stores the interaction data, sequence
-  timelines, localized subtitle cues, and audio paths; opening the root must
-  restore all of them. The published viewer does not consume private `.editor`
-  projects. Both these asset-root subtitle files and `.editor` projects are
-  external user data; do not copy or stage them in this repository unless the
-  task explicitly requests it.
-- `scripts/split-spine-voicelines.ts` is the generator for the local subtitle
-  files. Spine `Talk`/`Sound` event markers and OGG durations are authoritative
-  for timing; do not invent marker times when repairing a generated file.
-- Same-start parts with identical `en`/`ja`/`ko` text are duplicate alternatives,
-  not sequential dialogue. Keep the longer part, select one preferred audio
-  candidate, and update both the source subtitle parts and every affected saved
-  timeline. `normalizeProject()` and subtitle serialization also clean legacy
-  duplicates, but stale active/sequence copies should still be repaired rather
-  than relied on implicitly.
-- Part translations must follow the logical sentence segments in the line-level
-  localized subtitle. Never copy part 1 into part 2 merely because the source
-  has multiple audio files. Re-scan all local `subtitles.json` files after a
-  repair for repeated part text and same-track interval overlaps.
-- The public viewer's `.spine-dialogue` rule in `src/client/styles.css` is the
-  subtitle presentation source of truth. Keep the editor's
-  `.timeline-subtitle-preview` visually aligned with it, including the
-  translucent panel, border, typography, shadow, and `pre-line` wrapping.
-
-The editor's focused checks are `bun run editor:typecheck` and
-`bun test tools/spine-editor/src`; run the root typecheck and full test suite
-afterwards. The desktop packaging command can spend several minutes in
-Electrobun compression even after the embedded UI has compiled.
 
 ## The DTO contract
 
@@ -237,7 +189,7 @@ string, so a key can ship before its translations land.
   simulator's persisted `localStorage` key: switching languages must not wipe
   a collection or counters. Tests that flip the language must restore it
   (try/finally — bun's `expect()` takes no message argument).
-- Static `<head>` metadata (`index.html`, the four route documents,
+- Static `<head>` metadata (`index.html`, the three route documents,
   `sitemap.xml`) stays English-only; only `applySeo` localizes it, at runtime.
 - Decorative English is untranslated on purpose: contract/document seals, the
   "SHITTIM CHEST" placeholder, "Pick Up!" card labels, source/software names
@@ -258,9 +210,6 @@ bun run scripts/student-profiles.ts   # refresh profiles+dialogues only, into th
 ```
 
 Focused runs: `bun test src/model` (dir or file path both work). Tests are colocated `*.test.ts` using `bun:test`.
-
-For Spine editor changes, also use `bun run editor:typecheck` and
-`bun test tools/spine-editor/src` before the root checks.
 
 **There is no linter, formatter, or test framework beyond `bun:test`** — nothing is installed for them. Don't try to run or add `lint`/`format`; match surrounding style by hand. Order is `typecheck` then `test`.
 

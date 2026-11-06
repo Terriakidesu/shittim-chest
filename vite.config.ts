@@ -11,7 +11,7 @@ import react from "@vitejs/plugin-react";
 // Each entry sits flat at the root (not in a subdirectory) precisely so that
 // relative asset URLs keep resolving from any of them. They all load the same
 // main.tsx, and Rollup emits a single shared chunk, so the extra entries cost
-// four small HTML files and no duplicated JavaScript.
+// three small HTML files and no duplicated JavaScript.
 const page = (name: string) => fileURLToPath(new URL(name, import.meta.url));
 
 export default defineConfig({
@@ -26,7 +26,6 @@ export default defineConfig({
         calendar: page("calendar.html"),
         simulator: page("simulator.html"),
         about: page("about.html"),
-        spine: page("spine.html"),
       },
     },
   },

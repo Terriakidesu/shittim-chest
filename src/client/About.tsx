@@ -70,7 +70,7 @@ export function About() {
       <p>{t("about.project.p1")}<a href="https://github.com/Terriakidesu">{t("about.project.maintainer")}</a>{t("about.project.p2")}</p>
       <p>{t("about.project.p3")}</p>
       <div className="about-software">{software.map(([name, purposeKey, url, license, licenseUrl]) => <div key={name}><h3><a href={url}>{name}</a></h3><p>{t(purposeKey)}</p><a href={licenseUrl}>{license}{t("about.soft.upstream")}</a></div>)}</div>
-      <p>{t("about.project.tools.p1")}<a href="https://www.python.org/">Python</a>, <a href="https://github.com/K0lb3/UnityPy">UnityPy</a>, <a href="https://numpy.org/">NumPy</a>, <a href="https://ffmpeg.org/">FFmpeg</a>, <a href="https://lame.sourceforge.io/">LAME</a>, and <a href="https://playwright.dev/">Playwright</a>{t("about.project.tools.p2")}<a href="https://github.com/EsotericSoftware/spine-runtimes/tree/4.2">{t("about.project.tools.linkSpine")}</a>{t("about.project.tools.p3")}</p>
+      <p>{t("about.project.tools.p1")}<a href="https://www.python.org/">Python</a>, <a href="https://github.com/K0lb3/UnityPy">UnityPy</a>, <a href="https://numpy.org/">NumPy</a>, <a href="https://ffmpeg.org/">FFmpeg</a>, <a href="https://lame.sourceforge.io/">LAME</a>, and <a href="https://playwright.dev/">Playwright</a>{t("about.project.tools.p2")}{t("about.project.tools.p3")}</p>
       <p>{t("about.project.notices.p1")}<a href="https://github.com/vitejs/vite-plugin-react/blob/main/LICENSE">{t("about.project.notices.linkVite")}</a>{t("about.project.notices.middle")}<a href="https://github.com/DefinitelyTyped/DefinitelyTyped/blob/master/LICENSE">{t("about.project.notices.linkTypes")}</a>{t("about.project.notices.p2")}</p>
       <p>{t("about.project.typography")}</p>
     </section>

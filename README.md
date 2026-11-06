@@ -20,7 +20,6 @@ ships the static subset that can be hosted on GitHub Pages.
 | `scripts/weekly-refresh.sh` | Weekly refresh: export → commit to `main` → republish `gh-pages`. |
 | `scripts/og/template.html` | Source for the social card images in `public/og/`. Rendered offline, not built. |
 | `scripts/pageslike-server.py` | Serves `dist/` the way GitHub Pages does (extensionless URLs, `404.html` fallback), for local routing checks. |
-| `tools/spine-editor/` | Private, development-only Spine interaction/timeline editor; never included in the Pages build. Its optional desktop host is isolated below this directory. |
 | [`shittim-chest-cron`](https://github.com/Terriakides/shittim-chest-cron) | Org-hosted scheduler that runs `weekly-refresh.sh`, for when this repo's own Actions runners are unavailable. |
 | `public/data/` | Generated forecast snapshots, committed by the weekly refresh. |
 | `public/img/` | Locally bundled artwork (avatars, portraits, banners, mascots, emblems). The client never loads images from upstream hosts. |
@@ -28,6 +27,9 @@ ships the static subset that can be hosted on GitHub Pages.
 | `public/ba-icons/`, `public/ba-lobby/`, `public/ba-sounds/` | Game-derived static assets with provenance notes (`SOURCES.md`, `manifest.json`). |
 | `public/ba-cards/` | Recruitment card and star recreations by Terriakidesu, with their upstream asset notice and local source notes. |
 | `AGENTS.md` | Notes for agents working in this repository. |
+
+The Spine viewer and editor now live in the separate
+[`ba-spine-viewer`](https://github.com/Terriakidesu/ba-spine-viewer) repository.
 
 ## Commands
 
@@ -44,16 +46,6 @@ bun run test       # bun test unit tests
 `bun run export --skip-images` refreshes the JSON without touching artwork.
 Both `export` variants need network access.
 
-The Spine editor is opt-in desktop-only development tooling. It is packaged as
-an Electrobun window and has no supported browser launch. The normal root
-`bun install` and `bun run build` do not install or run its optional
-Electrobun/Hutch toolchain. Install that toolchain from
-`tools/spine-editor/desktop/` instead of adding those dependencies to the root
-package.
-
-After opting into the native toolchain in `tools/spine-editor/desktop/`, its
-convenience commands are `bun run editor:desktop` and
-`bun run editor:desktop:build`.
 Student reveal profiles (combat class, weapon, birthday, voice actor and English
 recruitment dialogue) come from wiki character infoboxes and `/audio` pages,
 joined by numeric student ID. `bun run scripts/student-profiles.ts` regenerates
@@ -104,7 +96,7 @@ minutes. Check `Settings → Pages` (or `gh api repos/<owner>/<repo>/pages
 
 ## Routing and SEO
 
-Routes are **path-based**: `/`, `/calendar`, `/simulator`, `/spine`, `/about`. GitHub
+Routes are **path-based**: `/`, `/calendar`, `/simulator`, `/about`. GitHub
 Pages serves an extensionless URL from the matching `.html` file, so
 `/calendar` and `/calendar.html` are the same document and both work.
 
@@ -118,7 +110,6 @@ each route is a real document and carries its own:
 | Lobby | `/` | `public/og/home.png` |
 | Calendar | `/calendar` | `public/og/calendar.png` |
 | Simulator | `/simulator` | `public/og/simulator.png` |
-| Spine viewer | `/spine` | `public/og/about.png` |
 | About | `/about` | `public/og/about.png` |
 
 Two things follow from this and are easy to break:
@@ -126,20 +117,14 @@ Two things follow from this and are easy to break:
 - **Route documents are flat siblings of `index.html`**, never
   `calendar/index.html`, and they are Vite build entries (see `vite.config.ts`).
   A subdirectory would make every relative asset URL (`./assets/...`,
-  `./data/...`) resolve one level too deep. All five entries load the same
-  `main.tsx`, and Rollup emits one shared chunk, so the extra entries cost four
+  `./data/...`) resolve one level too deep. All four entries load the same
+  `main.tsx`, and Rollup emits one shared chunk, so the extra entries cost three
   small HTML files and no duplicated JavaScript.
 - **`og:image` must be absolute, and static HTML cannot compute it**, so the
-  origin is hardcoded in six files: `index.html`, the four route documents,
-  and `sitemap.xml`. A domain change means editing all six. The runtime copy in
+  origin is hardcoded in five files: `index.html`, the three route documents,
+  and `sitemap.xml`. A domain change means editing all five. The runtime copy in
   `src/client/seo.ts` resolves against `location.href` instead, so it follows
   the domain by itself. Nothing checks that the two copies agree.
-
-The Spine viewer is intentionally local-only. Choose the directory containing
-the exported Spine assets in a Chromium browser; the page reads the selected
-`.atlas`, `.png`, and `.skel` files through
-the File System Access API and never uploads them. The character and variant
-grouping index is bundled at `src/client/spine/characters.json`.
 
 `public/404.html` forwards the shapes that still need handling: trailing-slash
 URLs (`/calendar/`) and pre-migration hash links. `src/client/route.ts`

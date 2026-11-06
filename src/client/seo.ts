@@ -1,22 +1,20 @@
 /**
  * Per-route document metadata.
  *
- * Two things have to be kept in step, because the site routes by URL fragment
- * and fragments are never sent to the server:
+ * Static route documents carry crawler-visible metadata because crawlers
+ * fetch raw HTML and do not execute JavaScript:
  *
- * 1. The static shims in `public/*.html` (`calendar.html`, `simulator.html`,
- *    `about.html`) carry the metadata a crawler actually reads. Social scrapers
- *    and search engines fetch raw HTML and never execute JavaScript, so
- *    client-side updates alone are invisible to them. Each shim forwards to the
- *    matching hash route, which is why those `.html` paths are the shareable
- *    ones.
+ * 1. The static documents (`calendar.html`, `simulator.html`, `about.html`)
+ *    carry the metadata a crawler actually reads; client-side updates alone
+ *    are invisible to them.
  * 2. This module keeps the live document's metadata correct while the user
- *    navigates in-app, so the tab title, a copied address, and the static shims
- *    all describe the same route.
+ *    navigates in-app, so the tab title, a copied address, and the static
+ *    documents all describe the same route.
  *
  * `og:image` must be an absolute URL, so it is resolved against the page's own
- * location at runtime. The static shims cannot do that and hardcode the origin
- * instead - update those literals if the site ever moves to another domain.
+ * location at runtime. The static documents cannot do that and hardcode the
+ * origin instead - update those literals if the site ever moves to another
+ * domain.
  */
 
 import { asset } from "./api";
@@ -67,14 +65,6 @@ export const ROUTE_META: Record<Route, RouteMeta> = {
     image: "og/about.png",
     imageAlt: "Credits and data sources for Shittim Chest",
   },
-  "/spine": {
-    title: "Spine Lobby Viewer — Shittim Chest",
-    description:
-      "Preview Blue Archive lobby Spine animations from a local game asset folder, grouped by character and variant.",
-    share: "./spine.html",
-    image: "og/about.png",
-    imageAlt: "The Shittim Chest Spine lobby viewer",
-  },
 };
 
 const SITE_NAME = "Shittim Chest";
@@ -85,16 +75,15 @@ const ROUTE_SEO_SUFFIX: Record<Route, string> = {
   "/calendar": "calendar",
   "/simulator": "simulator",
   "/about": "about",
-  "/spine": "spine",
 };
 
 /**
  * Metadata actually applied to the live document. Structural fields
  * (`share`, `image`) always come from `ROUTE_META` — the static English
- * `og:image` there is duplicated on purpose, since the HTML shims cannot
+ * `og:image` there is duplicated on purpose, since static HTML cannot
  * resolve absolute URLs — while the textual fields follow the interface
  * language when it is not English. Crawlers still see the English static
- * shims; this only changes what the running browser displays.
+ * documents; this only changes what the running browser displays.
  */
 function routeMeta(route: Route): RouteMeta {
   const base = ROUTE_META[route];

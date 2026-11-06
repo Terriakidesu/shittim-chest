@@ -36,6 +36,8 @@ describe("routeFromPath", () => {
     expect(routeFromPath("/index.html")).toBe("/");
     expect(routeFromPath("/shittim-chest/")).toBe("/");
     expect(routeFromPath("/nope.html")).toBe("/");
+    expect(routeFromPath("/spine")).toBe("/");
+    expect(routeFromPath("/spine.html")).toBe("/");
   });
 
   test("does not match a route name that is only a prefix", () => {

@@ -1,4 +1,4 @@
-import React, { lazy, Suspense } from "react";
+import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import { Home } from "./Home";
@@ -11,11 +11,7 @@ import "./styles.css";
 import "./recruitment.css";
 import "./recruitmentResults.css";
 import { initializeTheme } from "./theme";
-import { initializeLanguage, t, useLanguage } from "./i18n";
-
-// Keep the 4.2 WebGL runtime out of the calendar, simulator and lobby chunks.
-// It is only needed after the visitor opens the local asset viewer.
-const Spine = lazy(() => import("./Spine").then(({ Spine: page }) => ({ default: page })));
+import { initializeLanguage, useLanguage } from "./i18n";
 
 initializeTheme();
 initializeLanguage();
@@ -45,8 +41,6 @@ function Shell() {
         <About />
       ) : route === "/simulator" ? (
         <Simulator />
-      ) : route === "/spine" ? (
-        <Suspense fallback={<main className="spine-page"><p>{t("spine.loading")}</p></main>}><Spine /></Suspense>
       ) : (
         <App />
       )}
