@@ -292,7 +292,7 @@ async function buildSnapshot(): Promise<Snapshot> {
       glBatchStartMs: glBanner.startMs,
       });
   }
-  applyOfficialGlobalSchedules(banners, predictions, confirmed);
+  applyOfficialGlobalSchedules(banners, predictions, confirmed, forecast.glProjected);
   const unresolved = new Set(
     jp.filter((b) => !b.evergreen && !confirmed.has(b.id) && !predictions.has(b.id)).map((b) => b.id),
   );

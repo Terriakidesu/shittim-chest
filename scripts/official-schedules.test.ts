@@ -43,6 +43,57 @@ test("the complete October 27 batch replaces estimates", () => {
   }
 });
 
+test("the November 10 swimsuit pickups replace the November 17 estimates", () => {
+  const codes = ["Makoto_(Swimsuit)_release", "Satsuki_(Swimsuit)_release"];
+  const banners = codes.map((code, index) => jp(code, 1040 + index));
+  const nov10 = Date.UTC(2026, 10, 10, 2);
+  const predictions = new Map<number, Prediction>(
+    banners.map((banner) => [
+      banner.id,
+      {
+        bannerId: banner.id,
+        expectedMs: Date.UTC(2026, 10, 17, 2),
+        p05Ms: Date.UTC(2026, 9, 27, 2),
+        p95Ms: Date.UTC(2026, 11, 1, 2),
+        confidence: .9,
+        confidenceToleranceDays: 7,
+        intervalCoverage: .9,
+        calibrationSamples: 71,
+        method: "recent-lag",
+        explanation: "estimate",
+        glBatchIndex: 179,
+        glBatchStartMs: Date.UTC(2026, 10, 17, 2),
+      },
+    ]),
+  );
+
+  applyOfficialGlobalSchedules(
+    banners,
+    predictions,
+    new Map(),
+    [
+      { index: 178, step: 1, startMs: nov10, endMs: nov10 + 14 * 86_400_000 },
+      {
+        index: 179,
+        step: 2,
+        startMs: Date.UTC(2026, 10, 17, 2),
+        endMs: Date.UTC(2026, 10, 17, 2) + 14 * 86_400_000,
+      },
+    ],
+  );
+
+  for (const banner of banners) {
+    const prediction = predictions.get(banner.id)!;
+    expect(prediction.expectedMs).toBe(nov10);
+    expect(prediction.p05Ms).toBe(nov10);
+    expect(prediction.p95Ms).toBe(nov10);
+    expect(prediction.method).toBe("scheduled");
+    expect(prediction.source).toBe("official");
+    expect(prediction.glBatchIndex).toBe(178);
+    expect(prediction.glBatchStartMs).toBe(nov10);
+  }
+});
+
 test("an already arrived Global match is not overridden", () => {
   const banner = jp("Hikari_rerun1", 1024);
   const predictions = new Map<number, Prediction>();
